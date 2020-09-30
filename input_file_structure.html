@@ -1,0 +1,424 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<style>
+
+    * {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        font-family: sans-serif;
+    }
+
+    ul li {
+        margin-left: 15px;
+        position: relative;
+        padding-left: 5px;
+    }
+
+    ul li::before {
+        content: " ";
+        position: absolute;
+        width: 1px;
+        background-color: #000;
+        top: 5px;
+        bottom: -12px;
+        left: -10px;
+    }
+
+
+    body > ul > li:first-child::before { top: 12px; }
+
+    ul li:not(:first-child):last-child::before { display: none; }
+
+    ul li:only-child::before {
+        display: list-item;
+        content: " ";
+        position: absolute;
+        width: 1px;
+        background-color: #000;
+        top: 5px;
+        bottom: 7px;
+        height: 7px;
+        left: -10px;
+    }
+
+    ul li::after {
+        content: " ";
+        position: absolute;
+        left: -10px;
+        width: 10px;
+        height: 1px;
+        background-color: #000;
+        top: 12px;
+    }
+
+
+
+    ul li#root::before { display: none; }
+    ul li#root:only-child::before { display: none; }
+    ul li#root::after { display: none; }
+
+    li.folder { font-weight: bold; }
+
+    li.file { font-weight: normal; }
+    li.file ul li::before { background-color: #999; }
+    li.file ul li:only-child::before { background-color: #999; }
+    li.file ul li::after { background-color: #999; }
+
+    li.file ul li {
+        color: #999;
+        font-size: smaller;
+        font-style: italic;
+    }
+
+    li.file ul li.id {
+        font-weight: bold;
+    }
+
+    span.note {
+        color: #1c439e;
+        font-size: smaller;
+        font-style: italic;
+        font-weight: normal;
+    }
+
+</style>
+</head>
+
+<body>
+<ul><li id="root">Base Directory/<ul>
+    <li class="folder">
+        Homogeneous/ <span class="note"> - File Structure of Homogeneous Runs is the same as that of Heterogeneous, but with the same financial characteristics and technology preferences for all investors</span>
+    </li>
+	
+    <li class="folder">
+        Heterogeneous/
+        <ul>
+           <li class="folder">
+        	markets_data/
+		<ul>
+ 			<li class="file"> 
+                		markets.csv <span class = "note"> - Booleans for which markets are to be included</span>
+                		<ul>
+	        			<li>Energy</li>
+					<li>Reserves</li>  
+					<li>Capacity</li> 
+					<li>REC</li> 		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		energy_mkt_param.csv
+                		<ul>
+	        			<li class="id">zones</li>
+					<li>price_cap</li>  		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		reserve_up_mkt_param.csv
+                		<ul>
+	        			<li class="id">zones</li>
+					<li>price_cap</li> 
+					<li>ORDC <span class = "note"> - Boolean for whether an Operating Reserve Demand Curve is modeled</span></li> 
+					<li>ORDC_points <span class = "note"> - Number of break points of ORDC</span></li>
+					<li>ORDC_x{} <span class = "note"> - x-coordinates of ORDC</span></li> 
+					<li>ORDC_y{} <span class = "note"> - y-coordinates of ORDC</span></li>  		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		reserve_down_mkt_param.csv
+                		<ul>
+	        			<li class="id">zones</li>
+					<li>price_cap</li>  		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		capacity_mkt_param.csv
+                		<ul>
+	        			<li>Forecast Pool Req</li>
+					<li>Net CONE per day</li> 
+					<li>Gross CONE per day</li> 
+					<li>IRM</li> 
+					<li>IRM perc points</li> 
+					<li>Net CONE perc points</li> 
+					<li>Max Clear</li> 
+					<li>forward_years</li> 
+					<li>num_top_hours <span class = "note"> - For derating factor calculation</span></li>  		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		REC_mkt_param.csv
+                		<ul>
+	        			<li>price_cap</li>
+					<li>rec_req</li> 
+					<li>annual_increment</li>  		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		derating_dict.csv <span class = "note"> - Contains fixed derating factors for all modeled technologies other than Variable Renewables</span>
+                		<ul>
+	        			<li>ST <span class = "note"> - Coal-powered Steam Turbine</span></li>
+					<li>NU_ST <span class = "note"> - Nuclear-powered Steam Turbine</span></li> 
+					<li>CC <span class = "note"> - Natural Gas Combined Cycle</span></li>  	
+					<li>CT <span class = "note"> - Natural Gas Combustion Turbine</span></li>  
+					<li>HY <span class = "note"> - Hydropower</span></li> 
+					<li>BA_{duration} <span class = "note"> - Duration-limited Battery</span></li>  	 			
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		annual_growth.csv <span class = "note"> - Name and data of parameters whose annual growth rates are modeled are included here</span>
+                		<ul>
+                   			<li class="id">year</li> 
+	        			<li>{parameter_name}</li> 		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		symmetric_belief.csv <span class = "note"> - Parameters to be used if all investors share the same belief about the future</span>
+                		<ul>
+                   			<li class="id">parameters</li> 
+	        			<li>initial_estimate</li>  
+	        			<li>initial_error_cov</li>  
+	        			<li>process_cov</li>  
+	        			<li>measurement_cov</li> 		
+                		</ul>
+                        </li>
+			<li class="file"> 
+                		symmetric_scenario_multiplier_data.csv <span class = "note"> - Parameters to be used to model uncertain scenarios if all investors share the same belief about the future</span>
+                		<ul>
+                   			<li class="id">scenario</li> 
+	        			<li>probability</li>  
+	        			<li>{parameter_name}</li> 		
+                		</ul>
+                        </li>
+		</ul>
+		</li>
+ 		<li class="folder">
+        	investors/
+			<ul>
+				<li class="folder">
+        			 {investor_name}/ <span class = "note"> - One folder for each investor</span>
+					<ul>
+						<li class="file"> 
+                				characteristics.csv 
+                				<ul>
+	        					<li>risk_preference</li>  
+	        					<li>uf_constant <span class = "note"> - *uf = Utility Function</span></li> 
+	        					<li>uf_multiplier</li>
+	        					<li>uf_risk_coefficient</li>		
+	        					<li>capital_cost_multiplier</li>		
+	        					<li>max_annual_projects</li>		
+	        					<li>discount_rate_adder</li>				
+                				</ul>
+                        			</li>
+						<li class="file"> 
+                				finance_params.csv   <span class = "note"> - Financing data obtained from Annual Technology Baseline (ATB) </span>
+                				<ul>
+	        					<li class="id">Category</li>  
+	        					<li>ITC 2020</li> 
+	        					<li>ITC 2021</li>
+	        					<li>ITC post 2021</li>		
+	        					<li>GRANTS</li>		
+	        					<li>ITC_RECOVERY_FACTOR</li>		
+	        					<li>PTC_RECOVERY_FACTOR</li>			
+	        					<li>TAX_RATE</li>		
+	        					<li>PTC_RECOVERY_FACTOR</li>		
+	        					<li>DEPRECIABLE_PERCENT</li>		
+	        					<li>MACRS_DEPRECIATION_YEARS</li>		
+	        					<li>PROJECT_SPECIFIC_ADDER</li>		
+	        					<li>DEBT_INTEREST_RATE</li>		
+	        					<li>EQUITY_RATE</li>		
+	        					<li>DEBT_FRACTION</li>		
+                				</ul>
+                        			</li>
+						<li class="file"> 
+                				MACRS_Schedule.csv   <span class = "note"> - Standard MACRS Depreciation Schedules </span>
+                				<ul>
+	        					<li>Y5</li>  
+	        					<li>Y7</li> 
+	        					<li>Y10</li>
+	        					<li>Y15</li>		
+	        					<li>Y20</li>		
+                				</ul>
+                        			</li>
+						<li class="file"> 
+                				project_capex.csv   <span class = "note"> - Annual Technology Capital Cost Data </span>
+                				<ul>
+	        					<li class="id">Category</li>   
+	        					<li>pre 2020</li> 
+	        					<li>{year}</li>		
+                				</ul>
+                        			</li>
+						<li class="file"> 
+                				projectexisting.csv <span class = "note"> - Parameters of investor's existing projects at the start of the simulation. Other operational data is directly extracted from the test system based on the model requirements. </span>
+                				<ul>
+	        					<li class="id">GEN_UID</li>  
+	        					<li>Unit Type</li> 
+	        					<li>Fuel</li>
+	        					<li>Category</li>		
+	        					<li>Size</li>		
+	        					<li>Min Gen pu</li>		
+	        					<li>Ramp Rate pu/Hr</li>			
+	        					<li>Input Power Rating pu</li>		
+	        					<li>Output Power Rating pu</li>		
+	        					<li>Min Storgae pu</li>		
+	        					<li>Duration Hr</li>		
+	        					<li>Round Trip Efficiency pu</li>		
+	        					<li>Fuel Price $/MMBTU</li>		
+	        					<li>HR_avg_0</li>		
+	        					<li>Lagtime</li>		
+	        					<li>Online Year</li>		
+	        					<li>Capex Years</li>		
+	        					<li>Lifetime</li>		
+	        					<li>Fixed OM Cost per MW</li>		
+	        					<li>Zone</li>		
+	        					<li>Bus ID</li>		
+	        					<li>Capacity Eligible</li>		
+	        					<li>REC Eligible</li>		
+                				</ul>
+                        			</li>
+						<li class="file"> 
+                				projectoptions.csv   <span class = "note"> - Parameters of investor's option projects which can be invested in. Contains additional operational data which would be needed to create SIIP PSY Devices</span>
+                				<ul>
+	        					<li class="id">GEN_UID</li>  
+	        					<li>Unit Type</li> 
+	        					<li>Fuel</li>
+	        					<li>Category</li>		
+	        					<li>Size</li>		
+	        					<li>Min Gen pu</li>	
+	        					<li>Min Up Time Hr</li>	
+	        					<li>Min Down Time Hr</li>
+	        					<li>Shut Down Cost</li>		
+	        					<li>Ramp Rate pu/Hr</li>			
+	        					<li>Input Power Rating pu</li>		
+	        					<li>Output Power Rating pu</li>		
+	        					<li>Min Storgae pu</li>		
+	        					<li>Duration Hr</li>		
+	        					<li>Round Trip Efficiency pu</li>		
+	        					<li>Fuel Price $/MMBTU</li>		
+	        					<li>Start Heat Cold MBTU</li>		
+	        					<li>Output_pct_0</li>		
+	        					<li>Output_pct_1</li>		
+	        					<li>Output_pct_2</li>		
+	        					<li>Output_pct_3</li>		
+	        					<li>Output_pct_4</li>		
+	        					<li>HR_avg_0</li>		
+	        					<li>HR_incr_1</li>		
+	        					<li>HR_incr_2</li>		
+	        					<li>HR_incr_3</li>		
+	        					<li>HR_incr_4</li>		
+	        					<li>Lagtime</li>			
+	        					<li>Capex Years</li>		
+	        					<li>Lifetime</li>		
+	        					<li>Fixed OM Cost per MW</li>		
+	        					<li>Zone</li>		
+	        					<li>Bus ID</li>		
+	        					<li>Capacity Eligible</li>		
+	        					<li>REC Eligible</li>		
+                				</ul>
+                        			</li>
+						<li class="file"> 
+                				size_dict.csv   <span class = "note"> -Size in MW of Small, Medium and Large units of modeled generation technology types. </span>
+                				<ul>
+	        					<li class="id">type</li>   
+	        					<li>S</li> 
+	        					<li>M</li>
+	        					<li>L</li>		
+                				</ul>
+                        			</li>
+
+						<li class="folder">
+        						markets_data/ <span class = "note"> - Market parameters for investors' price prediction.</span>
+						<ul>
+ 							<li class="file"> 
+                					energy_mkt_param.csv
+                					<ul>
+	        						<li class="id">zones</li>
+								<li>price_cap</li>  		
+                					</ul>
+                        				</li>
+							<li class="file"> 
+                					reserve_up_mkt_param.csv
+                					<ul>
+	        						<li class="id">zones</li>
+								<li>price_cap</li> 
+								<li>ORDC <span class = "note"> - Boolean for whether an Operating Reserve Demand Curve is modeled</span></li> 
+								<li>ORDC_points <span class = "note"> - Number of break points of ORDC</span></li>
+								<li>ORDC_x{} <span class = "note"> - x-coordinates of ORDC</span></li> 
+								<li>ORDC_y{} <span class = "note"> - y-coordinates of ORDC</span></li>  		
+                					</ul>
+                        				</li>
+							<li class="file"> 
+                					reserve_down_mkt_param.csv
+                					<ul>
+	        						<li class="id">zones</li>
+								<li>price_cap</li>  		
+                					</ul>
+                        				</li>
+							<li class="file"> 
+                					capacity_mkt_param.csv
+                					<ul>
+	        						<li>Forecast Pool Req</li>
+								<li>Net CONE per day</li> 
+								<li>Gross CONE per day</li> 
+								<li>IRM</li> 
+								<li>IRM perc points</li> 
+								<li>Net CONE perc points</li> 
+								<li>Max Clear</li> 
+								<li>forward_years</li>  		
+                					</ul>
+                        				</li>
+							<li class="file"> 
+                					REC_mkt_param.csv
+                					<ul>
+	        						<li>price_cap</li>
+								<li>rec_req</li> 
+								<li>annual_increment</li>  		
+                					</ul>
+                        				</li>
+							<li class="file"> 
+                					investor_belief.csv <span class = "note"> - Investor's belief about the future</span>
+                					<ul>
+                   						<li class="id">parameters</li> 
+	        						<li>initial_estimate</li>  
+	        						<li>initial_error_cov</li>  
+	        						<li>process_cov</li>  
+	        						<li>measurement_cov</li> 		
+                					</ul>
+                        				</li>
+							<li class="file"> 
+                					scenario_multiplier_data.csv <span class = "note"> - Parameters to be used to model uncertain scenarios</span>
+                					<ul>
+                   						<li class="id">scenario</li> 
+	        						<li>probability</li>  
+	        						<li>{parameter_name}</li> 		
+                					</ul>
+                        				</li>
+					</ul>
+					</li>
+
+					</ul>
+				</li>
+			</ul>	
+    	    </li>
+    	    		
+            <li class="file"> 
+                queue_cost_data.csv <span class="note"> - Queue Cost structure is based on MISO's interconnection queue implementaion (https://www.misoenergy.org/planning/generator-interconnection/)</span>
+                <ul>
+                   	<li class="id">Ref</li>
+	        	<li>less than 6 MW</li>
+			<li>6 to 20 MW</li>
+			<li>20 to 50 MW</li>
+			<li>50 to 100 MW</li>
+			<li>100 to 200 MW</li>
+			<li>200 to 500 MW</li>
+			<li>500 to 1000 MW</li>
+			<li>greater than 1000 MW</li>		
+                </ul>
+            </li>
+        </ul>
+    </li>
+    	    
+</ul></li>
+</body>

@@ -1,0 +1,13 @@
+*.csv
+*.jld2
+*.json
+*.pyc
+*.log
+.DS_Store
+.vscode
+*.txt
+*.ipynb_checkpoints
+*.sh
+*.ipynb
+*.json
+Manifest.toml
