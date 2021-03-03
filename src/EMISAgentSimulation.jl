@@ -277,7 +277,6 @@ import Random
 import UUIDs
 import StatsBase
 import Statistics
-import StatsPlots
 import TimeSeries
 
 const TS = TimeSeries
