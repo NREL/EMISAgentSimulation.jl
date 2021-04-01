@@ -3,6 +3,7 @@ This function creates the MarketClearingProblem struct for CEM.
 """
 function create_cem_mkt_clr_problem(investor_dir::String,
                                     market_names::Vector{Symbol},
+                                    ordc_products::Vector{String},
                                     expected_portfolio::Vector{<: Project{<: BuildPhase}},
                                     zones::Vector{String},
                                     lines::Vector{ZonalLine},
@@ -25,6 +26,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     reserve_down_market_bool = false
     capacity_market_bool = false
     rec_market_bool = false
+    synchronous_reserve_market_bool = false
 
     # Find if the investor participates in the following markets:
     if in(:ReserveUp, market_names)
@@ -33,6 +35,10 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
     if in(:ReserveDown, market_names)
         reserve_down_market_bool = true
+    end
+
+    if in(:SynchronousReserve, market_names)
+        synchronous_reserve_market_bool = true
     end
 
     if in(:Capacity, market_names)
@@ -102,6 +108,16 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         end
     end
 
+
+    ######## Creating Synchronous Reserve Product #################
+    synchronous_timeseries_data = read_data(joinpath(investor_dir, "timeseries_data_files", "Reserves", "synchronous_reserve_$(iteration_year - 1).csv"))
+
+    if in("synchronous_reserve", ordc_products)
+        synchronous_market = create_ordc_market(synchronous_timeseries_data[:,"ORDC Points"])
+    end
+
+    synchronous_reserve_cap = maximum(maximum.(synchronous_market.price_points))
+
     capacity_mkt_param_file = joinpath(investor_dir, "markets_data", "capacity_mkt_param.csv")
     capacity_annual_increment = load_growth
 
@@ -114,9 +130,9 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     energy_markets = Vector{EnergyMarket}(undef, num_invperiods)
     reserve_up_markets = Vector{ReserveUpMarket}(undef, num_invperiods)
     reserve_down_markets = Vector{ReserveDownMarket}(undef, num_invperiods)
+    synchronous_reserve_markets = Vector{Union{ReserveORDCMarket, ReserveUpMarket}}(undef, num_invperiods)
 
     rec_markets = Vector{RECMarket}(undef, num_invperiods)
-
 
     average_capacity_growth = Statistics.mean(capacity_annual_increment)
 
@@ -130,6 +146,11 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         reserve_up_markets[p] = ReserveUpMarket(reserve_up_break_points,
                                                 reserve_up_price_points,
                                                 AxisArrays.AxisArray(zonal_reserve_up .* reserveup_annual_increment[:, p], zones, (1:num_hours)))
+
+        if in("synchronous_reserve", ordc_products)
+            synchronous_reserve_markets[p] = synchronous_market
+        end
+
         reserve_down_markets[p] = ReserveDownMarket(AxisArrays.AxisArray(zonal_reserve_down .* reservedown_annual_increment[:, p], zones, (1:num_hours)),
                                                   price_cap_reservedown)
         rec_markets[p] = RECMarket(min(rec_req + rec_annual_increment * (p + iteration_year - 1), 1),
@@ -142,6 +163,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                                 energy_markets,
                                 reserve_up_markets,
                                 reserve_down_markets,
+                                synchronous_reserve_markets,
                                 rec_markets)
     #-----------------------------------------------------------------------------------------------------------------------------
     availability_df = read_data(joinpath(investor_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv"))
@@ -156,8 +178,9 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         zone = get_zone(tech)
         cem_project = create_market_project(project,
                                           price_cap_energy[zone],
-                                          maximum(reserve_up_break_points[zone]),
+                                          maximum(reserve_up_price_points[zone]),
                                           price_cap_reservedown[zone],
+                                          synchronous_reserve_cap,
                                           max_peak_loads,
                                           iteration_year,
                                           num_hours,
@@ -178,8 +201,9 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         if length(similar_option) < 1
             aggregated_option = create_market_project(option,
                                           price_cap_energy[zone],
-                                          maximum(reserve_up_break_points[zone]),
+                                          maximum(reserve_up_price_points[zone]),
                                           price_cap_reservedown[zone],
+                                          synchronous_reserve_cap,
                                           max_peak_loads,
                                           iteration_year,
                                           num_hours,

@@ -9,6 +9,7 @@ struct MarketCollection{Z, T}
     energy_market::EnergyMarket
     reserveup_market::ReserveUpMarket
     reservedown_market::ReserveDownMarket
+    synchronous_reserve_market::Union{Nothing, ReserveUpMarket, ReserveORDCMarket{T}}
     rec_market::RECMarket
 
     function MarketCollection(
@@ -16,8 +17,9 @@ struct MarketCollection{Z, T}
                               e::EnergyMarket{Z, T},
                               r::ReserveUpMarket,
                               l::ReserveDownMarket{Z, T},
+                              s::Union{ReserveUpMarket, ReserveORDCMarket{T}},
                               rec::RECMarket
     ) where {Z, T}
-        new{Z, T}(c, e, r, l, rec)
+        new{Z, T}(c, e, r, l, s, rec)
     end
 end

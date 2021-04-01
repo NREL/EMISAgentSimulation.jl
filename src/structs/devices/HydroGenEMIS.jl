@@ -16,6 +16,7 @@ struct HydroTech
     operation_cost::Union{Nothing,PSY.TwoPartCost}
     bus::Int64
     zone::String
+    FOR::Float64
 end
 
 get_type(tech::HydroTech) = tech.type
@@ -25,6 +26,7 @@ get_ramp_limits(tech::HydroTech) = tech.ramp_limits
 get_operation_cost(tech::HydroTech) = tech.operation_cost
 get_bus(tech::HydroTech) = tech.bus
 get_zone(tech::HydroTech) = tech.zone
+get_FOR(tech::HydroTech) = tech.FOR
 
 """
 This struct contains all the data for a hydropower generator.

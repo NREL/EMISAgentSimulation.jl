@@ -55,6 +55,40 @@ end
 This functions returns operating reserve demand curve parameters
 included in CEM for price projection and endogeneous Economic Dispatch.
 """
+function make_ORDC_vectors(ordc_markets::Vector{ReserveORDCMarket{T}}) where T
+
+    break_points =  getproperty.(ordc_markets, :break_points)
+    price_points_raw =  getproperty.(ordc_markets, :price_points)
+
+    inv_periods = length(break_points)
+    num_segments = AxisArrays.AxisArray(Array{Int64, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
+    segment_size = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
+    segment_grad = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
+    price_points = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
+
+    for p in 1:inv_periods
+        for t in 1:T
+            num_segments[p, t] = length(break_points[p][t]) - 1
+            segment_size[p, t] = zeros(num_segments[p, t])
+            segment_grad[p, t] = zeros(num_segments[p, t])
+            price_points[p, t] = price_points_raw[p][t]
+
+            for segment in 1:num_segments[p, t]
+                segment_size[p, t][segment] = break_points[p][t][segment + 1] - break_points[p][t][segment]
+                if segment_size[p, t][segment] != 0
+                    segment_grad[p, t][segment] = (price_points[p, t][segment + 1] - price_points[p, t][segment]) /  segment_size[p, t][segment]
+                end
+            end
+        end
+    end
+
+    return segment_size, segment_grad, price_points, num_segments
+ end
+
+"""
+This functions returns operating reserve demand curve parameters
+included in CEM for price projection and endogeneous Economic Dispatch.
+"""
 function make_ORDC_vectors(reserveup_markets::Vector{ReserveUpMarket})
     break_points =  getproperty.(reserveup_markets, :break_points)
     price_points_raw =  getproperty.(reserveup_markets, :price_points)

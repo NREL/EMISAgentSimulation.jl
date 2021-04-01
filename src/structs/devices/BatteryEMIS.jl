@@ -21,6 +21,7 @@ struct BatteryTech
     efficiency::NamedTuple{(:in, :out), Tuple{Float64, Float64}}
     bus::Int64
     zone::String
+    FOR::Float64
 end
 
 get_type(tech::BatteryTech) = tech.type
@@ -32,6 +33,7 @@ get_soc(tech::BatteryTech) = tech.soc
 get_efficiency(tech::BatteryTech) = tech.efficiency
 get_bus(tech::BatteryTech) = tech.bus
 get_zone(tech::BatteryTech) = tech.zone
+get_FOR(tech::BatteryTech) = tech.FOR
 
 """
 This struct contains all the data for battery storage.

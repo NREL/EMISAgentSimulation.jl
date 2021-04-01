@@ -16,7 +16,7 @@ function read_test_system(data_dir::String,
     test_sys_hour_weight = nothing
     zonal_lines = nothing
 
-    if occursin("RTS-GMLC", test_system_dir)
+    if occursin("RTS", test_system_dir)
         zones,
         representative_days,
         rep_hour_weight,

@@ -128,6 +128,7 @@ function update_project_npv!(project::P,
                             capacity_forward_years,
                             iteration_year,
                             solver)
+
     expected_npv = 0.0
 
     finance_data = get_finance_data(project)

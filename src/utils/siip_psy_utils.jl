@@ -97,6 +97,7 @@ function add_device_forecast!(simulation_dir::String,
                               sys::PSY.System,
                               device::D,
                               availability_df::Vector{Float64},
+                              availability_raw_rt::Vector{Float64},
                               start_year::Int64
                               ) where D <: Union{PSY.ThermalGen, PSY.HydroGen, PSY.Storage}
     return
@@ -109,6 +110,7 @@ function add_device_forecast!(simulation_dir::String,
                               sys::PSY.System,
                               device::D,
                               availability_raw::Vector{Float64},
+                              availability_raw_rt::Vector{Float64},
                               start_year::Int64) where D <: PSY.RenewableGen
 
 
@@ -123,7 +125,11 @@ function add_device_forecast!(simulation_dir::String,
         load_n_vg_df =  read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
         load_n_vg_df[:, get_name(device)] = availability_raw * get_device_size(device) * PSY.get_base_power(sys)
 
+        load_n_vg_df_rt =  read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data_rt.csv"))
+        load_n_vg_df_rt[:, get_name(device)] = availability_raw_rt * get_device_size(device) * PSY.get_base_power(sys)
+
         write_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data.csv", load_n_vg_df)
+        write_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data_rt.csv", load_n_vg_df_rt)
 
     return
 end

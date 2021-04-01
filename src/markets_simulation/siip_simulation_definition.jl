@@ -189,6 +189,8 @@ function create_simulation( sys_UC::PSY.System,
     uc_stage = create_stage(template_uc, sys_UC, solver)
     ed_stage = create_stage(template_ed, sys_UC, solver)
 
+
+
     stages_definition = Dict(
         "UC" => uc_stage,
         "ED" => ed_stage,
@@ -204,6 +206,13 @@ function create_simulation( sys_UC::PSY.System,
         simulation_folder = "./",
     )
     PSI.build!(sim)
+    model = sim.stages["UC"].internal.psi_container.JuMPmodel
+
+    open("SIIP_UC_Model.txt", "w") do f
+
+        println(f, "UC Model:")
+        println(f, model)
+    end
 
     sim_results = PSI.execute!(sim; );
 

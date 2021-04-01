@@ -265,3 +265,40 @@ function extrapolate_profits!(project::Project{Existing}, final_year::Int64)
     end
     return
 end
+
+function month_lookup(str::Union{String, SubString{String}})
+    if str == "Jan" || str == "January"
+        month = 1
+    elseif str == "Feb" || str == "February"
+        month = 2
+    elseif str == "Mar" || str == "March"
+        month = 3
+    elseif str == "Apr" || str == "April"
+        month = 4
+    elseif str == "May"
+        month = 5
+    elseif str == "Jun" || str == "June"
+        month = 6
+    elseif str == "Jul" || str == "July"
+        month = 7
+    elseif str == "Aug" || str == "August"
+        month = 8
+    elseif str == "Sep" || str == "September"
+        month = 9
+    elseif str == "Oct" || str == "October"
+        month = 10
+    elseif str == "Nov" || str == "November"
+        month = 11
+    elseif str == "Dec" || str == "December"
+        month = 12
+    end
+    return  Int(month)
+end
+
+function find_rt_periods(hours::Vector{Int64}, num_rt_intervals::Int64)
+    rt_periods = [];
+    for hour in hours
+        append!(rt_periods, collect(((hour - 1) * num_rt_intervals + 1):(hour * num_rt_intervals)))
+    end
+    return rt_periods
+end

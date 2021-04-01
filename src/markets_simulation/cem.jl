@@ -17,6 +17,7 @@ function cem(system::MarketClearingProblem{Z, T},
     marginal_energy_cost,                      # $/MW
     marginal_reserveup_cost,                   # $/MW
     marginal_reservedown_cost,                 # $/MW
+    marginal_synchronousreserve_cost,           #$/MW
     fixed_cost,                                # $/unit
     queue_cost,                                # $/unit/year
     expansion_cost,                            # $/unit
@@ -29,7 +30,8 @@ function cem(system::MarketClearingProblem{Z, T},
     availability,                             # percentage
     derating_factor,                           # percentage
     ramp_limits,                               # MW/unit/hour
-    max_reserveup, max_reservedown,             # MW/unit/hour
+    max_reserveup, max_reservedown,              # MW/unit/hour
+    max_synchronousreserve,                     # MW/unit/hour
     existing_units,                            # existing units
     units_in_queue,                             # units in queue
     build_lead_time, remaining_buildtime,       # construction lag times
@@ -43,12 +45,12 @@ function cem(system::MarketClearingProblem{Z, T},
     location =                                # project zone location
     make_parameter_vector.(
     Ref(system.projects), :name,
-    [:tech_type, :project_type, :marginal_energy_cost, :marginal_reserveup_cost, :marginal_reservedown_cost,
+    [:tech_type, :project_type, :marginal_energy_cost, :marginal_reserveup_cost, :marginal_reservedown_cost, :marginal_synchronousreserve_cost,
     :fixed_cost, :queue_cost, :expansion_cost, :discount_rate,
     :min_gen, :max_gen, :min_input, :max_input,
     :efficiency_in, :efficiency_out, :min_storage, :max_storage, :init_storage,
     :availability, :derating_factor,
-    :ramp_limits, :max_reserveup, :max_reservedown,
+    :ramp_limits, :max_reserveup, :max_reservedown, :max_synchronousreserve,
     :existing_units, :units_in_queue, :build_lead_time, :remaining_build_time,
     :max_new_options, :base_cost_units, :capex_years, :life_time, :remaining_life,
     :rec_eligible, :capacity_eligible, :zone])
@@ -120,6 +122,9 @@ function cem(system::MarketClearingProblem{Z, T},
     price_cap_rd = AxisArrays.AxisArray(zeros(length(zones), length(invperiods)), zones, invperiods)
     demand_rd = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
 
+    price_cap_sr = AxisArrays.AxisArray(zeros(length(invperiods)), invperiods)
+    demand_sr = AxisArrays.AxisArray(zeros(length(invperiods), T), invperiods, opperiods)
+
     price_cap_rec = AxisArrays.AxisArray(zeros(length(invperiods)), invperiods)
     rec_requirement = AxisArrays.AxisArray(zeros(length(invperiods)), invperiods)
 
@@ -137,6 +142,14 @@ function cem(system::MarketClearingProblem{Z, T},
         end
     end
 
+    if typeof(system.inv_periods[1].synchronous_reserve_market) == ReserveORDCMarket{T}
+        sr_segmentsize, sr_segmentgrad, sr_price_points, sr_numsegments = make_ORDC_vectors(getproperty.(system.inv_periods, :synchronous_reserve_market))
+    else
+        for p in invperiods
+            price_cap_sr[p] = getproperty(getproperty(system.inv_periods[p], :synchronous_reserve_market), :price_cap)
+            demand_sr[p, :] = getproperty(getproperty(system.inv_periods[p], :synchronous_reserve_market), :demand)
+        end
+    end
     ru_segmentsize, ru_segmentgrad, ru_price_points, ru_numsegments = make_ORDC_vectors(getproperty.(system.inv_periods, :reserveup_market))
 
     cap_segmentsize, cap_segmentgrad, cap_price_points, cap_numsegments = make_capacity_demand_vectors(getproperty.(system.inv_periods, :capacity_market))
@@ -224,12 +237,15 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@variable(m, p_in[g in storage_projects, p in invperiods, t in opperiods] >= 0) # Storage charging [MW]
     JuMP.@variable(m, p_ru[g in projects, p in invperiods, t in opperiods] >= 0) # reserve up provided [MW]
     JuMP.@variable(m, p_rd[g in projects, p in invperiods, t in opperiods] >= 0) # reserve down provided [MW]
+    JuMP.@variable(m, p_sr[g in projects, p in invperiods, t in opperiods] >= 0) # synchronous reserve provided [MW]
 
     JuMP.@variable(m, p_in_ru[g in storage_projects, p in invperiods, t in opperiods] >= 0) # reserve up provided by storage charging [MW]
     JuMP.@variable(m, p_in_rd[g in storage_projects, p in invperiods, t in opperiods] >= 0) # reserve down provided by storage charging [MW]
+    JuMP.@variable(m, p_in_sr[g in storage_projects, p in invperiods, t in opperiods] >= 0) # synchronous reserve provided by storage charging [MW]
 
     JuMP.@variable(m, p_out_ru[g in storage_projects, p in invperiods, t in opperiods] >= 0) # reserve up provided by storage discharging [MW]
     JuMP.@variable(m, p_out_rd[g in storage_projects, p in invperiods, t in opperiods] >= 0) # reserve down provided by storage discharging [MW]
+    JuMP.@variable(m, p_out_sr[g in storage_projects, p in invperiods, t in opperiods] >= 0) # synchronous reserve provided by storage discharging [MW]
 
     JuMP.@variable(m, flow[l in lines, p in invperiods, t in opperiods])     # Line flow
 
@@ -237,6 +253,35 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@variable(m, v_rd[z in zones, p in invperiods, t in opperiods] >= 0) # reserve down shortfall [MW]
     JuMP.@variable(m, v_rec[p in invperiods] >= 0) # REC shortfall [MWh]
 
+
+    # CREATE SYNCHRONOUS RESERVE MARKET VARIABLES, CONSTRAINTS AND OBJECTIVE DEPENDING ON WHETHER IT IS FORMULATED AS AN ORDC PRODUCT
+    if typeof(system.inv_periods[1].synchronous_reserve_market) == ReserveORDCMarket{T}
+        JuMP.@variable(m, d_sr[p in invperiods, t in opperiods, s in 1:sr_numsegments[p, t]] >= 0)
+        # synchronous reserve market constraint
+        JuMP.@constraint(m, synchronous_reserve_market[p in invperiods, t in opperiods], # synchronous reserve market balance
+        sum(p_sr[g ,p, t] for g in projects) == sum(d_sr[p, t, s] for s in 1:sr_numsegments[p, t]))
+
+        JuMP.@constraint(m, sr_demand_limit[p in invperiods, t in opperiods, s in 1:sr_numsegments[p, t]],
+                            d_sr[p, t, s] <= sr_segmentsize[p, t][s]) #ORDC segment limit
+
+
+        #synchronous reserve market objective
+        JuMP.@expression(m, synchronous_market_welfare,
+            sum(sum(d_sr[p, t, s] * rep_hour_weight[t] * sr_price_points[p, t][s] for t in opperiods, s in 1:sr_numsegments[p, t])
+            * social_npv_array[p] for p in invperiods)
+            + 1/2 * sum(sum(sr_segmentgrad[p, t][s] * (d_sr[p, t, s])^2 * rep_hour_weight[t] for t in opperiods, s in 1:sr_numsegments[p, t])
+            * social_npv_array[p] for p in invperiods))
+
+    else
+        JuMP.@variable(m, v_sr[p in invperiods, t in opperiods] >= 0) # synchronous reserve shortfall [MW]
+        JuMP.@constraint(m, synchronous_reserve_market[p in invperiods, t in opperiods], # synchronous reserve balance
+                            sum(p_sr[g ,p, t] for g in projects) + v_sr[p, t]  == demand_sr[p, t])
+
+        #synchronous reserve market objective
+        JuMP.@expression(m, synchronous_market_welfare,
+            - sum((v_sr[p, t] * price_cap_sr[p]) * rep_hour_weight[t] * social_npv_array[p]
+                for p in invperiods, t in opperiods))
+    end
 
     # Populate units dispatchable expression based on remaining build/construction time
     JuMP.@expression(m, unitsdispatchable[g in projects, p in invperiods], 0
@@ -313,7 +358,8 @@ function cem(system::MarketClearingProblem{Z, T},
                           + fixed_cost[g] * unitsdispatchable[g, p]                # fixed operating costs
                           + sum((p_e[g, p, t] * marginal_energy_cost[g]               # project operating costs
                               + p_ru[g, p, t] * marginal_reserveup_cost[g]
-                              + p_rd[g, p, t] * marginal_reservedown_cost[g]) * rep_hour_weight[t] for t in opperiods))
+                              + p_rd[g, p, t] * marginal_reservedown_cost[g]
+                              + p_sr[g, p, t] * marginal_synchronousreserve_cost[g]) * rep_hour_weight[t] for t in opperiods))
 
     # OBJECTIVE FUNCTION
 
@@ -328,6 +374,9 @@ function cem(system::MarketClearingProblem{Z, T},
                 * social_npv_array[p] for p in invperiods)
     + 1/2 * sum(sum(ru_segmentgrad[z, p][s] * (d_ru[z, p, t, s] * demand_ru[z, p, t])^2 * rep_hour_weight[t] for z in zones, t in opperiods, s in 1:ru_numsegments[z, p])
                 * social_npv_array[p] for p in invperiods)
+
+    #Synchronous Market expression
+    + synchronous_market_welfare
 
     # REC market Alternative Compliance Payment
     - sum(v_rec[p] * price_cap_rec[p] * social_npv_array[p] for p in invperiods)
@@ -393,19 +442,21 @@ function cem(system::MarketClearingProblem{Z, T},
                 if in(g, generator_projects)
                     # Generator technical constraints
                     JuMP.@constraint(m, p_e[g, p, t] - p_rd[g, p, t] >= unitsdispatchable[g, p] * 0.0) # Minimum dispatch
-                    JuMP.@constraint(m, p_e[g, p, t] + p_ru[g, p, t] <= unitsdispatchable[g, p] * max_gen[g] * availability[g][p, t]) # Maximum dispatch
+                    JuMP.@constraint(m, p_e[g, p, t] + p_ru[g, p, t] + p_sr[g, p, t] <= unitsdispatchable[g, p] * max_gen[g] * availability[g][p, t]) # Maximum dispatch
                     JuMP.@constraint(m, p_rd[g, p, t] <= unitsdispatchable[g, p] * max_reservedown[g]) # Maximum reserve down
                     JuMP.@constraint(m, p_ru[g, p, t] <= unitsdispatchable[g, p] * max_reserveup[g]) # Maximum reserve up
+                    JuMP.@constraint(m, p_sr[g, p, t] <= unitsdispatchable[g, p] * max_synchronousreserve[g]) # Maximum synchronous
 
                 elseif in(g, storage_projects)
                     # Storage technical constraints
                     JuMP.@constraint(m, p_e[g, p, t] - p_out_rd[g, p, t] >= unitsdispatchable[g, p] * 0.0) # Minimum output dispatch
-                    JuMP.@constraint(m, p_e[g, p, t] + p_out_ru[g, p, t] <= unitsdispatchable[g, p] * max_gen[g]) # Maximum output dispatch
+                    JuMP.@constraint(m, p_e[g, p, t] + p_out_ru[g, p, t] + p_out_sr[g, p, t] <= unitsdispatchable[g, p] * max_gen[g]) # Maximum output dispatch
 
-                    JuMP.@constraint(m, p_in[g, p, t] - p_in_ru[g, p, t] >= unitsdispatchable[g, p] * 0.0) # Minimum input dispatch
+                    JuMP.@constraint(m, p_in[g, p, t] - p_in_ru[g, p, t] - p_in_sr[g, p, t] >= unitsdispatchable[g, p] * 0.0) # Minimum input dispatch
                     JuMP.@constraint(m, p_in[g, p, t] + p_in_rd[g, p, t] <= unitsdispatchable[g, p] * max_input[g]) # Maximum input dispatch
 
-                    JuMP.@constraint(m, p_ru[g, p, t] <= p_out_ru[g, p, t] + p_in_ru[g, p, t]) # Total storage reserve up
+                    JuMP.@constraint(m, p_ru[g, p, t] <= p_out_ru[g, p, t] + p_in_ru[g, p, t] ) # Total storage reserve up
+                    JuMP.@constraint(m, p_sr[g, p, t] <= p_out_sr[g, p, t] + p_in_sr[g, p, t]  ) # Total storage reserve up
                     JuMP.@constraint(m, p_rd[g, p, t] <= p_out_rd[g, p, t] + p_in_rd[g, p, t]) # Total storage reserve down
 
                     JuMP.@constraint(m, storage_level[g, p, t] >= unitsdispatchable[g, p] * min_storage[g]) # Minimum storage level
@@ -444,7 +495,6 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@constraint(m, reserve_up_market[z in zones, p in invperiods, t in opperiods], # reserve up balance
         sum(p_ru[g ,p, t] for g in zone_projects[z]) == sum(d_ru[z, p, t, s] for s in 1:ru_numsegments[z, p]) * demand_ru[z, p, t] )
 
-
     # reserve down market
     JuMP.@constraint(m, reserve_down_market[z in zones, p in invperiods, t in opperiods], # reserve down balance
         sum(p_rd[g ,p, t] for g in zone_projects[z]) + v_rd[z, p, t]  == demand_rd[z, p, t])
@@ -471,6 +521,7 @@ function cem(system::MarketClearingProblem{Z, T},
     energy_price = JuMP.dual.(energy_market)
     reserve_up_price = JuMP.dual.(reserve_up_market)
     reserve_down_price = JuMP.dual.(reserve_down_market)
+    synchronous_reserve_price = JuMP.dual.(synchronous_reserve_market)
     REC_price = JuMP.dual.(rps_compliance)
 
     capacity_factor = Dict([g => zeros(length(invperiods), length(opperiods)) for g in projects])
@@ -513,6 +564,7 @@ function cem(system::MarketClearingProblem{Z, T},
     nominal_energy_price = AxisArrays.AxisArray(zeros(size(energy_price)), zones, invperiods, opperiods)
     nominal_reserve_up_price = AxisArrays.AxisArray(zeros(size(reserve_up_price)), zones, invperiods, opperiods)
     nominal_reserve_down_price = AxisArrays.AxisArray(zeros(size(reserve_down_price)), zones, invperiods, opperiods)
+    nominal_synchronous_reserve_price = AxisArrays.AxisArray(zeros(size(synchronous_reserve_price)), invperiods, opperiods)
 
 
     for p in invperiods
@@ -522,6 +574,7 @@ function cem(system::MarketClearingProblem{Z, T},
             nominal_energy_price[:, p, t] = (energy_price[:, p, t] / rep_hour_weight[t]) / social_npv_array[p]
             nominal_reserve_up_price[:, p, t] = (reserve_up_price[:, p, t] / rep_hour_weight[t]) / social_npv_array[p]
             nominal_reserve_down_price[:, p, t] = (reserve_down_price[:, p, t] / rep_hour_weight[t]) / social_npv_array[p]
+            nominal_synchronous_reserve_price[p, t] = (synchronous_reserve_price[p, t] / rep_hour_weight[t]) / social_npv_array[p]
         end
     end
 
@@ -539,6 +592,7 @@ function cem(system::MarketClearingProblem{Z, T},
            nominal_energy_price,
            nominal_reserve_up_price,
            nominal_reserve_down_price,
+           nominal_synchronous_reserve_price,
            nominal_REC_price,
            capacity_factor,
            capacity_accepted_perc,

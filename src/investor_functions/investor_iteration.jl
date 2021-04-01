@@ -41,6 +41,10 @@ function run_investor_iteration(investor::Investor,
             set_reservedown_price!(market_prices, scenario_name, expected_data["reserve_down_price"])
         end
 
+        if in(:SynchronousReserve, market_names)
+            set_synchronous_reserve_price!(market_prices, scenario_name, expected_data["synchronous_reserve_price"])
+        end
+
         if in(:Capacity, market_names)
             set_capacity_price!(market_prices, scenario_name, expected_data["capacity_price"])
         end

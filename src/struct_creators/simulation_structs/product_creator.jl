@@ -10,39 +10,57 @@ function create_products(simulation_data::AgentSimulationData,
 
     reserve_up_mkt_df = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "reserve_up_mkt_param.csv"))
     reserve_down_mkt_df = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "reserve_down_mkt_param.csv"))
+    synchronous_reserve_mkt_df = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "synchronous_reserve_mkt_param.csv"))
+
+    reserve_up_timescale = reserve_up_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_up_mkt_df[:, "zones"]), "timescale (min)"]
+    reserve_down_timescale = reserve_down_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_down_mkt_df[:, "zones"]), "timescale (min)"]
+    synchronous_reserve_timescale = synchronous_reserve_mkt_df[1, "timescale (min)"]
 
     reserve_up_eligible_categories = reserve_up_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_up_mkt_df[:, "zones"]), "eligible categories"]
     reserve_down_eligible_categories = reserve_down_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_down_mkt_df[:, "zones"]), "eligible categories"]
+    synchronous_reserve_eligible_categories = synchronous_reserve_mkt_df[1, "eligible categories"]
 
     # Energy market product
     variable_cost = projectdata["Fuel Price \$/MMBTU"] * projectdata["HR_avg_0"] / 1000
         push!(products, Energy(:Energy,
                                Dict{String, Array{Float64, 2}}(),
-                               variable_cost))
+                               variable_cost,
+                               true))
 
-    if markets[:Reserves] && occursin(projectdata["Category"], reserve_up_eligible_categories) > 0
+    if markets[:Reserves] && occursin(projectdata["Category"], reserve_up_eligible_categories)
         push!(products, OperatingReserve{ReserveUpEMIS}(:ReserveUp,
-                                        projectdata["Ramp Rate pu/Hr"],
-                                        0.0))
+                                        projectdata["Ramp Rate pu/Hr"] * reserve_up_timescale / 60,
+                                        0.0,
+                                        true))
     end
 
-    if markets[:Reserves] && occursin(projectdata["Category"], reserve_down_eligible_categories) > 0
+    if markets[:Reserves] && occursin(projectdata["Category"], reserve_down_eligible_categories)
         push!(products, OperatingReserve{ReserveDownEMIS}(:ReserveDown,
-                                        projectdata["Ramp Rate pu/Hr"],
-                                        0.0))
+                                        projectdata["Ramp Rate pu/Hr"] * reserve_down_timescale / 60,
+                                        0.0,
+                                        true))
+    end
+
+    if markets[:SynchronousReserve] && occursin(projectdata["Category"], synchronous_reserve_eligible_categories)
+        push!(products, OperatingReserve{ReserveUpEMIS}(:SynchronousReserve,
+                                        projectdata["Ramp Rate pu/Hr"] * synchronous_reserve_timescale / 60,
+                                        0.0,
+                                        false))
     end
 
     if markets[:Capacity] && projectdata["Capacity Eligible"]
         push!(products, Capacity(:Capacity,
                                  0.0,
                                  Dict{String, Array{Float64, 1}}(),
-                                 0.0))
+                                 0.0,
+                                 false))
     end
 
     if markets[:REC] && projectdata["REC Eligible"]
         push!(products, REC(:REC,
                             0.0,
-                            0.0))
+                            0.0,
+                            false))
     end
 
     return products
@@ -63,12 +81,25 @@ function create_products(simulation_data::AgentSimulationData,
 
     service_types = typeof.(PSY.get_services(device))
 
+    reserve_up_mkt_df = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "reserve_up_mkt_param.csv"))
+    reserve_down_mkt_df = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "reserve_down_mkt_param.csv"))
+    synchronous_reserve_mkt_df = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "synchronous_reserve_mkt_param.csv"))
+
+    reserve_up_timescale = reserve_up_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_up_mkt_df[:, "zones"]), "timescale (min)"]
+    reserve_down_timescale = reserve_down_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_down_mkt_df[:, "zones"]), "timescale (min)"]
+    synchronous_reserve_timescale = synchronous_reserve_mkt_df[1, "timescale (min)"]
+
+    reserve_up_eligible_categories = reserve_up_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_up_mkt_df[:, "zones"]), "eligible categories"]
+    reserve_down_eligible_categories = reserve_down_mkt_df[findfirst(x-> x == projectdata["Zone"], reserve_down_mkt_df[:, "zones"]), "eligible categories"]
+    synchronous_reserve_eligible_categories = synchronous_reserve_mkt_df[1, "eligible categories"]
+
     # Energy market product
     variable_cost = projectdata["Fuel Price \$/MMBTU"] * projectdata["HR_avg_0"] / 1000.0
 
     push!(products, Energy(:Energy,
-                               Dict{String, Array{Float64, 2}}(),
-                               variable_cost))
+                            Dict{String, Array{Float64, 2}}(),
+                            variable_cost,
+                            true))
 
     fields = collect(fieldnames(typeof(device)))
 
@@ -79,38 +110,46 @@ function create_products(simulation_data::AgentSimulationData,
         ramp_limits = PSY.get_ramp_limits(device)
         rating = get_device_size(device)
         if !isnothing(ramp_limits)
-            reserve_up_lim = ramp_limits[:up] * 60 / rating
-            reserve_down_lim = ramp_limits[:down] * 60 / rating
+            reserve_up_lim = ramp_limits[:up] * (reserve_up_timescale / 60) / rating
+            reserve_down_lim = ramp_limits[:down] * (reserve_down_timescale / 60) / rating
+            synchronous_reserve_lim = ramp_limits[:down] * (synchronous_reserve_timescale / 60) / rating
         end
     end
 
-
-
-    if in(PSY.VariableReserve{PSY.ReserveUp}, service_types)
+    if markets[:Reserves] && occursin(projectdata["Category"], reserve_up_eligible_categories)
         push!(products, OperatingReserve{ReserveUpEMIS}(:ReserveUp,
                                         reserve_up_lim,
-                                        0.0))
+                                        0.0,
+                                        true))
     end
 
-
-
-    if in(PSY.VariableReserve{PSY.ReserveDown}, service_types)
+    if markets[:Reserves] && occursin(projectdata["Category"], reserve_down_eligible_categories)
         push!(products, OperatingReserve{ReserveDownEMIS}(:ReserveDown,
                                         reserve_down_lim,
-                                        0.0))
+                                        0.0,
+                                        true))
+    end
+
+    if markets[:SynchronousReserve] && occursin(projectdata["Category"], synchronous_reserve_eligible_categories)
+        push!(products, OperatingReserve{ReserveUpEMIS}(:SynchronousReserve,
+                                        synchronous_reserve_lim,
+                                        0.0,
+                                        false))
     end
 
     if markets[:Capacity] && projectdata["Capacity Eligible"]
         push!(products, Capacity(:Capacity,
                                  0.0,
                                  Dict{String, Array{Float64, 1}}(),
-                                 0.0))
+                                 0.0,
+                                 false))
     end
 
     if markets[:REC] && projectdata["REC Eligible"]
         push!(products, REC(:REC,
                             0.0,
-                            0.0))
+                            0.0,
+                            false))
     end
 
     return products

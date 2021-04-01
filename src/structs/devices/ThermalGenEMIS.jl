@@ -18,6 +18,7 @@ struct ThermalTech
     operation_cost::Union{Nothing, PSY.ThreePartCost}
     bus::Int64
     zone::String
+    FOR::Float64
 end
 
 get_type(tech::ThermalTech) = tech.type
@@ -28,6 +29,7 @@ get_time_limits(tech::ThermalTech) = tech.time_limits
 get_operation_cost(tech::ThermalTech) = tech.operation_cost
 get_bus(tech::ThermalTech) = tech.bus
 get_zone(tech::ThermalTech) = tech.zone
+get_FOR(tech::ThermalTech) = tech.FOR
 
 """
 This struct contains all the data for a thermal generator.

@@ -57,22 +57,32 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
      if get_construction_year(project) == iteration_year
         projects[index] = convert(Project{Existing}, project)
+
+        if typeof(project) == RenewableGenEMIS{Planned}
+            type = get_type(get_tech(project))
+            zone = get_zone(get_tech(project))
+
+            availability_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv"))
+            availability_df_rt = read_data(joinpath(simulation_dir, "timeseries_data_files", "Availability", "REAL_TIME_availability.csv"))
+
+            if in(get_name(project), names(availability_df))
+                availability_raw = availability_df[:, Symbol(get_name(project))]
+                availability_raw_rt = availability_df_rt[:, Symbol(get_name(project))]
+            elseif in("$(type)_$(zone)", names(availability_df))
+                availability_raw = availability_df[:, Symbol("$(type)_$(zone)")]
+                availability_raw_rt = availability_df[:, Symbol("$(type)_$(zone)")]
+            end
+
+            load_n_vg_df =  read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
+            load_n_vg_df[:, get_name(project)] = availability_raw * get_maxcap(project)
+
+            load_n_vg_df_rt =  read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data_rt.csv"))
+            load_n_vg_df_rt[:, get_name(project)] = availability_raw_rt * get_maxcap(project)
+
+            write_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data.csv", load_n_vg_df)
+            write_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data_rt.csv", load_n_vg_df_rt)
+        end
      end
-
-     type = get_type(get_tech(project))
-     zone = get_zone(get_tech(project))
-
-     availability_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv"))
-     if in(get_name(project), names(availability_df))
-         availability_raw = availability_df[:, Symbol(get_name(project))]
-     elseif in("$(type)_$(zone)", names(availability_df))
-         availability_raw = availability_df[:, Symbol("$(type)_$(zone)")]
-     end
-
-    load_n_vg_df =  read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
-    load_n_vg_df[:, get_name(project)] = availability_raw * get_maxcap(project)
-
-    write_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data.csv", load_n_vg_df)
 
     return
 
@@ -106,13 +116,17 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
         zone = get_zone(get_tech(project))
 
         availability_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv"))
+        availability_df_rt = read_data(joinpath(simulation_dir, "timeseries_data_files", "Availability", "REAL_TIME_availability.csv"))
+
         if in(get_name(project), names(availability_df))
             availability_raw = availability_df[:, Symbol(get_name(project))]
+            availability_raw_rt = availability_df_rt[:, Symbol(get_name(project))]
         elseif in("$(type)_$(zone)", names(availability_df))
             availability_raw = availability_df[:, Symbol("$(type)_$(zone)")]
+            availability_raw_rt = availability_df_rt[:, Symbol("$(type)_$(zone)")]
         end
 
-        add_device_forecast!(simulation_dir, sys_UC, PSY_project, availability_raw, start_year)
+        add_device_forecast!(simulation_dir, sys_UC, PSY_project, availability_raw, availability_raw_rt, start_year)
 
      end
 

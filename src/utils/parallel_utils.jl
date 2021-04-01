@@ -80,12 +80,14 @@ function parallelize_only_investors(investor::Investor,
     investor_name,
     investor_dir,
     market_names,
+    ordc_products,
     rep_hour_weight,
     scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
     for scenario in scenarios
         create_expected_marketdata(investor_dir,
                                 market_names,
+                                ordc_products,
                                 expected_portfolio,
                                 zones,
                                 lines,

@@ -32,7 +32,6 @@ function gather_data(case::CaseDefinition)
     markets_df = read_data(joinpath(data_dir, "markets_data", "markets.csv"))
     markets_dict = Dict(Symbol(names(markets_df)[i]) => markets_df[1, i] for i in 1:length(names(markets_df)))
 
-
     if get_siip_market_clearing(case)
         base_power = 1000.0
         sys_UC = create_rts_sysUC(joinpath(test_system_dir, "RTS_Data", "SourceData"), base_power)
@@ -52,6 +51,7 @@ function gather_data(case::CaseDefinition)
                                         sys_ED,
                                         zones,
                                         zonal_lines,
+                                        representative_days,
                                         test_sys_hour_weight,
                                         rep_hour_weight,
                                         system_peak_load,
@@ -63,6 +63,8 @@ function gather_data(case::CaseDefinition)
     investors = create_investors(simulation_data)
     set_investors!(simulation_data, investors)
 
+    #construct_ordc(data_dir, investors, 0, representative_days)
+
     # Adding representative days availability data to investor folders
     system_availability_data = DataFrames.DataFrame(CSV.File(joinpath(data_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv")))
 
@@ -73,8 +75,6 @@ function gather_data(case::CaseDefinition)
     end
 
     update_simulation_derating_data!(simulation_data)
-
-    projects = get_allprojects(simulation_data)
 
     return simulation_data
 end
@@ -126,6 +126,7 @@ function create_agent_simulation(case::CaseDefinition)
                             get_system_ED(simulation_data),
                             get_zones(simulation_data),
                             get_lines(simulation_data),
+                            get_rep_days(simulation_data),
                             get_hour_weight(simulation_data),
                             get_peak_load(simulation_data),
                             get_markets(simulation_data),

@@ -9,6 +9,7 @@ struct OperatingReserve{T <: ReserveDirection} <: ReserveEMIS{T}
     name::Symbol
     max_limit::Float64
     marginal_cost::Float64
+    zonal::Bool
 end
 
 get_max_limit(prod::OperatingReserve) = prod.max_limit

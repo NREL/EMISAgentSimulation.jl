@@ -318,6 +318,7 @@ function create_tech_type(name::String,
     ramp_limits = (up = projectdata["Ramp Rate pu/Hr"]  * size, down = projectdata["Ramp Rate pu/Hr"] * size)
     zone = projectdata["Zone"]
     bus = projectdata["Bus ID"]
+    FOR = projectdata["FOR"]
 
     if sys_UC_bool
         operation_cost = create_operation_cost(projectdata, size, base_power)
@@ -335,7 +336,8 @@ function create_tech_type(name::String,
                        up_down_time,
                        operation_cost,
                        bus,
-                       zone)
+                       zone,
+                       FOR)
 
         return  ThermalGenEMIS{BuildPhase}(name,
                                  tech,
@@ -351,7 +353,8 @@ function create_tech_type(name::String,
                         ramp_limits,
                         operation_cost,
                         bus,
-                        zone)
+                        zone,
+                        FOR)
 
         return  RenewableGenEMIS{BuildPhase}(name,
                                  tech,
@@ -369,7 +372,8 @@ function create_tech_type(name::String,
                        up_down_time,
                        operation_cost,
                        bus,
-                       zone)
+                       zone,
+                       FOR)
 
         return  HydroGenEMIS{BuildPhase}(name,
                                  tech,
@@ -390,7 +394,8 @@ function create_tech_type(name::String,
                         0.0,
                         (in = parse(Float64, projectdata["Round Trip Efficiency pu"]), out = 1.0),
                         bus,
-                        zone)
+                        zone,
+                        FOR)
         return BatteryEMIS{BuildPhase}(name,
                         tech,
                         decision_year,
@@ -439,6 +444,8 @@ function create_tech_type(name::String,
         prime_mover = "NU_ST"
     end
 
+    FOR = projectdata["FOR"]
+
     tech = ThermalTech(prime_mover,
                        fuel,
                        (min = min_cap, max = size),
@@ -446,7 +453,8 @@ function create_tech_type(name::String,
                        PSY.get_time_limits(device),
                        PSY.get_operation_cost(device),
                        PSY.get_number(bus),
-                       projectdata["Zone"])
+                       projectdata["Zone"],
+                       FOR)
 
     return  ThermalGenEMIS{BuildPhase}(name,
                                  tech,
@@ -480,12 +488,15 @@ function create_tech_type(name::String,
 
     type = string(PSY.get_prime_mover(device))
 
+    FOR = projectdata["FOR"]
+
     tech = RenewableTech(type,
                        (min = 0.0, max = size),
                        (up = size, down = size),
                        PSY.get_operation_cost(device),
                        PSY.get_number(bus),
-                       projectdata["Zone"])
+                       projectdata["Zone"],
+                       FOR)
 
     return  RenewableGenEMIS{BuildPhase}(name,
                                  tech,
@@ -526,13 +537,16 @@ function create_tech_type(name::String,
         ramp_limits = (up = device_ramp_limits[:up] * base_power * 60, down = device_ramp_limits[:down] * base_power * 60)
     end
 
+    FOR = projectdata["FOR"]
+
     tech = HydroTech("HY",
                        (min = min_cap, max = size),
                        ramp_limits,
                        PSY.get_time_limits(device),
                        PSY.get_operation_cost(device),
                        PSY.get_number(bus),
-                       projectdata["Zone"])
+                       projectdata["Zone"],
+                       FOR)
 
         return  HydroGenEMIS{BuildPhase}(name,
                                  tech,
@@ -569,6 +583,8 @@ function create_tech_type(name::String,
     output_active_power_limits = PSY.get_output_active_power_limits(device)
     storage_capacity = PSY.get_state_of_charge_limits(device)
 
+    FOR = projectdata["FOR"]
+
     tech = BatteryTech(type,
                        (min = input_active_power_limits[:min] * base_power, down = input_active_power_limits[:max] * base_power),
                        (min = output_active_power_limits[:min] * base_power, down = output_active_power_limits[:max] * base_power),
@@ -577,7 +593,8 @@ function create_tech_type(name::String,
                        PSY.get_initial_energy(device) * size * base_power,
                        PSY.get_efficiency(device),
                        PSY.get_number(bus),
-                       projectdata["Zone"])
+                       projectdata["Zone"],
+                       FOR)
 
     return  BatteryEMIS{BuildPhase}(name,
                                  tech,

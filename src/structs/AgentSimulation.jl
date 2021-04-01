@@ -8,6 +8,7 @@ This struct contains all the data for the simulation to be run.
     zones: Names of modeled zones.
     lines: Inter-zonal ransmission lines modeled.
     hour_weight: Weight allocated to each hour of actual market clearing.
+    rep_days: Dictionary of representative days
     peak_load: Annual system-wide peak load for capacity market clearing.
     markets: Boolean for selecting which markets are modeled.
     investors: Vectors of all investors created in the simulation.
@@ -23,6 +24,7 @@ mutable struct AgentSimulation
     system_ED::Union{Nothing, PSY.System}
     zones::Vector{String}
     lines::Vector{ZonalLine}
+    rep_days::Dict{Dates.Date,Int64}
     hour_weight::Vector{Float64}
     peak_load::Float64
     markets::Dict{Symbol, Bool}
@@ -38,6 +40,7 @@ get_system_UC(sim::AgentSimulation) = sim.system_UC
 get_system_ED(sim::AgentSimulation) = sim.system_ED
 get_zones(sim::AgentSimulation) = sim.zones
 get_lines(sim::AgentSimulation) = sim.lines
+get_rep_days(sim::AgentSimulation) = sim.rep_days
 get_hour_weight(sim::AgentSimulation) = sim.hour_weight
 get_peak_load(sim::AgentSimulation) = sim.peak_load
 get_markets(sim::AgentSimulation) = sim.markets
@@ -64,6 +67,7 @@ mutable struct AgentSimulationData
     system_ED::Union{Nothing, PSY.System}
     zones::Vector{String}
     lines::Vector{ZonalLine}
+    rep_days::Dict{Dates.Date,Int64}
     hour_weight::Vector{Float64}
     rep_hour_weight::Vector{Float64}
     peak_load::Float64
@@ -79,6 +83,7 @@ function AgentSimulationData(case::CaseDefinition,
                         system_ED::Union{Nothing, PSY.System},
                         zones::Vector{String},
                         lines::Vector{ZonalLine},
+                        rep_days::Dict{Dates.Date,Int64},
                         hour_weight::Vector{Float64},
                         rep_hour_weight::Vector{Float64},
                         peak_load::Float64,
@@ -92,6 +97,7 @@ function AgentSimulationData(case::CaseDefinition,
                           system_ED,
                           zones,
                           lines,
+                          rep_days,
                           hour_weight,
                           rep_hour_weight,
                           peak_load,
@@ -108,6 +114,7 @@ get_system_UC(sim::AgentSimulationData) = sim.system_UC
 get_system_ED(sim::AgentSimulationData) = sim.system_ED
 get_zones(sim::AgentSimulationData) = sim.zones
 get_lines(sim::AgentSimulationData) = sim.lines
+get_rep_days(sim::AgentSimulationData) = sim.rep_days
 get_hour_weight(sim::AgentSimulationData) = sim.hour_weight
 get_rep_hour_weight(sim::AgentSimulationData) = sim.rep_hour_weight
 get_peak_load(sim::AgentSimulationData) = sim.peak_load

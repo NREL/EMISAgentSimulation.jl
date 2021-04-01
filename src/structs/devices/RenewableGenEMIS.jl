@@ -14,6 +14,7 @@ struct RenewableTech
     operation_cost::Union{Nothing, PSY.TwoPartCost}
     bus::Int64
     zone::String
+    FOR::Float64
 end
 
 get_type(tech::RenewableTech) = tech.type
@@ -22,6 +23,7 @@ get_ramp_limits(tech::RenewableTech) = tech.ramp_limits
 get_operation_cost(tech::RenewableTech) = tech.operation_cost
 get_bus(tech::RenewableTech) = tech.bus
 get_zone(tech::RenewableTech) = tech.zone
+get_FOR(tech::RenewableTech) = tech.FOR
 
 """
 This struct contains all the data for a renewable generator.

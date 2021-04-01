@@ -7,3 +7,4 @@ abstract type ReserveEMIS{T<:ReserveDirection} <: OperatingProduct end
 
 get_name(prod::Product) = prod.name
 get_marginal_cost(prod::OperatingProduct) = prod.marginal_cost
+get_zonal(prod::Product) = prod.zonal

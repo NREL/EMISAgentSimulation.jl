@@ -13,6 +13,7 @@ mutable struct MarketProject
     marginal_energy_cost::Float64         # $/MW/hour
     marginal_reserveup_cost::Float64      # $/MW/hour
     marginal_reservedown_cost::Float64    # $/MW/hour
+    marginal_synchronousreserve_cost::Float64
     expansion_cost::Vector{Float64}        # $/unit
     discount_rate::Float64                # discount rate
     min_gen::Float64                      # MW/unit
@@ -29,6 +30,7 @@ mutable struct MarketProject
     ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}    # MW/unit/hour
     max_reserveup::Float64                # MW/unit/hour
     max_reservedown::Float64              # MW/unit/hour
+    max_synchronousreserve::Float64       # MW/unit/hour
     existing_units::Float64               # existing units
     units_in_queue::Vector{Float64}        # units in queue
     build_lead_time::Int64                 # build lead time
@@ -52,6 +54,7 @@ mutable struct MarketProject
         marginal_energy_cost::Number,
         marginal_reserveup_cost::Number,
         marginal_reservedown_cost::Number,
+        marginal_synchronousreserve_cost::Number,
         expansion_cost::Vector{Float64},
         discount_rate::Number,
         min_gen::Number,
@@ -68,6 +71,7 @@ mutable struct MarketProject
         ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}},
         max_reserveup::Number,
         max_reservedown::Number,
+        max_synchronousreserve::Number,
         existing_units::Number,
         units_in_queue::Vector{<: Number},
         build_lead_time::Number,
@@ -86,6 +90,7 @@ mutable struct MarketProject
         @assert marginal_energy_cost >= 0
         @assert marginal_reserveup_cost >= 0
         @assert marginal_reservedown_cost >= 0
+        @assert marginal_synchronousreserve_cost >= 0
         @assert all(expansion_cost .>= 0)
         @assert all(queue_cost .>= 0)
         @assert discount_rate >= 0
@@ -118,6 +123,7 @@ mutable struct MarketProject
             marginal_energy_cost,
             marginal_reserveup_cost,
             marginal_reservedown_cost,
+            marginal_synchronousreserve_cost,
             expansion_cost,
             discount_rate,
             min_gen,
@@ -134,6 +140,7 @@ mutable struct MarketProject
             ramp_limits,
             max_reserveup,
             max_reservedown,
+            max_synchronousreserve,
             existing_units,
             units_in_queue,
             build_lead_time,

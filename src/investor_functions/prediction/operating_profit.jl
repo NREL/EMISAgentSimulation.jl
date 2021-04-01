@@ -93,10 +93,17 @@ function calculate_operating_profit(gen::P,
 
     products = find_operating_products(get_products(gen))
 
-    market_prices = Dict(get_name(prod) => get_prices(all_prices, prod)[scenario_name][get_zone(get_tech(gen)), :, :] for prod in products)
+    market_prices = Dict{Symbol, AxisArrays.AxisArray{Float64, 2}}()
+
+    for prod in products
+        if get_zonal(prod)
+            market_prices[get_name(prod)] = get_prices(all_prices, prod)[scenario_name][get_zone(get_tech(gen)), :, :]
+        else
+            market_prices[get_name(prod)] = get_prices(all_prices, prod)[scenario_name]
+        end
+    end
 
     max_perc = Dict(zip(get_name.(products), get_maxperc.(products, scenario_name, end_year, num_hours)))
-
 
     m = JuMP.Model(solver)
 
@@ -150,6 +157,7 @@ function calculate_operating_profit(gen::P,
     energy_production = AxisArrays.AxisArray([sum(value(Q[:Energy, y, h]) * rep_hour_weight[h] for h in 1:num_hours) for y in start_year:end_year],
                         AxisArrays.Axis{:year}(start_year:end_year))
 
+
     return profit_array, energy_production
 
 end
@@ -162,7 +170,8 @@ function storage_product_constraints(product::T,
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
                                     p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_rd::JuMP.VariableRef,
+                                    p_sr::JuMP.VariableRef
                                     ) where T <: OperatingProduct
     return
 end
@@ -175,7 +184,8 @@ function storage_product_constraints(product::Energy,
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
                                     p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_rd::JuMP.VariableRef,
+                                    p_sr::JuMP.VariableRef
                                     )
     JuMP.add_to_expression!(Q, p_out - p_in)
     return
@@ -189,9 +199,16 @@ function storage_product_constraints(product::ReserveUpEMIS,
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
                                     p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_rd::JuMP.VariableRef,
+                                    p_sr::JuMP.VariableRef
                                     )
-    JuMP.add_to_expression!(Q, p_ru)
+    product_name = get_name(product)
+    if product_name == :ReserveUp
+        JuMP.add_to_expression!(Q, p_ru)
+    elseif product_name == :SynchronousReserve
+        JuMP.add_to_expression!(Q, p_sr)
+    end
+
     return
 end
 
@@ -203,7 +220,8 @@ function storage_product_constraints(product::ReserveDownEMIS,
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
                                     p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_rd::JuMP.VariableRef,
+                                    p_sr::JuMP.VariableRef
                                     )
     JuMP.add_to_expression!(Q, p_rd)
     return
@@ -231,7 +249,15 @@ function calculate_operating_profit(storage::P,
 
     capacity_factors = get_capacity_factors(energy_product[1])[scenario_name]
 
-    market_prices = Dict(get_name(prod) => get_prices(all_prices, prod)[scenario_name][get_zone(tech), :, :] for prod in products)
+    market_prices = Dict{String, AxisArrays.AxisArray{Float64, 2}}()
+
+    for prod in products
+        if get_zonal(product)
+            market_prices[get_name(prod)] = get_prices(all_prices, prod)[scenario_name][get_zone(get_tech(gen)), :, :]
+        else
+            market_prices[get_name(prod)] = get_prices(all_prices, prod)[scenario_name]
+        end
+    end
 
     max_gen = get_maxcap(storage)                                   # maximum generation limit
     min_gen = get_mincap(storage)                                    # minimum generation limit
@@ -242,6 +268,7 @@ function calculate_operating_profit(storage::P,
 
     max_reserve_up = get_project_max_reserveup(storage)              # maximum reserve up limit
     max_reserve_down = get_project_max_reservedown(storage)           # maximum reserve down limit
+    max_synchronous_reserve = get_project_max_reservedown(storage)    # maximum reserve down limit
 
     storage_capacity = get_storage_capacity(tech)
     min_storage = storage_capacity[:min]                            # minimum storage capacity
@@ -259,12 +286,15 @@ function calculate_operating_profit(storage::P,
 
     JuMP.@variable(m, p_ru[p in start_year:end_year, t in 1:num_hours] >= 0) # Unit energy production [MW]
     JuMP.@variable(m, p_rd[p in start_year:end_year, t in 1:num_hours] >= 0) # Storage charging [MW]
+    JuMP.@variable(m, p_sr[p in start_year:end_year, t in 1:num_hours] >= 0) # Storage charging [MW]
 
     JuMP.@variable(m, p_in_ru[p in start_year:end_year, t in 1:num_hours] >= 0) # reserve up provided by storage charging [MW]
     JuMP.@variable(m, p_in_rd[p in start_year:end_year, t in 1:num_hours] >= 0) # reserve down provided by storage charging [MW]
+    JuMP.@variable(m, p_in_sr[p in start_year:end_year, t in 1:num_hours] >= 0) # synchronous reserve provided by storage charging [MW]
 
     JuMP.@variable(m, p_out_ru[p in start_year:end_year, t in 1:num_hours] >= 0) # reserve up provided by storage discharging [MW]
     JuMP.@variable(m, p_out_rd[p in start_year:end_year, t in 1:num_hours] >= 0) # reserve down provided by storage discharging [MW]
+    JuMP.@variable(m, p_out_sr[p in start_year:end_year, t in 1:num_hours] >= 0) # synchronous reserve provided by storage discharging [MW]
 
     JuMP.@variable(m, temp == 0)
 
@@ -288,7 +318,8 @@ function calculate_operating_profit(storage::P,
                                             p_e[p, t],
                                             p_in[p, t],
                                             p_ru[p, t],
-                                            p_rd[p, t])
+                                            p_rd[p, t],
+                                            p_sr[p, t])
 
                 hourly_profit = rep_hour_weight[t] *
                                      (calculate_revenue(market_prices[get_name(product)][p, t],
@@ -297,6 +328,9 @@ function calculate_operating_profit(storage::P,
                                                Q[get_name(product), p, t]))
 
                             JuMP.add_to_expression!(profit[i, p], hourly_profit)
+
+                JuMP.@constraint(m, Q[get_name(product), y, h] <=
+                                    max_perc[get_name(product)][y, h] * get_maxcap(gen))
 
             end
 
@@ -310,13 +344,14 @@ function calculate_operating_profit(storage::P,
             JuMP.@constraint(m, p_e[p, t] <= capacity_factors[p, t] * max_gen) # Capacity factor constraint
 
             JuMP.@constraint(m, p_e[p,t] - p_out_rd[p,t] >= min_gen * 0) # Minimum output dispatch
-            JuMP.@constraint(m, p_e[p,t] + p_out_ru[p,t] <= max_gen) # Maximum output dispatch
+            JuMP.@constraint(m, p_e[p,t] + p_out_ru[p,t] + p_out_sr[p,t] <= max_gen) # Maximum output dispatch
 
-            JuMP.@constraint(m, p_in[p,t] - p_in_ru[p,t] >=  min_input * 0) # Minimum input dispatch
+            JuMP.@constraint(m, p_in[p,t] - p_in_ru[p,t] - p_out_sr[p,t] >=  min_input * 0) # Minimum input dispatch
             JuMP.@constraint(m, p_in[p,t] + p_in_rd[p,t] <= max_input) # Maximum input dispatch
 
             JuMP.@constraint(m, p_ru[p, t] <= p_out_ru[p, t] + p_in_ru[p, t]) # Total storage reserve up
             JuMP.@constraint(m, p_rd[p, t] <= p_out_rd[p, t] + p_in_rd[p, t]) # Total storage reserve down
+            JuMP.@constraint(m, p_sr[p, t] <= p_out_sr[p, t] + p_in_sr[p, t]) # Total storage reserve down
 
             JuMP.@constraint(m, storage_level[p, t] >= min_storage) # Minimum storage level
             JuMP.@constraint(m, storage_level[p, t] <= max_storage) # Maximum storage level

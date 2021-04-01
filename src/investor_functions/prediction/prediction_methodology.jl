@@ -12,13 +12,16 @@ function gather_prediction_parameters(investor::Investor,
     cp(joinpath(sys_data_dir, "timeseries_data_files", "Load", "rep_load_$(iteration_year - 1).csv"),
     joinpath(load_dir, "load_$(iteration_year - 1).csv"), force = true)
 
+    reserve_products = chop.(filter!(n -> occursin("reserve", n), readdir(joinpath(investor_dir, "markets_data"))), head = 0, tail = 14)
+    ordc_products = read_data(joinpath(sys_data_dir, "markets_data", "ordc_products.csv"))[:,"product"]
+
     reserve_dir = joinpath(investor_dir, "timeseries_data_files", "Reserves")
     dir_exists(reserve_dir)
-    cp(joinpath(sys_data_dir, "timeseries_data_files", "Reserves", "rep_reserve_up_$(iteration_year - 1).csv"),
-    joinpath(reserve_dir, "reserve_up_$(iteration_year - 1).csv"), force = true)
 
-    cp(joinpath(sys_data_dir, "timeseries_data_files", "Reserves", "rep_reserve_down_$(iteration_year - 1).csv"),
-    joinpath(reserve_dir, "reserve_down_$(iteration_year - 1).csv"), force = true)
+    for reserve in reserve_products
+        cp(joinpath(sys_data_dir, "timeseries_data_files", "Reserves", "rep_$(reserve)_$(iteration_year - 1).csv"),
+        joinpath(reserve_dir, "$(reserve)_$(iteration_year - 1).csv"), force = true)
+    end
 
     market_names = get_markets(investor)
 
@@ -26,7 +29,7 @@ function gather_prediction_parameters(investor::Investor,
 
     scenarios = get_scenario_data(get_forecast(investor))
 
-    return investor_name, investor_dir, market_names, rep_hour_weight, scenarios
+    return investor_name, investor_dir, market_names, ordc_products, rep_hour_weight, scenarios
 end
 
 """
@@ -62,6 +65,7 @@ function create_investor_predictions(investors::Vector{Investor},
                 investor_name,
                 investor_dir,
                 market_names,
+                ordc_products,
                 rep_hour_weight,
                 scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
@@ -70,6 +74,7 @@ function create_investor_predictions(investors::Vector{Investor},
                     push!(investor_name_pmap, investor_name)
                     push!(investor_dir_pmap, investor_dir)
                     push!(market_names_pmap, market_names)
+                    push!(ordc_products_pmap, ordc_products)
                     push!(rep_hour_weight_pmap, rep_hour_weight)
                     push!(expected_portfolio_pmap, active_projects)
 
@@ -81,6 +86,7 @@ function create_investor_predictions(investors::Vector{Investor},
             Distributed.pmap(create_expected_marketdata,
                  investor_dir_pmap,
                  market_names_pmap,
+                 ordc_products_pmap,
                  expected_portfolio_pmap,
                  repeat([zones], num_tasks),
                  repeat([lines], num_tasks),
@@ -119,6 +125,7 @@ function create_investor_predictions(investors::Vector{Investor},
             investor_name,
             investor_dir,
             market_names,
+            ordc_products,
             rep_hour_weight,
             scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
@@ -129,6 +136,7 @@ function create_investor_predictions(investors::Vector{Investor},
                 Distributed.pmap(create_expected_marketdata,
                     repeat([investor_dir], num_scenarios),
                     repeat([market_names], num_scenarios),
+                    repeat([ordc_products], num_scenarios),
                     repeat([active_projects], num_scenarios),
                     repeat([zones], num_scenarios),
                     repeat([lines], num_scenarios),
@@ -147,6 +155,7 @@ function create_investor_predictions(investors::Vector{Investor},
                 for scenario in scenarios
                     create_expected_marketdata(investor_dir,
                                             market_names,
+                                            ordc_products,
                                             active_projects,
                                             zones,
                                             lines,
