@@ -8,7 +8,7 @@ mutable struct Energy <: OperatingProduct
     name::Symbol
     capacity_factors::Dict{String, Array{Float64, 2}}
     marginal_cost::Float64
-    zonal::Bool
+
 end
 
 # Capacity factors only returned when product is of type Energy

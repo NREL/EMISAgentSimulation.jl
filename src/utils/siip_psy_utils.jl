@@ -138,8 +138,7 @@ end
 This function does nothing if PSY System is not defined.
 """
 function update_PSY_timeseries!(sys_UC::Nothing,
-                               load_growth::AxisArrays.AxisArray{Float64, 1},
-                               days::Int64)
+                               load_growth::AxisArrays.AxisArray{Float64, 1})
     return
 end
 
@@ -148,62 +147,81 @@ This function updates the PSY load and reserve requirment timeseries each year.
 """
 function update_PSY_timeseries!(sys::PSY.System,
                                load_growth::AxisArrays.AxisArray{Float64, 1},
-                               num_days::Int64)
+                               simulation_dir::String)
 
-    num_hours = 24
-    initial_time = PSY.get_forecasts_initial_time(sys)
-
-    # update load forecasts.
+    # update load timeseries.
     nodal_loads = PSY.get_components(PSY.ElectricLoad, sys)
+    println("FDSFSdfsd")
+    quit()
+
     for load in nodal_loads
         zone = "zone_$(PSY.get_name(PSY.get_area(PSY.get_bus(load))))"
-        ts_data= PSY.get_data(PSY.get_forecast(
-            PSY.Deterministic,
-            load,
-            initial_time,
-            "get_max_active_power",
-            num_days * num_hours,
-        ))
+
+        #=
+        ts_data = PSY.get_data(PSY.get_time_series(
+                                                  PSY.SingleTimeSeries,
+                                                  load,
+                                                  "max_active_power"
+                                                  )
+                             )
+
+                             println(ts_data)
+
         ts_timestamps = TS.timestamp(ts_data)
         ts_values = TS.values(ts_data)
 
-        PSY.remove_forecast!(PSY.Deterministic,
-            sys,
-            load,
-            initial_time,
-            "get_max_active_power",
-            )
+        PSY.remove_time_series!(sys,
+                                PSY.SingleTimeSeries,
+                                load,
+                                "max_active_power"
+                                )
 
         new_ts = TS.TimeArray(ts_timestamps, ts_values * (1 + load_growth[zone]))
-        PSY.add_forecast!(sys, load, IS.Deterministic("get_max_active_power", new_ts))
+        PSY.add_time_series!(sys, load, PSY.SingleTimeSeries("max_active_power", new_ts))
+        =#
+        scaled_active_power = deepcopy(PSY.get_max_active_power(load)) * (1 + load_growth[zone])
+
+        PSY.set_max_active_power!(load, scaled_active_power)
 
     end
 
-    # update service requirement forecasts.
+    average_load_growth = Statistics.mean(load_growth)
+
+    # update service requirement timeseries.
     services = get_system_services(sys)
+    ordc_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")
     for service in services
-        zone = "zone_$(last(split(PSY.get_name(service), "_")[end], 1))"
+        #=
+        try
+            ts_data= PSY.get_data(PSY.get_time_series(
+                                                    PSY.SingleTimeSeries,
+                                                    service,
+                                                    "requirement"
+                                                    )
+                            )
+            ts_timestamps = TS.timestamp(ts_data)
+            ts_values = TS.values(ts_data)
 
-        ts_data= PSY.get_data(PSY.get_forecast(
-            PSY.Deterministic,
-            service,
-            initial_time,
-            "get_requirement",
-            num_days * num_hours,
-        ))
-        ts_timestamps = TS.timestamp(ts_data)
-        ts_values = TS.values(ts_data)
+            PSY.remove_time_series!(
+                                    sys,
+                                    PSY.SingleTimeSeries,
+                                    service,
+                                    "requirement",
+                                    )
 
-        PSY.remove_forecast!(PSY.Deterministic,
-            sys,
-            service,
-            initial_time,
-            "get_requirement",
-            )
+            new_ts = TS.TimeArray(ts_timestamps, ts_values * (1 + average_load_growth))
 
-        new_ts = TS.TimeArray(ts_timestamps, ts_values * (1 + load_growth[zone]))
+            PSY.add_time_series!(sys, service, PSY.SingleTimeSeries("requirement", new_ts))
+        catch
 
-        PSY.add_forecast!(sys, service, IS.Deterministic("get_requirement", new_ts))
+        end
+        =#
+
+        if !(PSY.get_name(service) in ordc_products)
+            scaled_requirement = deepcopy(PSY.get_requirement(service)) * (1 + average_load_growth)
+
+            PSY.set_requirement!(service, scaled_requirement)
+        end
     end
 
     return
@@ -225,4 +243,25 @@ function find_zonal_bus(zone::String, sys::PSY.System)
 
     return zonal_bus
 
+end
+
+"""
+This function transforms the timeseries of PSY Systems.
+"""
+
+function transform_psy_timeseries!(sys_UC::Nothing,
+                                   sys_ED::Nothing,
+                                   da_resolution::Int64,
+                                   rt_resolution::Int64)
+    return
+end
+
+function transform_psy_timeseries!(sys_UC::PSY.System,
+                                   sys_ED::PSY.System,
+                                   da_resolution::Int64,
+                                   rt_resolution::Int64)
+
+    PSY.transform_single_time_series!(sys_UC, Int(24 * 60 / da_resolution), Dates.Hour(24))
+    PSY.transform_single_time_series!(sys_ED, Int(60 / rt_resolution), Dates.Hour(1))
+    return
 end

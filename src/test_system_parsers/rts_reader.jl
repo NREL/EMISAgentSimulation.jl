@@ -15,6 +15,8 @@ function read_rts(data_dir::String,
 
     base_year = test_system_load[1, "Year"]
 
+    average_annual_growth = [Statistics.mean(annual_growth[y, :] for y in 1:size(annual_growth)[1])]
+
     test_sys_num_hours = DataFrames.nrow(test_system_load)
     if test_sys_num_hours >= 8760
         test_sys_hour_weight = ones(test_sys_num_hours)
@@ -25,46 +27,48 @@ function read_rts(data_dir::String,
     zone_numbers = names(test_system_load)[5:end]
     zones = ["zone_$(i)" for i in zone_numbers]
 
-    test_system_reserve_up = test_system_load[:, 1:4]
-    test_system_reserve_down = test_system_load[:, 1:4]
+    reserve_params_df = read_data(joinpath(test_system_dir, "RTS_Data", "SourceData", "reserves.csv"))
 
-    for zone in zone_numbers
-        reserve_up_df = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Reserves", "DAY_AHEAD_regional_Reg_Up_R$(zone).csv")))
+    reserve_products = reserve_params_df[:, "Reserve Product"]
 
-        test_system_reserve_up[:, zone] = reserve_up_df[:, "Reg_Up_R$(zone)"]
+    test_system_reserves_data = Dict{String, DataFrames.DataFrame}()
 
-        reserve_down_df = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Reserves", "DAY_AHEAD_regional_Reg_Down_R$(zone).csv")))
-        test_system_reserve_down[:, zone] = zeros(DataFrames.nrow(test_system_reserve_down))
-        for d in 1:Int(DataFrames.nrow(test_system_reserve_down)/24)
+    data_rows = DataFrames.nrow(test_system_load)
+
+    for product in reserve_products
+        test_system_reserves_data[product] = test_system_load[:, 1:4]
+        test_system_reserves_data[product][:, product] = zeros(data_rows)
+        data = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Reserves", "DAY_AHEAD_regional_$(product).csv")))
+        for d in 1:Int(data_rows/24)
             for h in 1:24
-                test_system_reserve_down[(d - 1) * 24 + h, zone] = reserve_down_df[d, Symbol(h)]
+                test_system_reserves_data[product][(d - 1) * 24 + h, product] = data[d, Symbol(h)]
             end
         end
     end
 
     scaled_test_sys_load = deepcopy(test_system_load)
     scaled_test_sys_load_rt = deepcopy(test_system_load_rt)
-    scaled_test_sys_reserve_up = deepcopy(test_system_reserve_up)
-    scaled_test_sys_reserve_down = deepcopy(test_system_reserve_down)
+    scaled_test_system_reserves_data = deepcopy(test_system_reserves_data)
 
-    scaled_test_sys_load[:, "Year"] = fill(start_year, DataFrames.nrow(scaled_test_sys_load))
+    scaled_test_sys_load[:, "Year"] = fill(start_year, data_rows)
     remove_leap_day!(scaled_test_sys_load, start_year)
 
-    scaled_test_sys_load_rt[:, "Year"] = fill(start_year, DataFrames.nrow(scaled_test_sys_load_rt))
+    scaled_test_sys_load_rt[:, "Year"] = fill(start_year, DataFrames.nrow(test_system_load_rt))
     remove_leap_day!(scaled_test_sys_load_rt, start_year)
 
-    scaled_test_sys_reserve_up[:, "Year"] = fill(start_year, DataFrames.nrow(scaled_test_sys_reserve_up))
-    remove_leap_day!(scaled_test_sys_reserve_up, start_year)
-
-    scaled_test_sys_reserve_down[:, "Year"] = fill(start_year, DataFrames.nrow(scaled_test_sys_reserve_down))
-    remove_leap_day!(scaled_test_sys_reserve_down, start_year)
+    for product in reserve_products
+        scaled_test_system_reserves_data[product][:, "Year"] = fill(start_year, data_rows)
+        remove_leap_day!(scaled_test_system_reserves_data[product], start_year)
+    end
 
     for y in 1:(start_year - base_year)
         for zone in zone_numbers
             scaled_test_sys_load[:, "$(zone)"] =  scaled_test_sys_load[:, "$(zone)"] * (1 + annual_growth[y, Symbol("load_zone_$(zone)")])
             scaled_test_sys_load_rt[:, "$(zone)"] =  scaled_test_sys_load_rt[:, "$(zone)"] * (1 + annual_growth[y, Symbol("load_zone_$(zone)")])
-            scaled_test_sys_reserve_up[:, "$(zone)"] =  scaled_test_sys_reserve_up[:, "$(zone)"] * (1 + annual_growth[y, Symbol("load_zone_$(zone)")])
-            scaled_test_sys_reserve_down[:, "$(zone)"] =  scaled_test_sys_reserve_down[:, "$(zone)"] * (1 + annual_growth[y, Symbol("load_zone_$(zone)")])
+        end
+        for product in reserve_products
+            scaled_test_system_reserves_data[product][:, product] = scaled_test_system_reserves_data[product][:, product] * (1 + average_annual_growth[y])
+
         end
     end
 
@@ -166,33 +170,13 @@ function read_rts(data_dir::String,
 
     system_peak_load = maximum(sum(scaled_test_sys_load[:, zone] for zone in zone_numbers))
 
-    rep_reserve_up_data = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), scaled_test_sys_reserve_up)
-    write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "reserve_up_0.csv", scaled_test_sys_reserve_up)
-    write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "rep_reserve_up_0.csv", rep_reserve_up_data)
+    rep_system_reserves_data = Dict{String, DataFrames.DataFrame}()
 
-    rep_reserve_down_data = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), scaled_test_sys_reserve_down)
-    write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "reserve_down_0.csv", scaled_test_sys_reserve_down)
-    write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "rep_reserve_down_0.csv", rep_reserve_down_data)
-
-    reserve_params_df = read_data(joinpath(test_system_dir, "RTS_Data", "SourceData", "reserves.csv"))
-
-    reserve_up_eligible_categories = String[]
-    reserve_down_eligible_categories = String[]
-
-    for zone in zone_numbers
-        push!(reserve_up_eligible_categories, reserve_params_df[findfirst(x-> x == "Reg_Up_R$(zone)", reserve_params_df[:, "Reserve Product"]), "Eligible Device SubCategories"])
-        push!(reserve_down_eligible_categories, reserve_params_df[findfirst(x-> x == "Reg_Down_R$(zone)", reserve_params_df[:, "Reserve Product"]), "Eligible Device SubCategories"])
+    for product in reserve_products
+        rep_system_reserves_data[product] = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), scaled_test_system_reserves_data[product])
+        write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "$(product)_0.csv", scaled_test_system_reserves_data[product])
+        write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "rep_$(product)_0.csv", rep_system_reserves_data[product])
     end
-
-    reserve_up_mkt_df = read_data(joinpath(data_dir, "markets_data", "reserve_up_mkt_param.csv"))
-    reserve_down_mkt_df = read_data(joinpath(data_dir, "markets_data", "reserve_down_mkt_param.csv"))
-
-    reserve_up_mkt_df[!, "eligible categories"] = reserve_up_eligible_categories
-    reserve_down_mkt_df[!, "eligible categories"] = reserve_down_eligible_categories
-
-    write_data(joinpath(data_dir, "markets_data"), "reserve_up_mkt_param.csv", reserve_up_mkt_df)
-    write_data(joinpath(data_dir, "markets_data"), "reserve_down_mkt_param.csv", reserve_down_mkt_df)
-
 
     # Create zonal lines
 

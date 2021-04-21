@@ -122,12 +122,14 @@ function add_investor_project_availability!(simulation_dir::String,
     return
 end
 
+
+
 """
 This function creates a piece-wise linear operation cost for the project according to the structure used in PSY.
 This allows smooth conversion of local Project structs to PSY Device structs.
 Returns PSY.TwoPartCost or PSY.ThreePartCost based on the type of the Project.
 """
-function create_operation_cost(projectdata::DataFrames.DataFrameRow, size::Float64, base_power::Float64)
+function create_operation_cost(projectdata::DataFrames.DataFrameRow, size::Float64, base_power::Float64, sys_base_power::Float64, products::Vector{Product}, carbon_tax::Vector{Float64})
 
     output_point_fields = String[]
     heat_rate_fields = String[]
@@ -170,9 +172,9 @@ function create_operation_cost(projectdata::DataFrames.DataFrameRow, size::Float
             var_cost[1][1] -
             (var_cost[2][1] / (var_cost[2][2] - var_cost[1][2]) * var_cost[1][2]),
         )
-        var_cost[1] = (var_cost[1][1] - fixed, var_cost[1][2])
+        var_cost[1] = (var_cost[1][1] - fixed, var_cost[1][2] * size / sys_base_power)
         for i in 2:length(var_cost)
-            var_cost[i] = (var_cost[i - 1][1] + var_cost[i][1], var_cost[i][2])
+            var_cost[i] = (var_cost[i - 1][1] + var_cost[i][1], var_cost[i][2] * size / sys_base_power)
         end
     elseif length(var_cost) == 1
         # if there is only one point, use it to determine the constant $/MW cost
@@ -253,6 +255,8 @@ function create_investment_data(size::Float64,
 
     num_profit_years = max(max_horizon, end_life_year)
 
+    scenario_total_utilization = Dict{String, Array{Float64, 2}}()
+
     yearly_profit = [AxisArrays.AxisArray(zeros(length(products), num_profit_years),
                                                  AxisArrays.Axis{:prod}(get_name.(products)),
                                                  AxisArrays.Axis{:year}(1:1:num_profit_years))
@@ -281,6 +285,7 @@ function create_investment_data(size::Float64,
                            capex_years,
                            fixedOM_cost,
                            queue_cost,
+                           scenario_total_utilization,
                            scenario_profit,
                            realized_profit,
                            discount_rate,
@@ -308,7 +313,8 @@ function create_tech_type(name::String,
                           end_life_year::Int64,
                           products::Vector{Product},
                           finance_data::Finance,
-                          sys_UC_bool::Bool
+                          sys_UC::Union{PSY.System, Nothing},
+                          carbon_tax::Vector{Float64}
                         )
 
     type = projectdata["Unit Type"]
@@ -316,12 +322,14 @@ function create_tech_type(name::String,
 
     active_power_limits = (min = min_cap, max = size)
     ramp_limits = (up = projectdata["Ramp Rate pu/Hr"]  * size, down = projectdata["Ramp Rate pu/Hr"] * size)
+    fuel_cost = projectdata["Fuel Price \$/MMBTU"]
     zone = projectdata["Zone"]
     bus = projectdata["Bus ID"]
     FOR = projectdata["FOR"]
 
-    if sys_UC_bool
-        operation_cost = create_operation_cost(projectdata, size, base_power)
+    if !isnothing(sys_UC)
+        sys_base_power = PSY.get_base_power(sys_UC)
+        operation_cost = create_operation_cost(projectdata, size, base_power, sys_base_power, products, carbon_tax)
         up_down_time = (up = projectdata["Min Up Time Hr"], down = projectdata["Min Down Time Hr"])
     else
         operation_cost = nothing
@@ -329,12 +337,66 @@ function create_tech_type(name::String,
     end
 
     if type == "ST" || type == "CT" || type == "CC" || type == "NU_ST"
+
+        output_point_fields = String[]
+        heat_rate_fields = String[]
+        fields = names(projectdata)
+
+        for field in fields
+            if occursin("Output_pct_", field)
+                push!(output_point_fields, field)
+            elseif occursin("HR_", field)
+                push!(heat_rate_fields, field)
+            end
+        end
+
+        @assert length(output_point_fields) > 0
+        cost_colnames = zip(heat_rate_fields, output_point_fields)
+
+        heat_rate = [(projectdata[hr], projectdata[mw]) for (hr, mw) in cost_colnames]
+
+        heat_rate = unique([
+            (tryparse(Float64, string(c[1])), tryparse(Float64, string(c[2])))
+            for c in heat_rate if !in("NA", c)
+        ])
+
+        if length(heat_rate) > 1
+            heat_rate[2:end] = [
+                (
+                    heat_rate[i][1] *
+                    (heat_rate[i][2] - heat_rate[i - 1][2]),
+                    heat_rate[i][2]
+                ) for i in 2:length(heat_rate)
+            ]
+            heat_rate[1] =
+                (heat_rate[1][1] * heat_rate[1][2], heat_rate[1][2])
+
+                fixed = max(
+                    0.0,
+                    heat_rate[1][1] -
+                    (heat_rate[2][1] / (heat_rate[2][2] - heat_rate[1][2]) * heat_rate[1][2]),
+                )
+                heat_rate[1] = (heat_rate[1][1] / 1000.0, heat_rate[1][2] * size)
+                for i in 2:length(heat_rate)
+                    heat_rate[i] = (heat_rate[i - 1][1] + heat_rate[i][1] / 1000.0, heat_rate[i][2] * size)
+                end
+                pushfirst!(heat_rate, (fixed / 1000.0, 0.0))
+        elseif length(heat_rate) == 1
+            # if there is only one point, use it to determine the constant $/MW cost
+            heat_rate = (heat_rate[1][1] * heat_rate[1][2] / 1000.0, heat_rate[1][2] * size)
+            fixed = 0.0
+        else
+            heat_rate = [(0.0, 0.0)]
+            fixed = 0.0
+        end
         tech = ThermalTech(type,
                        projectdata["Fuel"],
                        active_power_limits,
                        ramp_limits,
                        up_down_time,
                        operation_cost,
+                       fuel_cost,
+                       heat_rate,
                        bus,
                        zone,
                        FOR)
@@ -426,10 +488,11 @@ function create_tech_type(name::String,
                           finance_data::Finance
                         ) where T <: PSY.ThermalGen
 
-    min_cap = PSY.get_active_power_limits(device)[:min] * base_power
+    min_cap = deepcopy(PSY.get_active_power_limits(device)[:min]) * base_power
 
-    bus = PSY.get_bus(device)
-    device_ramp_limits = PSY.get_ramp_limits(device)
+    fuel_cost = projectdata["Fuel Price \$/MMBTU"]
+    bus = deepcopy(PSY.get_bus(device))
+    device_ramp_limits = deepcopy(PSY.get_ramp_limits(device))
 
     if isnothing(device_ramp_limits)
         ramp_limits = nothing
@@ -437,8 +500,8 @@ function create_tech_type(name::String,
         ramp_limits = (up = device_ramp_limits[:up] * base_power * 60, down = device_ramp_limits[:down] * base_power * 60)
     end
 
-    prime_mover = string(PSY.get_prime_mover(device))
-    fuel = string(PSY.get_fuel(device))
+    prime_mover = string(deepcopy(PSY.get_prime_mover(device)))
+    fuel = string(deepcopy(PSY.get_fuel(device)))
 
     if fuel == "NUCLEAR"
         prime_mover = "NU_ST"
@@ -446,13 +509,67 @@ function create_tech_type(name::String,
 
     FOR = projectdata["FOR"]
 
+    output_point_fields = String[]
+    heat_rate_fields = String[]
+    fields = names(projectdata)
+
+    for field in fields
+        if occursin("Output_pct_", field)
+            push!(output_point_fields, field)
+        elseif occursin("HR_", field)
+            push!(heat_rate_fields, field)
+        end
+    end
+
+    @assert length(output_point_fields) > 0
+    cost_colnames = zip(heat_rate_fields, output_point_fields)
+
+    heat_rate = [(projectdata[hr], projectdata[mw]) for (hr, mw) in cost_colnames]
+
+    heat_rate = unique([
+        (tryparse(Float64, string(c[1])), tryparse(Float64, string(c[2])))
+        for c in heat_rate if !in("NA", c)
+    ])
+    if length(heat_rate) > 1
+        heat_rate[2:end] = [
+            (
+                heat_rate[i][1] *
+                (heat_rate[i][2] - heat_rate[i - 1][2]),
+                heat_rate[i][2]
+            ) for i in 2:length(heat_rate)
+        ]
+        heat_rate[1] =
+            (heat_rate[1][1] * heat_rate[1][2], heat_rate[1][2])
+
+            fixed = max(
+                0.0,
+                heat_rate[1][1] -
+                (heat_rate[2][1] / (heat_rate[2][2] - heat_rate[1][2]) * heat_rate[1][2]),
+            )
+            heat_rate[1] = (heat_rate[1][1] / 1000.0, heat_rate[1][2] * size)
+            for i in 2:length(heat_rate)
+                heat_rate[i] = (heat_rate[i - 1][1] + heat_rate[i][1] / 1000.0, heat_rate[i][2] * size)
+            end
+            pushfirst!(heat_rate, (fixed / 1000.0, 0.0))
+    elseif length(heat_rate) == 1
+        # if there is only one point, use it to determine the constant $/MW cost
+        heat_rate = (heat_rate[1][1] * heat_rate[1][2] / 1000.0, heat_rate[1][2] * size)
+        fixed = 0.0
+    else
+        heat_rate = [(0.0, 0.0)]
+        fixed = 0.0
+    end
+
+
     tech = ThermalTech(prime_mover,
                        fuel,
                        (min = min_cap, max = size),
                        ramp_limits,
-                       PSY.get_time_limits(device),
-                       PSY.get_operation_cost(device),
-                       PSY.get_number(bus),
+                       deepcopy(PSY.get_time_limits(device)),
+                       deepcopy(PSY.get_operation_cost(device)),
+                       fuel_cost,
+                       heat_rate,
+                       deepcopy(PSY.get_number(bus)),
                        projectdata["Zone"],
                        FOR)
 
@@ -484,17 +601,17 @@ function create_tech_type(name::String,
                           finance_data::Finance
                         ) where T <: PSY.RenewableGen
 
-    bus = PSY.get_bus(device)
+    bus = deepcopy(PSY.get_bus(device))
 
-    type = string(PSY.get_prime_mover(device))
+    type = string(deepcopy(PSY.get_prime_mover(device)))
 
     FOR = projectdata["FOR"]
 
     tech = RenewableTech(type,
                        (min = 0.0, max = size),
                        (up = size, down = size),
-                       PSY.get_operation_cost(device),
-                       PSY.get_number(bus),
+                       deepcopy(PSY.get_operation_cost(device)),
+                       deepcopy(PSY.get_number(bus)),
                        projectdata["Zone"],
                        FOR)
 
@@ -526,10 +643,10 @@ function create_tech_type(name::String,
                           finance_data::Finance
                         ) where P <: PSY.HydroGen
 
-    min_cap = PSY.get_active_power_limits(device)[:min] * base_power
-    bus = PSY.get_bus(device)
+    min_cap = deepcopy(PSY.get_active_power_limits(device)[:min]) * base_power
+    bus = deepcopy(PSY.get_bus(device))
 
-    device_ramp_limits = PSY.get_ramp_limits(device)
+    device_ramp_limits = deepcopy(PSY.get_ramp_limits(device))
 
     if isnothing(device_ramp_limits)
         ramp_limits = nothing
@@ -542,9 +659,9 @@ function create_tech_type(name::String,
     tech = HydroTech("HY",
                        (min = min_cap, max = size),
                        ramp_limits,
-                       PSY.get_time_limits(device),
-                       PSY.get_operation_cost(device),
-                       PSY.get_number(bus),
+                       deepcopy(PSY.get_time_limits(device)),
+                       deepcopy(PSY.get_operation_cost(device)),
+                       deepcopy( PSY.get_number(bus)),
                        projectdata["Zone"],
                        FOR)
 
@@ -576,12 +693,12 @@ function create_tech_type(name::String,
                           finance_data::Finance
                         )
 
-    bus = PSY.get_bus(device)
+    bus = deepcopy(PSY.get_bus(device))
 
-    type = string(PSY.get_prime_mover(device))
-    input_active_power_limits = PSY.get_input_active_power_limits(device)
-    output_active_power_limits = PSY.get_output_active_power_limits(device)
-    storage_capacity = PSY.get_state_of_charge_limits(device)
+    type = string(deepcopy(PSY.get_prime_mover(device)))
+    input_active_power_limits = deepcopy(PSY.get_input_active_power_limits(device))
+    output_active_power_limits = deepcopy(PSY.get_output_active_power_limits(device))
+    storage_capacity = deepcopy(PSY.get_state_of_charge_limits(device))
 
     FOR = projectdata["FOR"]
 
@@ -623,6 +740,7 @@ function create_project(projectdata::DataFrames.DataFrameRow,
                      projectdata["Size"]))
 
     base_power = size
+    carbon_tax = get_carbon_tax(simulation_data)
 
     products = create_products(simulation_data,
                                projectdata)
@@ -633,9 +751,9 @@ function create_project(projectdata::DataFrames.DataFrameRow,
     end_life_year,
     finance_data = create_investment_data(size, projectdata, investor_dir, simulation_data, products, investor_name, scenario_names, lag_bool)
 
-    sys_UC_bool = !isnothing(get_system_UC(simulation_data))
+    sys_UC = get_system_UC(simulation_data)
 
-    project = create_tech_type(name, projectdata, size, base_power, decision_year, construction_year, retirement_year, end_life_year, products, finance_data, sys_UC_bool)
+    project = create_tech_type(name, projectdata, size, base_power, decision_year, construction_year, retirement_year, end_life_year, products, finance_data, sys_UC, carbon_tax)
 
     return project
 end
@@ -652,13 +770,14 @@ function create_project(projectdata::DataFrames.DataFrameRow,
                           investor_dir::String,
                           scenario_names::Vector{String},
                           lag_bool::Bool) where T <: Union{PSY.Generator, PSY.Storage}
+
     name = get_name(device)
 
     base_power = PSY.get_base_power(device)
+
     size = get_device_size(device) * base_power
 
     products = create_products(simulation_data,
-                               device,
                                projectdata)
 
     decision_year,

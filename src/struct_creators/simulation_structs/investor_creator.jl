@@ -140,12 +140,20 @@ function create_investors(simulation_data::AgentSimulationData)
 
         for m in keys(simulation_markets)
             if simulation_markets[m]
-                if m == :Reserves
-                    push!(markets, :ReserveUp)
-                    push!(markets, :ReserveDown)
-                else
                     push!(markets, m)
-                end
+            end
+        end
+
+        #Carbon Tax Data
+        simulation_years = get_simulation_years(get_case(simulation_data))
+        start_year = get_start_year(get_case(simulation_data))
+
+        carbon_tax = zeros(simulation_years)
+
+        if in(:CarbonTax, markets)
+            carbon_tax_data = read_data(joinpath(investor_dir, "markets_data", "CarbonTax.csv"))
+            for y in 1:simulation_years
+                carbon_tax[y] = carbon_tax_data[findfirst(x -> x == start_year + y - 1, carbon_tax_data[:, "Year"]), "\$/ton"]
             end
         end
 
@@ -171,6 +179,7 @@ function create_investors(simulation_data::AgentSimulationData)
                                 investor_dir,
                                 projects,
                                 markets,
+                                carbon_tax,
                                 market_prices,
                                 rep_hour_weight,
                                 forecast,

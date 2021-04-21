@@ -41,6 +41,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         active_projects = deepcopy(get_activeprojects(simulation))
 
+        #=
         installed_capacity = update_installed_cap!(installed_capacity,
                                                    active_projects,
                                                    iteration_year,
@@ -77,6 +78,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         end
 
         update_simulation_derating_data!(simulation)
+        =#
 
         #Get all existing projects to calculate realized profits for energy and REC markets.
         all_existing_projects = vcat(get_existing.(get_investors(simulation))...)
@@ -91,6 +93,12 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
             if end_life_year >= capacity_market_year && construction_year <= capacity_market_year
                 push!(capacity_market_projects, project)
             end
+
+            # Update variable operation cost based on annual carbon tax for SIIP market clearing
+            #update_operation_cost!(project, sys_UC, get_carbon_tax(simulation), iteration_year)
+            #update_operation_cost!(project, sys_ED, get_carbon_tax(simulation), iteration_year)
+
+
         end
 
         installed_capacity = update_installed_cap!(installed_capacity,
@@ -106,8 +114,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         #Create realzed market prices for existing projects.
         realized_market_prices,
         realized_capacity_factors,
-        realized_reserve_up_perc,
-        realized_reserve_down_perc,
+        realized_reserve_perc,
         capacity_accepted_bids,
         rec_accepted_bids = create_realized_marketdata(simulation,
                                                              sys_UC,
@@ -122,6 +129,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                                                              get_results_dir(simulation))
 
         existing_project_types = unique(get_type.(get_tech.(all_existing_projects)))
+        rt_products = String.(split(read_data(joinpath(get_data_dir(get_case(simulation)), "markets_data", "reserve_products.csv"))[1,"rt_products"], "; "))
 
         #Update forecasts and realized profits of all existing projects for each investor.
 
@@ -136,22 +144,28 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                 update_realized_profits!(project,
                                          realized_market_prices,
                                          realized_capacity_factors,
-                                         realized_reserve_up_perc,
-                                         realized_reserve_down_perc,
+                                         realized_reserve_perc,
                                          capacity_accepted_bids,
                                          rec_accepted_bids,
                                          get_hour_weight(simulation),
                                          iteration_year,
-                                         capacity_forward_years)
+                                         capacity_forward_years,
+                                         get_carbon_tax(simulation)[iteration_year],
+                                         get_da_resolution(get_case(simulation)),
+                                         get_rt_resolution(get_case(simulation)),
+                                         rt_products)
 
                 update_annual_cashflow!(project, iteration_year)
 
+                #=
                 retire_old!(projects,
                             i,
                             project,
                             sys_UC,
+                            sys_ED,
                             get_data_dir(get_case(simulation)),
                             iteration_year)
+                =#
 
             end
         end

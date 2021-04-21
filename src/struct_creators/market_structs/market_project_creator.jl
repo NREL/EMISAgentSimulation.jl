@@ -101,152 +101,28 @@ function get_project_energy_cost(project::P) where P <: Project{<: BuildPhase}
     return marginal_cost_energy
 end
 
-
-function get_marginal_cost_reserveup(product::T) where T <: Product
-    return
+"""
+This function returns the project's marginal cost of reeserve product to be passed to economic dispatch and CEM.
+"""
+function get_project_reserve_cost(product::Product, project_reserve_cost::Dict{String, Float64})
+    return project_reserve_cost
 end
 
-function get_marginal_cost_reserveup(product::OperatingReserve{ReserveUpEMIS})
-    marginal_cost_reserveup = get_marginal_cost(product)
-    return marginal_cost_reserveup
+function get_project_reserve_cost(product::P, project_reserve_cost::Dict{String, Float64}) where P <: OperatingReserve
+    project_reserve_cost[String(get_name(product))] = get_marginal_cost(product)
+    return project_reserve_cost
 end
 
 """
-This function returns the project's marginal cost of reserve up product to be passed to economic dispatch and CEM.
+This function returns the project's maximum participation in reeserve product to be passed to economic dispatch and CEM.
 """
-function get_project_reserve_up_cost(project::P, voll::Float64) where P <: Project{<: BuildPhase}
-    marginal_cost_reserve_up = voll
-    for product in find_operating_products(get_products(project))
-        marginal_cost_temp = get_marginal_cost_reserveup(product)
-        if !isnothing(marginal_cost_temp)
-            marginal_cost_reserve_up = marginal_cost_temp
-        end
-    end
-    return marginal_cost_reserve_up
+function get_project_reserve_limit(product::Product, max_cap::Float64, project_reserve_limit::Dict{String, Float64})
+    return project_reserve_limit
 end
 
-function get_max_reserveup(product::T) where T <: Product
-    return
-end
-
-function get_max_reserveup(product::OperatingReserve{ReserveUpEMIS})
-    max_reserveup = get_max_limit(product)
-    return max_reserveup
-end
-
-"""
-This function returns the project's maximum reserve up participation limit to be passed to economic dispatch and CEM.
-"""
-function get_project_max_reserveup(project::P) where P <: Project{<: BuildPhase}
-    max_reserveup = 0.
-    for product in find_operating_products(get_products(project))
-        max_reserveup_temp = get_max_reserveup(product)
-        if !isnothing(max_reserveup_temp)
-            max_reserveup = max_reserveup_temp * get_maxcap(project)
-        end
-    end
-    return max_reserveup
-end
-
-function get_marginal_cost_reservedown(product::T) where T <: Product
-    return
-end
-
-function get_marginal_cost_reservedown(product::OperatingReserve{ReserveDownEMIS})
-    marginal_cost_reserve_down = get_marginal_cost(product)
-    return marginal_cost_reserve_down
-end
-
-"""
-This function returns the project's marginal cost of reserve down product to be passed to economic dispatch and CEM.
-"""
-function get_project_reserve_down_cost(project::P, voll::Float64) where P <: Project{<: BuildPhase}
-    marginal_cost_reserve_down = voll
-    for product in find_operating_products(get_products(project))
-        marginal_cost_temp = get_marginal_cost_reservedown(product)
-        if !isnothing(marginal_cost_temp)
-            marginal_cost_reserve_down = marginal_cost_temp
-        end
-    end
-    return marginal_cost_reserve_down
-end
-
-function get_max_reservedown(product::T) where T <: Product
-    return
-end
-
-function get_max_reservedown(product::OperatingReserve{ReserveDownEMIS})
-    max_reservedown = get_max_limit(product)
-    return max_reservedown
-end
-
-"""
-This function returns the project's maximum reserve down participation limit to be passed to economic dispatch and CEM.
-"""
-function get_project_max_reservedown(project::P) where P <: Project{<: BuildPhase}
-    max_reservedown = 0.
-    for product in find_operating_products(get_products(project))
-        max_reservedown_temp = get_max_reservedown(product)
-        if !isnothing(max_reservedown_temp)
-            max_reservedown = max_reservedown_temp * get_maxcap(project)
-        end
-    end
-    return max_reservedown
-end
-
-function get_marginal_cost_synchronous_reserve(product::T) where T <: Product
-    return
-end
-
-function get_marginal_cost_synchronous_reserve(product::OperatingReserve{ReserveUpEMIS})
-    marginal_cost_synchronous_reserve = 0.0;
-    if get_name(product) == :SynchronousReserve
-        marginal_cost_synchronous_reserve = get_marginal_cost(product)
-    end
-    return marginal_cost_synchronous_reserve
-end
-
-"""
-This function returns the project's marginal cost of synchronous product to be passed to economic dispatch and CEM.
-"""
-function get_project_synchronous_reserve_cost(project::P, voll::Float64) where P <: Project{<: BuildPhase}
-    marginal_cost_synchronous_reserve = voll
-    for product in find_operating_products(get_products(project))
-        if get_name(product) == :SynchronousReserve
-            marginal_cost_temp = get_marginal_cost_synchronous_reserve(product)
-            if !isnothing(marginal_cost_temp)
-                marginal_cost_synchronous_reserve = marginal_cost_temp
-            end
-        end
-    end
-    return marginal_cost_synchronous_reserve
-end
-
-function get_max_synchronous_reserve(product::T) where T <: Product
-    return
-end
-
-function get_max_synchronous_reserve(product::OperatingReserve{ReserveUpEMIS})
-    if get_name(product) == :SynchronousReserve
-        max_synchronous_reserve = get_max_limit(product)
-    end
-    return max_synchronous_reserve
-end
-
-"""
-This function returns the project's maximum reserve up participation limit to be passed to economic dispatch and CEM.
-"""
-function get_project_max_synchronous_reserve(project::P) where P <: Project{<: BuildPhase}
-    max_synchronous_reserve = 0.
-    for product in find_operating_products(get_products(project))
-        if get_name(product) == :SynchronousReserve
-            max_synchronous_reserve_temp = get_max_synchronous_reserve(product)
-            if !isnothing(max_synchronous_reserve_temp)
-                max_synchronous_reserve = max_synchronous_reserve_temp * get_maxcap(project)
-            end
-        end
-    end
-    return max_synchronous_reserve
+function get_project_reserve_limit(product::P, max_cap::Float64, project_reserve_limit::Dict{String, Float64}) where P <: OperatingReserve
+    project_reserve_limit[String(get_name(product))] = get_max_limit(product) * max_cap
+    return project_reserve_limit
 end
 
 """
@@ -310,13 +186,30 @@ function get_project_rec_market_bid(project::P) where P <: Project{<: BuildPhase
     return rec_bid
 end
 
+function calculate_carbon_emissions(project_carbon_emissions::Float64, product::Product)
+    return project_carbon_emissions
+end
+
+function calculate_carbon_emissions(project_carbon_emissions::Float64, product::CarbonTax)
+    project_carbon_emissions = get_emission_intensity(product) * get_avg_heat_rate(product)
+    return project_carbon_emissions
+end
+
+function get_emission_intensity(project::Project)
+    intensity = 0.0
+    for product in get_products(project)
+        temp = get_emission_intensity(product)
+        if !(isnothing(temp))
+            intensity += temp
+        end
+    end
+    return intensity
+end
+
 """
 This function creates the MarketProject struct to be passed to CEM price projection and endogeneous Economic Dispatch models.
 """
 function populate_market_project(project::P,
-                                reserve_up_cost::Float64,
-                                reserve_down_cost::Float64,
-                                synchronous_reserve_cost::Float64,
                                 project_type::String,
                                 min_input::Float64,
                                 max_input::Float64,
@@ -335,6 +228,20 @@ function populate_market_project(project::P,
 
     finance_data = get_finance_data(project)
 
+    products = get_products(project)
+
+    project_reserve_cost = Dict{String, Float64}()
+    project_reserve_limit = Dict{String, Float64}()
+    project_carbon_emissions = 0.0
+
+    max_cap = get_maxcap(project)
+
+    for product in products
+        project_reserve_cost = get_project_reserve_cost(product, project_reserve_cost)
+        project_reserve_limit = get_project_reserve_limit(product, max_cap, project_reserve_limit)
+        project_carbon_emissions = calculate_carbon_emissions(project_carbon_emissions, product)
+    end
+
     market_project = MarketProject(
         get_name(project),                                                                       # name
         project_type,                                                                            # is project of storage type
@@ -342,13 +249,12 @@ function populate_market_project(project::P,
         get_fixed_OM_cost(finance_data),                                                           # annualfixed O&M costs
         get_queue_cost(finance_data),                                                             # Queue cost
         get_project_energy_cost(project),                                                        # marginal cost of energy
-        reserve_up_cost,                                                                         # marginal cost of reserve down
-        reserve_down_cost,                                                                       # marginal cost of reserve up
-        synchronous_reserve_cost,                                                                # marginal cost of reserve up
+        project_reserve_cost,                                                                    # marginal cost of reserves
+        project_carbon_emissions,                                                                # project emission intensity
         get_investment_cost(finance_data)[iteration_year:iteration_year + num_invperiods - 1],    # yearly investment cost
         get_discount_rate(finance_data),                                                          # discount rate
         get_mincap(project),                                                                     # minimum capacity
-        get_maxcap(project),                                                                     # maximum capacity
+        max_cap,                                                                                 # maximum capacity
         min_input,                                                                               # minimum input power
         max_input,                                                                               # maximum input power
         efficiency_in,                                                                           # input efficiency
@@ -359,9 +265,7 @@ function populate_market_project(project::P,
         availability_input,                                                                      # Hourly availability
         get_project_derating(project),                                                           # de-rating factor
         get_ramp_limits(get_tech(project)),                                                       # ramp limits
-        get_project_max_reserveup(project),                                                      # maximum reserve up limit
-        get_project_max_reservedown(project),                                                    # maximum reserve down limit
-        get_project_max_synchronous_reserve(project),                                            # maximum synchronous reserve limit
+        project_reserve_limit,                                                                    # reserve participation limits
         existing_units,                                                                          # existing units
         units_inqueue,                                                                           # units in queue
         get_lag_time(finance_data),                                                               # construction lead time
@@ -385,9 +289,6 @@ passed to CEM price projection and endogeneous Economic Dispatch models.
 """
 function create_market_project(project::P,
                               pricecap_energy::Float64,
-                              pricecap_reserveup::Float64,
-                              pricecap_reservedown::Float64,
-                              pricecap_synchronousreserve::Float64,
                               max_peak_loads::AxisArrays.AxisArray{Float64, 1},
                               iteration_year::Int64,
                               num_hours::Int64,
@@ -421,10 +322,8 @@ function create_market_project(project::P,
     existing_units = 1
     remaining_lag_time = 0
 
+
     market_project = populate_market_project(project,
-                                             get_project_reserve_up_cost(project, pricecap_reserveup),
-                                             get_project_reserve_down_cost(project, pricecap_reservedown),
-                                             get_project_synchronous_reserve_cost(project, pricecap_synchronousreserve),
                                              project_type,
                                              min_input,
                                              max_input,
@@ -450,9 +349,6 @@ passed to CEM price projection and endogeneous Economic Dispatch models.
 """
 function create_market_project(project::P,
                               pricecap_energy::Float64,
-                              pricecap_reserveup::Float64,
-                              pricecap_reservedown::Float64,
-                              pricecap_synchronousreserve::Float64,
                               max_peak_loads::AxisArrays.AxisArray{Float64, 1},
                               iteration_year::Int64,
                               num_hours::Int64,
@@ -482,9 +378,6 @@ function create_market_project(project::P,
     remaining_lag_time = get_lag_time(finance_data) + queue_time
 
     market_project = populate_market_project(project,
-                                             get_project_reserve_up_cost(project, pricecap_reserveup),
-                                             get_project_reserve_down_cost(project, pricecap_reservedown),
-                                             get_project_synchronous_reserve_cost(project, pricecap_synchronousreserve),
                                              project_type,
                                              min_input,
                                              max_input,
@@ -522,9 +415,6 @@ passed to CEM price projection and endogeneous Economic Dispatch models.
 """
 function create_market_project(project::P,
                               pricecap_energy::Float64,
-                              pricecap_reserveup::Float64,
-                              pricecap_reservedown::Float64,
-                              pricecap_synchronousreserve::Float64,
                               max_peak_loads::AxisArrays.AxisArray{Float64, 1},
                               iteration_year::Int64,
                               num_hours::Int64,
@@ -561,9 +451,6 @@ function create_market_project(project::P,
     existing_units = 0
 
     market_project = populate_market_project(project,
-                                             get_project_reserve_up_cost(project, pricecap_reserveup),
-                                             get_project_reserve_down_cost(project, pricecap_reservedown),
-                                             get_project_synchronous_reserve_cost(project, pricecap_synchronousreserve),
                                              project_type,
                                              min_input,
                                              max_input,
@@ -589,9 +476,6 @@ passed to CEM price projection and endogeneous Economic Dispatch models.
 """
 function create_market_project(project::P,
                               pricecap_energy::Float64,
-                              pricecap_reserveup::Float64,
-                              pricecap_reservedown::Float64,
-                              pricecap_synchronousreserve::Float64,
                               max_peak_loads::AxisArrays.AxisArray{Float64, 1},
                               iteration_year::Int64,
                               num_hours::Int64,
@@ -631,9 +515,6 @@ function create_market_project(project::P,
     existing_units = 0
 
      market_project = populate_market_project(project,
-                                             get_project_reserve_up_cost(project, pricecap_reserveup),
-                                             get_project_reserve_down_cost(project, pricecap_reservedown),
-                                             get_project_synchronous_reserve_cost(project, pricecap_synchronousreserve),
                                              project_type,
                                              min_input,
                                              max_input,

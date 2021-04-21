@@ -6,9 +6,11 @@ function energy_mkt_clearing(sys_UC::Nothing,
                              sys_ED::Nothing,
                              sys_local_ED::MarketClearingProblem,
                              load_growth::AxisArrays.AxisArray{Float64, 1},
+                             simulation_dir::String,
                              zones::Vector{String},
                              num_days::Int64,
-                             solver::JuMP.MOI.OptimizerWithAttributes)
+                             solver::JuMP.MOI.OptimizerWithAttributes,
+                             iteration_year::Int64)
     energy_price,
     reserve_up_price,
     reserve_down_price,
@@ -28,19 +30,20 @@ Returns the market clearing prices, capacity factors and reserve percentages.
 function energy_mkt_clearing(sys_UC::PSY.System,
                              sys_ED::PSY.System,
                              sys_local_ED::Union{Nothing, MarketClearingProblem},
+                             simulation_dir::String,
                              load_growth::AxisArrays.AxisArray{Float64, 1},
                              zones::Vector{String},
                              num_days::Int64,
-                             solver::JuMP.MOI.OptimizerWithAttributes)
+                             solver::JuMP.MOI.OptimizerWithAttributes,
+                             iteration_year::Int64)
 
-    update_PSY_timeseries!(sys_UC, load_growth, num_days)
+    #update_PSY_timeseries!(sys_UC, load_growth, simulation_dir)
+    #update_PSY_timeseries!(sys_ED, load_growth, simulation_dir)
 
     energy_price,
-    reserve_up_price,
-    reserve_down_price,
+    reserve_price,
     capacity_factors,
-    reserve_up_perc,
-    reserve_down_perc = create_simulation(sys_UC, sys_ED, zones, num_days, solver)
+    reserve_perc = create_simulation(sys_UC, sys_ED, simulation_dir, zones, num_days, solver, iteration_year)
 
-    return energy_price, reserve_up_price, reserve_down_price, capacity_factors, reserve_up_perc, reserve_down_perc;
+    return energy_price, reserve_price, capacity_factors, reserve_perc;
 end

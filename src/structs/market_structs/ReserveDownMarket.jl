@@ -4,17 +4,18 @@ for price forcasts using CEM and endogeneous Economic Dispatch.
 The reserve down market assumes inelastic demand.
 """
 
-struct ReserveDownMarket{Z, T} #
+struct ReserveDownMarket{T} #
 
-    demand::AxisArrays.AxisArray{Float64, 2}         # MW
-    price_cap::AxisArrays.AxisArray{Float64, 1}       # $/MWh
+    demand::Vector{Float64}         # MW
+    price_cap::Float64              # $/MWh
+    zones::Vector{String}
+    eligible_projects::Vector{String}
 
-    function ReserveDownMarket{}(demand::AxisArrays.AxisArray{Float64, 2}, price_cap::AxisArrays.AxisArray{Float64, 1})
+    function ReserveDownMarket{}(demand::Vector{Float64}, price_cap::Float64, zones::Vector{String}, eligible_projects::Vector{String})
         @assert all(demand .>= 0)
-        @assert all(price_cap .>= 0)
-        Z = size(demand, 1)
-        T = size(demand, 2)
-        new{Z, T}(demand, price_cap)
+        @assert price_cap >= 0
+        T = length(demand)
+        new{T}(demand, price_cap, zones, eligible_projects)
     end
 
 end

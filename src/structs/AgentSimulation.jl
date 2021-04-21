@@ -11,6 +11,7 @@ This struct contains all the data for the simulation to be run.
     rep_days: Dictionary of representative days
     peak_load: Annual system-wide peak load for capacity market clearing.
     markets: Boolean for selecting which markets are modeled.
+    carbon_tax: Vector of annual carbon taxes
     investors: Vectors of all investors created in the simulation.
     derating_data: Derating data foe each technology type.
     annual_growth: Annual growth rate data of different parameters.
@@ -28,6 +29,7 @@ mutable struct AgentSimulation
     hour_weight::Vector{Float64}
     peak_load::Float64
     markets::Dict{Symbol, Bool}
+    carbon_tax::Vector{Float64}
     investors::Vector{Investor}
     derating_data::DataFrames.DataFrame
     annual_growth::AxisArrays.AxisArray{Float64, 2}
@@ -44,6 +46,7 @@ get_rep_days(sim::AgentSimulation) = sim.rep_days
 get_hour_weight(sim::AgentSimulation) = sim.hour_weight
 get_peak_load(sim::AgentSimulation) = sim.peak_load
 get_markets(sim::AgentSimulation) = sim.markets
+get_carbon_tax(sim::AgentSimulation) = sim.carbon_tax
 get_investors(sim::AgentSimulation) = sim.investors
 get_derating_data(sim::AgentSimulation) = sim.derating_data
 get_annual_growth(sim::AgentSimulation) = sim.annual_growth
@@ -72,6 +75,7 @@ mutable struct AgentSimulationData
     rep_hour_weight::Vector{Float64}
     peak_load::Float64
     markets::Dict{Symbol, Bool}
+    carbon_tax::Vector{Float64}
     investors::Union{Nothing, Vector{Investor}}
     queue_cost_data::DataFrames.DataFrame
     derating_data::DataFrames.DataFrame
@@ -88,6 +92,7 @@ function AgentSimulationData(case::CaseDefinition,
                         rep_hour_weight::Vector{Float64},
                         peak_load::Float64,
                         markets::Dict{Symbol, Bool},
+                        carbon_tax::Vector{Float64},
                         queue_cost_data::DataFrames.DataFrame,
                         derating_data::DataFrames.DataFrame,
                         annual_growth::AxisArrays.AxisArray{Float64, 2})
@@ -102,6 +107,7 @@ function AgentSimulationData(case::CaseDefinition,
                           rep_hour_weight,
                           peak_load,
                           markets,
+                          carbon_tax,
                           nothing,
                           queue_cost_data,
                           derating_data,
@@ -119,6 +125,7 @@ get_hour_weight(sim::AgentSimulationData) = sim.hour_weight
 get_rep_hour_weight(sim::AgentSimulationData) = sim.rep_hour_weight
 get_peak_load(sim::AgentSimulationData) = sim.peak_load
 get_markets(sim::AgentSimulationData) = sim.markets
+get_carbon_tax(sim::AgentSimulationData) = sim.carbon_tax
 get_investors(sim::AgentSimulationData) = sim.investors
 get_queue_cost_data(sim::AgentSimulationData) = sim.queue_cost_data
 get_derating_data(sim::AgentSimulationData) = sim.derating_data

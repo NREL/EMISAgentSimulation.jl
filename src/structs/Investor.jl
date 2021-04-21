@@ -4,6 +4,7 @@ This struct contains all the data for an investor.
     data_dir: Directoty where investors' data is stored.
     projects: Vector of all projects owned by the investor.
     markets: Vector of markets in which the investor is participating.
+    carbon_tax: Vector of annual carbon tax.
     market_prices: Expected market prices.
     rep_hour_weight: Representative hour weight for operating markets.
     forecast: Forecast parameters.
@@ -16,6 +17,7 @@ mutable struct Investor
     data_dir::String
     projects::Vector{<: Project{<: BuildPhase}}
     markets::Vector{Symbol}
+    carbon_tax::Vector{Float64}
     market_prices::MarketPrices
     rep_hour_weight::Vector{Float64}
     forecast::F where F <: Forecast
@@ -28,6 +30,7 @@ get_name(investor::Investor) = investor.name
 get_data_dir(investor::Investor) = investor.data_dir
 get_projects(investor::Investor) = investor.projects
 get_markets(investor::Investor) = investor.markets
+get_carbon_tax(investor::Investor) = investor.carbon_tax
 get_market_prices(investor::Investor) = investor.market_prices
 get_rep_hour_weight(investor::Investor) = investor.rep_hour_weight
 get_forecast(investor::Investor) = investor.forecast

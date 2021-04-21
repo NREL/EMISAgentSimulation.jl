@@ -11,7 +11,7 @@ This struct contains the technical data of a battery.
     zone: Name of zone in which the battery is located.
 """
 
-struct BatteryTech
+struct BatteryTech <: Tech
     type::String
     input_active_power_limits::NamedTuple{(:min, :max),Tuple{Float64,Float64}}
     output_active_power_limits::NamedTuple{(:min, :max),Tuple{Float64,Float64}}

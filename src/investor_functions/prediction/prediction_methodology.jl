@@ -12,8 +12,10 @@ function gather_prediction_parameters(investor::Investor,
     cp(joinpath(sys_data_dir, "timeseries_data_files", "Load", "rep_load_$(iteration_year - 1).csv"),
     joinpath(load_dir, "load_$(iteration_year - 1).csv"), force = true)
 
-    reserve_products = chop.(filter!(n -> occursin("reserve", n), readdir(joinpath(investor_dir, "markets_data"))), head = 0, tail = 14)
-    ordc_products = read_data(joinpath(sys_data_dir, "markets_data", "ordc_products.csv"))[:,"product"]
+    reserve_definition = read_data(joinpath(sys_data_dir, "markets_data", "reserve_products.csv"))
+
+    reserve_products = String.(split(reserve_definition[1, "all_products"], "; "))
+    ordc_products = String.(split(reserve_definition[1, "ordc_products"], "; "))
 
     reserve_dir = joinpath(investor_dir, "timeseries_data_files", "Reserves")
     dir_exists(reserve_dir)
@@ -25,11 +27,13 @@ function gather_prediction_parameters(investor::Investor,
 
     market_names = get_markets(investor)
 
+    carbon_tax = get_carbon_tax(investor)
+
     rep_hour_weight = get_rep_hour_weight(investor)
 
     scenarios = get_scenario_data(get_forecast(investor))
 
-    return investor_name, investor_dir, market_names, ordc_products, rep_hour_weight, scenarios
+    return investor_name, investor_dir, market_names, carbon_tax, reserve_products, ordc_products, rep_hour_weight, scenarios
 end
 
 """
@@ -57,6 +61,9 @@ function create_investor_predictions(investors::Vector{Investor},
             investor_name_pmap = String[]
             investor_dir_pmap = String[]
             market_names_pmap = Vector{Symbol}[]
+            carbon_tax_pmap = Vector{Float64}[]
+            reserve_products_pmap = Vector{String}[]
+            ordc_products_pmap = Vector{String}[]
             rep_hour_weight_pmap = Vector{Float64}[]
             expected_portfolio_pmap = Vector{Project}[]
 
@@ -65,6 +72,8 @@ function create_investor_predictions(investors::Vector{Investor},
                 investor_name,
                 investor_dir,
                 market_names,
+                carbon_tax,
+                reserve_products,
                 ordc_products,
                 rep_hour_weight,
                 scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
@@ -74,6 +83,8 @@ function create_investor_predictions(investors::Vector{Investor},
                     push!(investor_name_pmap, investor_name)
                     push!(investor_dir_pmap, investor_dir)
                     push!(market_names_pmap, market_names)
+                    push!(carbon_tax_pmap, carbon_tax)
+                    push!(reserve_products_pmap, reserve_products)
                     push!(ordc_products_pmap, ordc_products)
                     push!(rep_hour_weight_pmap, rep_hour_weight)
                     push!(expected_portfolio_pmap, active_projects)
@@ -86,6 +97,8 @@ function create_investor_predictions(investors::Vector{Investor},
             Distributed.pmap(create_expected_marketdata,
                  investor_dir_pmap,
                  market_names_pmap,
+                 carbon_tax_pmap,
+                 reserve_products_pmap,
                  ordc_products_pmap,
                  expected_portfolio_pmap,
                  repeat([zones], num_tasks),
@@ -125,6 +138,8 @@ function create_investor_predictions(investors::Vector{Investor},
             investor_name,
             investor_dir,
             market_names,
+            carbon_tax,
+            reserve_products,
             ordc_products,
             rep_hour_weight,
             scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
@@ -136,6 +151,8 @@ function create_investor_predictions(investors::Vector{Investor},
                 Distributed.pmap(create_expected_marketdata,
                     repeat([investor_dir], num_scenarios),
                     repeat([market_names], num_scenarios),
+                    repeat([carbon_tax], num_scenarios),
+                    repeat([reserve_products], num_scenarios),
                     repeat([ordc_products], num_scenarios),
                     repeat([active_projects], num_scenarios),
                     repeat([zones], num_scenarios),
@@ -155,6 +172,8 @@ function create_investor_predictions(investors::Vector{Investor},
                 for scenario in scenarios
                     create_expected_marketdata(investor_dir,
                                             market_names,
+                                            carbon_tax,
+                                            reserve_products,
                                             ordc_products,
                                             active_projects,
                                             zones,

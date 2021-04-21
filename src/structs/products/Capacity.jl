@@ -10,7 +10,6 @@ mutable struct Capacity <: Product
     derating::Float64
     accepted_perc::Dict{String, Vector{Float64}}
     capacity_bid::Float64
-    zonal::Bool
 end
 
 # Derating factors, accepted percentage and capacity bids only returned when product is of type Capacity

@@ -10,6 +10,8 @@
         rolling_horizon: Number of years to be used for price prediction. If end of rolling horizon exceeds the years of available data, a receding horizon approach is used.
         simulation_years: Number of years to be simulated.
         num_rep_days: Number of representative days used for price prediction.
+        da_resolution: Resolution of Day Ahead market clearing (minutes)
+        rt_resolution: Resolution of Real Time market clearing (minutes)
         heterogeneity: Whether investors' heterogeneous financial characteristics and technology preferences are modeled.
         forecast_type: "Perfect" or "imperfect" forecasts used for price prediction.
         info_symmetry: Whether investors have symmetric information about forecast parameters.
@@ -30,6 +32,8 @@ struct CaseDefinition
     rolling_horizon::Int64
     simulation_years::Int64
     num_rep_days::Int64
+    da_resolution::Int64
+    rt_resolution::Int64
     heterogeneity::Bool
     forecast_type::String
     info_symmetry::Bool
@@ -48,6 +52,8 @@ struct CaseDefinition
                             rolling_horizon,
                             simulation_years,
                             num_rep_days,
+                            da_resolution,
+                            rt_resolution,
                             heterogeneity,
                             forecast_type,
                             info_symmetry,
@@ -69,6 +75,10 @@ struct CaseDefinition
             @assert risk_aversion == false
         end
 
+        @assert da_resolution >= rt_resolution
+        if !(siip_market_clearing)
+            @assert da_resolution == rt_resolution
+        end
 
         return new(base_dir,
                    sys_dir,
@@ -79,6 +89,8 @@ struct CaseDefinition
                    rolling_horizon,
                    simulation_years,
                    num_rep_days,
+                   da_resolution,
+                   rt_resolution,
                    heterogeneity,
                    forecast_type,
                    info_symmetry,
@@ -99,6 +111,8 @@ function CaseDefinition(base_dir::String,
                         rolling_horizon::Int64 = 10,
                         simulation_years::Int64 = 10,
                         num_rep_days::Int64 = 12,
+                        da_resolution::Int64 = 60,
+                        rt_resolution::Int64 = 5,
                         heterogeneity::Bool = false,
                         forecast_type::String = "perfect",
                         info_symmetry::Bool = true,
@@ -117,6 +131,8 @@ function CaseDefinition(base_dir::String,
                    rolling_horizon,
                    simulation_years,
                    num_rep_days,
+                   da_resolution,
+                   rt_resolution,
                    heterogeneity,
                    forecast_type,
                    info_symmetry,
@@ -136,6 +152,8 @@ get_total_horizon(case::CaseDefinition) = case.total_horizon
 get_rolling_horizon(case::CaseDefinition) = case.rolling_horizon
 get_simulation_years(case::CaseDefinition) = case.simulation_years
 get_num_rep_days(case::CaseDefinition) = case.num_rep_days
+get_da_resolution(case::CaseDefinition) = case.da_resolution
+get_rt_resolution(case::CaseDefinition) = case.rt_resolution
 get_heterogeneity(case::CaseDefinition) = case.heterogeneity
 get_info_symmetry(case::CaseDefinition) = case.info_symmetry
 get_belief_update(case::CaseDefinition) = case.belief_update

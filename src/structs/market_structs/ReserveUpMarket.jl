@@ -5,23 +5,18 @@ The Reserve Up Market is implemented using a piece-wise linear Operating Reserve
 with break-points and price-points parameterized within this struct.
 """
 
-struct ReserveUpMarket
+struct ReserveUpMarket{T} #
 
-    break_points::AxisArrays.AxisArray{Vector{Float64}}   # ORDC break points
-    price_points::AxisArrays.AxisArray{Vector{Float64}}    # $/MWh
-    demand::AxisArrays.AxisArray{Float64, 2}
+    demand::Vector{Float64}         # MW
+    price_cap::Float64              # $/MWh
+    zones::Vector{String}
+    eligible_projects::Vector{String}
 
-    function ReserveUpMarket(b, p, d)
-        @assert length(p) == length(b)
-        @assert all(d .>= 0)
-        for i = 1:length(b)
-            @assert all(b[i] .>= 0)
-            @assert all(p[i] .>= 0)
-
-            @assert length(b[i]) > 1
-            @assert length(b[i]) == length(p[i])
-        end
-        new(b, p, d)
+    function ReserveUpMarket{}(demand::Vector{Float64}, price_cap::Float64, zones::Vector{String}, eligible_projects::Vector{String})
+        @assert all(demand .>= 0)
+        @assert price_cap >= 0
+        T = length(demand)
+        new{T}(demand, price_cap, zones, eligible_projects)
     end
 
 end

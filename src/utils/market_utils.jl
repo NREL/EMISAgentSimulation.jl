@@ -55,65 +55,52 @@ end
 This functions returns operating reserve demand curve parameters
 included in CEM for price projection and endogeneous Economic Dispatch.
 """
-function make_ORDC_vectors(ordc_markets::Vector{ReserveORDCMarket{T}}) where T
+function make_ORDC_vectors(ordc_markets::Vector{Dict{String, ReserveORDCMarket{T}}}) where T
 
-    break_points =  getproperty.(ordc_markets, :break_points)
-    price_points_raw =  getproperty.(ordc_markets, :price_points)
+    inv_periods = length(ordc_markets)
 
-    inv_periods = length(break_points)
-    num_segments = AxisArrays.AxisArray(Array{Int64, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
-    segment_size = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
-    segment_grad = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
-    price_points = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T)
+    products = unique(keys(ordc_markets[p]) for p in inv_periods)[1]
 
-    for p in 1:inv_periods
-        for t in 1:T
-            num_segments[p, t] = length(break_points[p][t]) - 1
-            segment_size[p, t] = zeros(num_segments[p, t])
-            segment_grad[p, t] = zeros(num_segments[p, t])
-            price_points[p, t] = price_points_raw[p][t]
+    num_segments = Dict(product => AxisArrays.AxisArray(Array{Int64, 2}(undef, inv_periods, T), 1:inv_periods, 1:T) for product in products)
+    segment_size = Dict(product => AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T) for product in products)
+    segment_grad = Dict(product => AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T) for product in products)
+    price_points = Dict(product => AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, inv_periods, T), 1:inv_periods, 1:T) for product in products)
 
-            for segment in 1:num_segments[p, t]
-                segment_size[p, t][segment] = break_points[p][t][segment + 1] - break_points[p][t][segment]
-                if segment_size[p, t][segment] != 0
-                    segment_grad[p, t][segment] = (price_points[p, t][segment + 1] - price_points[p, t][segment]) /  segment_size[p, t][segment]
+    for product in products
+        break_points =  [getproperty(ordc_markets[p][product], :break_points) for p in 1:inv_periods]
+        price_points_raw = [getproperty(ordc_markets[p][product], :price_points) for p in 1:inv_periods]
+
+        stepped = getproperty(ordc_markets[1][product], :stepped)
+
+        println(stepped)
+
+        for p in 1:inv_periods
+            for t in 1:T
+                num_segments[product][p, t] = length(break_points[p][t]) - 1
+                segment_size[product][p, t] = zeros(num_segments[product][p, t])
+                segment_grad[product][p, t] = zeros(num_segments[product][p, t])
+                price_points[product][p, t] = price_points_raw[p][t]
+
+                if stepped
+
+                    for segment in 1:num_segments[product][p, t]
+                        segment_size[product][p, t][segment] = break_points[p][t][segment + 1] - break_points[p][t][segment]
+                        price_points[product][p, t][segment] = price_points[product][p, t][segment + 1]
+                    end
+
+                else
+
+                    for segment in 1:num_segments[product][p, t]
+                        segment_size[product][p, t][segment] = break_points[p][t][segment + 1] - break_points[p][t][segment]
+                        if segment_size[product][p, t][segment] != 0
+                            segment_grad[product][p, t][segment] = (price_points[product][p, t][segment + 1] - price_points[product][p, t][segment]) /  segment_size[product][p, t][segment]
+                        end
+                    end
+
                 end
             end
         end
-    end
 
-    return segment_size, segment_grad, price_points, num_segments
- end
-
-"""
-This functions returns operating reserve demand curve parameters
-included in CEM for price projection and endogeneous Economic Dispatch.
-"""
-function make_ORDC_vectors(reserveup_markets::Vector{ReserveUpMarket})
-    break_points =  getproperty.(reserveup_markets, :break_points)
-    price_points_raw =  getproperty.(reserveup_markets, :price_points)
-
-    zones = AxisArrays.axisvalues(break_points[1])[1]
-
-    num_segments = AxisArrays.AxisArray(Array{Int64, 2}(undef, length(zones), length(break_points)), zones, 1:length(break_points))
-    segment_size = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, length(zones), length(break_points)), zones, 1:length(break_points))
-    segment_grad = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, length(zones), length(break_points)), zones, 1:length(break_points))
-    price_points = AxisArrays.AxisArray(Array{Vector{Float64}, 2}(undef, length(zones), length(break_points)), zones, 1:length(break_points))
-
-    for z in zones
-        for p in 1:length(break_points)
-            num_segments[z, p] = length(break_points[p][z]) - 1
-            segment_size[z, p] = zeros(num_segments[z, p])
-            segment_grad[z, p] = zeros(num_segments[z, p])
-            price_points[z, p] = price_points_raw[p][z]
-
-            for segment in 1:num_segments[z, p]
-                segment_size[z, p][segment] = break_points[p][z][segment + 1] - break_points[p][z][segment]
-                if segment_size[z, p][segment] != 0
-                    segment_grad[z, p][segment] = (price_points[z, p][segment + 1] - price_points[z, p][segment]) /  segment_size[z, p][segment]
-                end
-            end
-        end
     end
 
     return segment_size, segment_grad, price_points, num_segments
@@ -200,6 +187,33 @@ function update_capacity_factors!(project::P,
             for product in get_products(project)
                 set_capacity_factors!(product, scenario_name, capacity_factors["option_$(get_type(tech))_$(get_zone(tech))"])
             end
+    return
+end
+
+"""
+This function updates the expected capacity factors of projects which are not in Option phase.
+"""
+function update_total_utilization!(project::P,
+                                 scenario_name::String,
+                                 total_utilization::Dict{String, Array{Float64, 2}}) where P <: Project{<: BuildPhase}
+
+    project_total_utilization = total_utilization[get_name(project)]
+    project.finance_data.scenario_total_utilization[scenario_name] = project_total_utilization
+
+    return
+end
+
+"""
+This function updates the expected capacity factors of Option projects.
+"""
+function update_total_utilization!(project::P,
+                                 scenario_name::String,
+                                 total_utilization::Dict{String, Array{Float64, 2}}) where P <: Project{Option}
+
+    tech = get_tech(project)
+    project_total_utilization = total_utilization["option_$(get_type(tech))_$(get_zone(tech))"]
+    project.finance_data.scenario_total_utilization[scenario_name] = project_total_utilization
+
     return
 end
 
@@ -294,5 +308,70 @@ function update_bid!(product::REC,
 
     set_rec_bid!(product, rec_market_bid)
     set_rec_certificates!(product, energy_production)
+    return
+end
+
+function calculate_carbon_cost_ratio(product::Product, carbon_cost_ratio::Float64, carbon_tax::Vector{Float64}, year::Int64)
+    return carbon_cost_ratio
+end
+
+function calculate_carbon_cost_ratio(product::CarbonTax, carbon_cost_ratio::Float64, carbon_tax::Vector{Float64}, year::Int64)
+    carbon_cost = get_emission(product) * carbon_tax[year]
+    ratio = carbon_cost / get_fuel_cost(product)
+    if !isnan(ratio)
+        carbon_cost_ratio = ratio
+    end
+    return carbon_cost_ratio
+end
+
+function update_device_operation_cost!(project::P, sys_UC::PSY.System, var_cost, fixed::Float64) where P <: Project{<:BuildPhase}
+    return
+end
+
+function update_device_operation_cost!(project::P, sys_UC::PSY.System, var_cost, fixed::Float64) where P <: Project{Existing}
+    name = get_name(project)
+    device = PSY.get_components_by_name(PSY.Device, sys_UC, name)[1]
+    device.operation_cost.variable.cost = var_cost
+    device.operation_cost.fixed = fixed
+    return
+end
+
+function update_operation_cost!(project::P, sys_UC::PSY.System, carbon_tax::Vector{Float64}, year::Int64) where P <: Project{<:BuildPhase}
+    return
+end
+
+function update_operation_cost!(project::P, sys_UC::Nothing, carbon_tax::Vector{Float64}, year::Int64) where P <: Project{<:BuildPhase}
+    return
+end
+
+function update_operation_cost!(project::P, sys_UC::PSY.System, carbon_tax::Vector{Float64}, year::Int64) where P <: Project{Existing}
+    operation_cost = get_operation_cost(get_tech(project))
+    if !(isnothing(operation_cost))
+        products = get_products(project)
+        carbon_cost_ratio = 0.0
+
+        for product in products
+            carbon_cost_ratio = calculate_carbon_cost_ratio(product, carbon_cost_ratio, carbon_tax, year)
+        end
+
+        total_cost_scalar = 1 + carbon_cost_ratio
+
+        var_cost = deepcopy(PSY.get_variable(operation_cost).cost)
+
+        fixed = deepcopy(PSY.get_fixed(operation_cost))
+
+        if length(var_cost) > 1
+            for i in 1:length(var_cost)
+                var_cost[i] = (var_cost[i][1] * total_cost_scalar, var_cost[i][2])
+            end
+        elseif length(var_cost) == 1
+            var_cost = var_cost * total_cost_scalar
+        end
+
+        fixed = fixed * total_cost_scalar
+
+        update_device_operation_cost!(project, sys_UC, var_cost, fixed)
+    end
+
     return
 end

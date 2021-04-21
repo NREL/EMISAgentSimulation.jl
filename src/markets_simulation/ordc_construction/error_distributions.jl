@@ -113,7 +113,7 @@ function construct_gen_unavail_distribution(simulation_dir::String,
         capacity_vector = round.(Int, get_maxcap.(generators)) #PRAS needs integer capacities
         FOR_vector = get_FOR.(get_tech.(generators))
 
-        distribution = PRAS.ResourceAdequacy.spconv(capacity_vector, FOR_vector)
+        distribution = spconv(capacity_vector, FOR_vector)
 
         unavail_mean = Distributions.mean(distribution)
         unavail_std = sqrt(Distributions.var(distribution))
@@ -130,15 +130,17 @@ function calculate_min_reserve_req(simulation_dir::String,
     load_n_vg_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
     zones = chop.(filter(n -> occursin("load", n), names(load_n_vg_df)), head = 5, tail = 0)
 
+    thermal_generators = filter(p -> typeof(p) == ThermalGenEMIS{Existing}, generators)
+
     if zonal
         req = Dict{String, Float64}()
 
         for zone in zones
-            largest_gen = maximum(get_maxcap.(filter(p -> get_zone(get_tech(p)) == zone, generators)))
+            largest_gen = maximum(get_maxcap.(filter(p -> get_zone(get_tech(p)) == zone, thermal_generators)))
             req[zone] = largest_gen * MRR_scale
         end
     else
-        largest_gen = maximum(get_maxcap.(generators))
+        largest_gen = maximum(get_maxcap.(thermal_generators))
         req = largest_gen * MRR_scale
     end
 

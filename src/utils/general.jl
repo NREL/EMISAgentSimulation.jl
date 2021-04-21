@@ -20,7 +20,7 @@ This function gets the capacity market forward years for the simulation.
 function get_capacity_forward_years(sim::Union{AgentSimulation, AgentSimulationData})
     forward_years = 1
     if get_markets(sim)[:Capacity]
-        capacity_mkt_params = DataFrames.DataFrame(CSV.File(joinpath(get_data_dir(get_case(sim)), "markets_data", "capacity_mkt_param.csv")))
+        capacity_mkt_params = DataFrames.DataFrame(CSV.File(joinpath(get_data_dir(get_case(sim)), "markets_data", "Capacity.csv")))
         forward_years = capacity_mkt_params.forward_years[1]
     end
     return forward_years
@@ -58,7 +58,7 @@ This function returns the size of the PSY Device.
 """
 get_device_size(device::PSY.ThermalStandard) = PSY.get_active_power_limits(device)[:max]
 get_device_size(device::PSY.RenewableDispatch) = PSY.get_rating(device)
-get_device_size(device::PSY.HydroEnergyReservoir) = PSY.get_active_power_limits(device)[:max]
+get_device_size(device::Union{PSY.HydroEnergyReservoir, PSY.HydroDispatch}) = PSY.get_active_power_limits(device)[:max]
 get_device_size(device::PSY.GenericBattery) = PSY.get_rating(device)
 
 """
@@ -71,9 +71,12 @@ get_line_rating(line::PSY.HVDCLine) = line.active_power_limits_from[:max]
 This function removes leap days from the data if year is not leap year.
 """
 function remove_leap_day!(df:: DataFrames.DataFrame, start_year::Int64)
+    #=
     if start_year % 4 != 0
         filter!(row -> row["Month"] != 2 || row["Day"] != 29, df)
     end
+    =#
+    filter!(row -> row["Month"] != 2 || row["Day"] != 29, df)
 
     return
 end

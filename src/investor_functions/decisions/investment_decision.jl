@@ -5,6 +5,7 @@ for making investment decisions.
 function calculate_expected_utility(project::P,
                                scenario_data::Vector{Scenario},
                                market_prices::MarketPrices,
+                               carbon_tax_data::Vector{Float64},
                                risk_preference::R,
                                rep_hour_weight::Vector{Float64},
                                iteration_year::Int64,
@@ -18,6 +19,7 @@ function calculate_expected_utility(project::P,
     update_project_utility!(project,
                               scenario_data,
                               market_prices,
+                              carbon_tax_data,
                               risk_preference,
                               rep_hour_weight,
                               iteration_year,
@@ -50,6 +52,7 @@ function add_profitable_option(projects::Vector{Project},
                                   profitable_options::Vector{Project},
                                   scenario_data::Vector{Scenario},
                                   market_prices::MarketPrices,
+                                  carbon_tax_data::Vector{Float64},
                                   risk_preference::R,
                                   capital_cost_multiplier::Float64,
                                   investor_name::String,
@@ -61,7 +64,7 @@ function add_profitable_option(projects::Vector{Project},
                                   solver::JuMP.MOI.OptimizerWithAttributes) where {R <: RiskPreference}
 
     if length(projects) >= 1
-        if  get_construction_year(projects[1]) <= simulation_years
+        if  get_construction_year(projects[1]) <= simulation_years && get_construction_year(projects[1]) <= yearly_horizon
 
             total_counter = 1
             counter_by_zone = AxisArrays.AxisArray(ones(length(projects)), get_zone.(get_tech.(projects)))
@@ -75,6 +78,7 @@ function add_profitable_option(projects::Vector{Project},
                 annual_profit, project_utility = calculate_expected_utility(project,
                                                                     scenario_data,
                                                                     market_prices,
+                                                                    carbon_tax_data,
                                                                     risk_preference,
                                                                     rep_hour_weight,
                                                                     iteration_year,
@@ -107,6 +111,7 @@ function add_profitable_option(projects::Vector{Project},
                     annual_profit, project_utility = calculate_expected_utility(option,
                                                                         scenario_data,
                                                                         market_prices,
+                                                                        carbon_tax_data,
                                                                         risk_preference,
                                                                         rep_hour_weight,
                                                                         iteration_year,
@@ -143,6 +148,7 @@ function make_investments!(investor::Investor,
 
     scenario_data = get_scenario_data(get_forecast(investor))
     market_prices = get_market_prices(investor)
+    carbon_tax_data = get_carbon_tax(investor)
     risk_preference = get_risk_preference(investor)
     projects = get_projects(investor)
 
@@ -166,6 +172,7 @@ function make_investments!(investor::Investor,
                                                     profitable_options,
                                                     scenario_data,
                                                     market_prices,
+                                                    carbon_tax_data,
                                                     risk_preference,
                                                     get_cap_cost_multiplier(investor),
                                                     get_name(investor),

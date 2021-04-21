@@ -5,7 +5,7 @@ based on top 100 net-load hour methodology.
 function calculate_derating_data(simulation_dir::String,
                                 active_projects::Vector{Project})
 
-    cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "capacity_mkt_param.csv"))
+    cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
 
     renewable_existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
     renewable_options = filter(p -> typeof(p) == RenewableGenEMIS{Option}, active_projects)
@@ -30,7 +30,7 @@ function calculate_derating_data(simulation_dir::String,
     net_load_df = load_n_vg_data[:, 1:4]
     net_load_df[:, "net_load"] = load - existing_vg_power
 
-    net_load_sorted_df = DataFrames.sort(net_load_df, "net_load", rev = true)
+    net_load_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load", rev = true))
 
     derating_factors = read_data(joinpath(simulation_dir, "markets_data", "derating_dict.csv"))
 
@@ -39,7 +39,7 @@ function calculate_derating_data(simulation_dir::String,
         for type in types
             type_zone_id = "$(type)_$(zone)"
             type_zone_max_cap[type_zone_id] = 0.0
-            net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] = net_load_df[:, "net_load"]
+            net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] = deepcopy(net_load_df[:, "net_load"])
             for g in renewable_existing
                 gen_name = get_name(g)
                 tech = get_tech(g)
@@ -54,9 +54,9 @@ function calculate_derating_data(simulation_dir::String,
     for zone in zones
         for type in types
             type_zone_id = "$(type)_$(zone)"
-            gen_sorted_df = DataFrames.sort(net_load_df, "net_load_w/o_existing_$(type_zone_id)", rev = true)
+            gen_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load_w/o_existing_$(type_zone_id)", rev = true))
 
-            load_reduction = gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] - net_load_sorted_df[1:num_top_hours, "net_load"]
+            load_reduction = gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] - gen_sorted_df[1:num_top_hours, "net_load"]
             derating_factors[:, "existing_$(type_zone_id)"] .= sum(load_reduction) / type_zone_max_cap[type_zone_id] / num_top_hours
         end
     end
@@ -67,11 +67,12 @@ function calculate_derating_data(simulation_dir::String,
         type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
         gen_cap = get_maxcap(g)
 
-        net_load_df[:, "net_load_with_$(gen_name)"] =  net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * gen_cap
-        gen_sorted_df = DataFrames.sort(net_load_df, "net_load_with_$(gen_name)", rev = true)
+        net_load_df[:, "net_load_with_$(gen_name)"] =  deepcopy(net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * 100)
+        gen_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)", rev = true))
 
         load_reduction = net_load_sorted_df[1:num_top_hours, "net_load"] - gen_sorted_df[1:num_top_hours, "net_load_with_$(gen_name)"]
-        derating_factors[:, "new_$(type_zone_id)"] .= sum(load_reduction) / gen_cap / num_top_hours
+
+        derating_factors[:, "new_$(type_zone_id)"] .= sum(load_reduction) / 100 / num_top_hours
     end
     write_data(joinpath(simulation_dir, "markets_data"), "derating_dict.csv", derating_factors)
     return

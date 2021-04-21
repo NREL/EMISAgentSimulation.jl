@@ -11,9 +11,8 @@ mutable struct MarketProject
     fixed_cost::Float64                   # $/unit/investment period
     queue_cost::Vector{Float64}           # queue cost
     marginal_energy_cost::Float64         # $/MW/hour
-    marginal_reserveup_cost::Float64      # $/MW/hour
-    marginal_reservedown_cost::Float64    # $/MW/hour
-    marginal_synchronousreserve_cost::Float64
+    marginal_reserve_cost::Dict{String, Float64}
+    emission_intensity::Float64
     expansion_cost::Vector{Float64}        # $/unit
     discount_rate::Float64                # discount rate
     min_gen::Float64                      # MW/unit
@@ -28,9 +27,7 @@ mutable struct MarketProject
     availability::Array{Float64, 2}      # Hourly availability factor
     derating_factor::Float64              # Derating factor
     ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}    # MW/unit/hour
-    max_reserveup::Float64                # MW/unit/hour
-    max_reservedown::Float64              # MW/unit/hour
-    max_synchronousreserve::Float64       # MW/unit/hour
+    max_reserve_limits::Dict{String, Float64}
     existing_units::Float64               # existing units
     units_in_queue::Vector{Float64}        # units in queue
     build_lead_time::Int64                 # build lead time
@@ -52,9 +49,8 @@ mutable struct MarketProject
         fixed_cost::Number,
         queue_cost::Vector{<: Number},
         marginal_energy_cost::Number,
-        marginal_reserveup_cost::Number,
-        marginal_reservedown_cost::Number,
-        marginal_synchronousreserve_cost::Number,
+        marginal_reserve_cost::Dict{String, Float64},
+        emission_intensity::Float64,
         expansion_cost::Vector{Float64},
         discount_rate::Number,
         min_gen::Number,
@@ -69,9 +65,7 @@ mutable struct MarketProject
         availability::Array{<: Number, 2},
         derating_factor::Number,
         ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}},
-        max_reserveup::Number,
-        max_reservedown::Number,
-        max_synchronousreserve::Number,
+        max_reserve_limits::Dict{String, Float64},
         existing_units::Number,
         units_in_queue::Vector{<: Number},
         build_lead_time::Number,
@@ -88,9 +82,8 @@ mutable struct MarketProject
 
         @assert fixed_cost >= 0
         @assert marginal_energy_cost >= 0
-        @assert marginal_reserveup_cost >= 0
-        @assert marginal_reservedown_cost >= 0
-        @assert marginal_synchronousreserve_cost >= 0
+        @assert all(values(marginal_reserve_cost) .>= 0)
+        @assert emission_intensity >= 0
         @assert all(expansion_cost .>= 0)
         @assert all(queue_cost .>= 0)
         @assert discount_rate >= 0
@@ -98,6 +91,7 @@ mutable struct MarketProject
         @assert max_gen >= 0
         @assert min_input >= 0
         @assert max_input >= 0
+        @assert all(values(max_reserve_limits) .>= 0)
         @assert efficiency_in >= 0
         @assert efficiency_out >= 0
         @assert min_storage >= 0
@@ -121,9 +115,8 @@ mutable struct MarketProject
             fixed_cost,
             queue_cost,
             marginal_energy_cost,
-            marginal_reserveup_cost,
-            marginal_reservedown_cost,
-            marginal_synchronousreserve_cost,
+            marginal_reserve_cost,
+            emission_intensity,
             expansion_cost,
             discount_rate,
             min_gen,
@@ -138,9 +131,7 @@ mutable struct MarketProject
             availability,
             derating_factor,
             ramp_limits,
-            max_reserveup,
-            max_reservedown,
-            max_synchronousreserve,
+            max_reserve_limits,
             existing_units,
             units_in_queue,
             build_lead_time,

@@ -35,14 +35,17 @@ This function does nothing if the project is retired.
 """
 function update_realized_profits!(project::P,
                                   market_prices::MarketPrices,
-                                  capacity_factors::Dict{Symbol, Array{Float64, 2}},
-                                  reserve_up_perc::Dict{Symbol, Array{Float64, 2}},
-                                  reserve_down_perc::Dict{Symbol, Array{Float64, 2}},
-                                  capacity_accepted_bids::Dict{Symbol, Float64},
+                                  capacity_factors::Dict{String, Array{Float64, 2}},
+                                  reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                  capacity_accepted_bids::Dict{String, Float64},
                                   rec_accepted_bids::Dict{String, Float64},
                                   rep_hour_weight::Vector{Float64},
                                   iteration_year::Int64,
-                                  capacity_forward_years::Int64) where P <: Project{Retired}
+                                  capacity_forward_years::Int64,
+                                  carbon_tax::Float64,
+                                  da_resolution::Int64,
+                                  rt_resolution::Int64,
+                                  rt_products::Vector{String}) where P <: Project{Retired}
 
 end
 
@@ -53,32 +56,36 @@ Returns nothing.
 function update_realized_profits!(project::P,
                                   market_prices::MarketPrices,
                                   capacity_factors::Dict{String, Array{Float64, 2}},
-                                  reserve_up_perc::Dict{String, Array{Float64, 2}},
-                                  reserve_down_perc::Dict{String, Array{Float64, 2}},
+                                  reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
                                   capacity_accepted_bids::Dict{String, Float64},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Vector{Float64},
                                   iteration_year::Int64,
-                                  capacity_forward_years::Int64) where P <: Project{<: BuildPhase}
+                                  capacity_forward_years::Int64,
+                                  carbon_tax::Float64,
+                                  da_resolution::Int64,
+                                  rt_resolution::Int64,
+                                  rt_products::Vector{String}) where P <: Project{<: BuildPhase}
 
     for product in get_products(project)
-        profit, update_year = calculate_realized_profit(get_name(project),
-                                           get_maxcap(project),
-                                           get_zone(get_tech(project)),
+        profit, update_year = calculate_realized_profit(project,
                                            product,
                                            market_prices,
                                            capacity_factors,
-                                           reserve_up_perc,
-                                           reserve_down_perc,
+                                           reserve_perc,
                                            capacity_accepted_bids,
                                            rec_accepted_bids,
                                            realized_hour_weight,
                                            iteration_year,
-                                           capacity_forward_years)
+                                           capacity_forward_years,
+                                           carbon_tax,
+                                           da_resolution,
+                                           rt_resolution,
+                                           rt_products)
 
         finance_data =  get_finance_data(project)
         profit_array_length =  size(get_realized_profit(finance_data), 2)
-        if !isnothing(profit) && update_year <= profit_array_length
+        if !isnothing(profit) && update_year <= profit_array_length && update_year > 0
             set_realized_profit!(finance_data,
                     get_name(product),
                     update_year,
@@ -98,6 +105,7 @@ end
 THis function updates the annual cash flow of Existing projects.
 """
 function update_annual_cashflow!(project::Project{Existing}, iteration_year::Int64)
+
     finance_data = get_finance_data(project)
     annual_revenue = sum(get_realized_profit(finance_data)[:, iteration_year])
     annual_cashflow = annual_revenue - get_fixed_OM_cost(finance_data)

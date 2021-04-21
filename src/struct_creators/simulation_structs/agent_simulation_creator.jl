@@ -28,19 +28,27 @@ function gather_data(case::CaseDefinition)
         zonal_lines = [ZonalLine("line_1", zones[1], zones[1], 0.0)]
     end
 
-
     markets_df = read_data(joinpath(data_dir, "markets_data", "markets.csv"))
     markets_dict = Dict(Symbol(names(markets_df)[i]) => markets_df[1, i] for i in 1:length(names(markets_df)))
 
     if get_siip_market_clearing(case)
-        base_power = 1000.0
-        sys_UC = create_rts_sysUC(joinpath(test_system_dir, "RTS_Data", "SourceData"), base_power)
-        sys_ED = create_rts_sysED(joinpath(test_system_dir, "RTS_Data", "SourceData"), base_power)
+        base_power = 100.0
+        sys_UC, sys_ED = create_rts_sys(test_system_dir, base_power, data_dir, get_da_resolution(case), get_rt_resolution(case))
     else
         sys_UC = nothing
         sys_ED = nothing
     end
 
+    simulation_years = get_simulation_years(case)
+
+    carbon_tax = zeros(simulation_years)
+
+    if markets_dict[:CarbonTax]
+        carbon_tax_data = read_data(joinpath(data_dir, "markets_data", "CarbonTax.csv"))
+        for y in 1:simulation_years
+            carbon_tax[y] = carbon_tax_data[findfirst(x -> x == start_year + y - 1, carbon_tax_data[:, "Year"]), "\$/ton"]
+        end
+    end
 
     queue_cost_df = read_data(joinpath(data_dir, "queue_cost_data.csv"))
 
@@ -56,6 +64,7 @@ function gather_data(case::CaseDefinition)
                                         rep_hour_weight,
                                         system_peak_load,
                                         markets_dict,
+                                        carbon_tax,
                                         queue_cost_df,
                                         deratingdata,
                                         annual_growth)
@@ -64,6 +73,10 @@ function gather_data(case::CaseDefinition)
     set_investors!(simulation_data, investors)
 
     #construct_ordc(data_dir, investors, 0, representative_days)
+    add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC")
+    add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED")
+
+    transform_psy_timeseries!(sys_UC, sys_ED, get_da_resolution(case), get_rt_resolution(case))
 
     # Adding representative days availability data to investor folders
     system_availability_data = DataFrames.DataFrame(CSV.File(joinpath(data_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv")))
@@ -92,7 +105,6 @@ function make_case_data_dir(case::CaseDefinition)
     end
 
     case_dir = get_data_dir(case)
-
     dir_exists(case_dir)
     cp(sys_data_dir, case_dir, force = true)
 
@@ -130,6 +142,7 @@ function create_agent_simulation(case::CaseDefinition)
                             get_hour_weight(simulation_data),
                             get_peak_load(simulation_data),
                             get_markets(simulation_data),
+                            get_carbon_tax(simulation_data),
                             get_investors(simulation_data),
                             get_derating_data(simulation_data),
                             get_annual_growth(simulation_data))

@@ -5,6 +5,7 @@ Returns nothing.
 function update_expected_profit!(project::P,
                                  scenario_data::Vector{Scenario},
                                  market_prices::MarketPrices,
+                                 carbon_tax_data::Vector{Float64},
                                  price_years::NamedTuple{(:start_year, :end_year),
                                               Tuple{Int64, Int64}},
                                  update_years::NamedTuple{(:start_year, :end_year),
@@ -16,6 +17,8 @@ function update_expected_profit!(project::P,
                                  solver::JuMP.MOI.OptimizerWithAttributes) where P <: Project{<: BuildPhase}
 
     extend_profit_array(project, get_name.(scenario_data), iteration_year)
+
+    carbon_tax_vector = carbon_tax_data[iteration_year:end]
 
     profit_array_length = price_years[:end_year] - price_years[:start_year] + 1
 
@@ -39,6 +42,7 @@ function update_expected_profit!(project::P,
         energy_production = calculate_operating_profit(project,
                                                       get_name(scenario),
                                                       market_prices,
+                                                      carbon_tax_vector,
                                                       price_years[:start_year],
                                                       price_years[:end_year],
                                                       rep_hour_weight,
@@ -120,13 +124,11 @@ function update_expected_profit!(project::P,
     expected_capacity_going_forward_cost = total_annual_cost - expected_annual_operating_profit - expected_rec_revenues
     capacity_market_bid = 0.0
 
-
     capacity_revenue_start_year = max(1, capacity_forward_years - price_years[:start_year] + 1)
 
     if capacity_revenue_start_year <= length(expected_capacity_going_forward_cost)
         capacity_market_bid = round(max(0.0, expected_capacity_going_forward_cost[capacity_revenue_start_year] / get_maxcap(project)), digits = 4)
     end
-
 
     #Calculate REC market bid.
     rec_market_bid = max(0.0, (total_annual_cost[1] - expected_annual_operating_profit[1] - expected_capacity_revenues[1]) / max(1e-3, expected_energy_production[1]))

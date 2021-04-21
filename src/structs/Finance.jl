@@ -7,6 +7,7 @@ This struct contains the financial data of projects.
     capex_years: Number of years for capital cost recovery calculation.
     fixed_OM_cost: Annual investment cost.
     queue_cost: Vector of yearly queue costs.
+    scenario_total_utilization: Dictionary of expected total capacity utilization for each scenario
     scenario_profit: Array of profits for each product through the project's life_time for each scenario.
     realized_profit: AxisArray of realized profits.
     discount_rate: Discount rate (%) for investment in the project.
@@ -25,6 +26,7 @@ mutable struct Finance
     capex_years::Int64
     fixed_OM_cost::Float64
     queue_cost::Vector{Float64}
+    scenario_total_utilization::Dict{String, Array{Float64, 2}}
     scenario_profit::Dict{String, Vector{AxisArrays.AxisArray{Float64, 2}}}
     realized_profit::AxisArrays.AxisArray{Float64, 2}
     discount_rate::Float64
@@ -43,6 +45,7 @@ get_life_time(finance_data::Finance) = finance_data.life_time
 get_capex_years(finance_data::Finance) = finance_data.capex_years
 get_fixed_OM_cost(finance_data::Finance) = finance_data.fixed_OM_cost
 get_queue_cost(finance_data::Finance) = finance_data.queue_cost
+get_scenario_total_utilization(finance_data::Finance) = finance_data.scenario_total_utilization
 get_scenario_profit(finance_data::Finance) = finance_data.scenario_profit
 get_realized_profit(finance_data::Finance) = finance_data.realized_profit
 get_discount_rate(finance_data::Finance) = finance_data.discount_rate

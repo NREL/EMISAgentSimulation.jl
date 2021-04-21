@@ -4,6 +4,8 @@ abstract type Project{T <: BuildPhase} <: DeviceEMIS end    #Projects, parameter
 abstract type GeneratorEMIS{T <: BuildPhase} <: Project{T} end  #Generators - subtype of Projects
 abstract type StorageEMIS{T <: BuildPhase} <: Project{T} end  #Storage - subtype of Projects
 
+abstract type Tech end
+
 get_name(project::P) where P <: Project{<: BuildPhase} = project.name
 get_tech(project::P) where P <: Project{<: BuildPhase}  = project.tech
 get_decision_year(project::P) where P <: Project{<: BuildPhase}  = project.decision_year
@@ -16,6 +18,10 @@ get_mincap(project::P) where P <: GeneratorEMIS{<: BuildPhase}  = get_active_pow
 get_maxcap(project::P) where P <: GeneratorEMIS{<: BuildPhase}  = get_active_power_limits(get_tech(project))[:max]
 get_mincap(project::P) where P <: StorageEMIS{<: BuildPhase}  = get_output_active_power_limits(get_tech(project))[:min]
 get_maxcap(project::P) where P <: StorageEMIS{<: BuildPhase}  = get_output_active_power_limits(get_tech(project))[:max]
+
+get_operation_cost(tech::Tech) = nothing
+get_heat_rate_curve(tech::Tech) = nothing
+get_fuel_cost(tech::Tech) = 0.0
 
 function set_name!(project::P,
                    name::String) where P <: Project{<: BuildPhase}

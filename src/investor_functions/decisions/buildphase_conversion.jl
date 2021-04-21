@@ -140,7 +140,8 @@ Returns nothing.
 function retire_old!(projects::Vector{<: Project{<: BuildPhase}},
                      index::Int64,
                      project::P,
-                     sys::Union{Nothing, PSY. System},
+                     sys_UC::Union{Nothing, PSY. System},
+                     sys_ED::Union{Nothing, PSY. System},
                      simulation_dir::String,
                      iteration_year::Int64) where P <: Project{<: BuildPhase}
     return false
@@ -154,13 +155,16 @@ Returns nothing.
 function retire_old!(projects::Vector{<: Project{<: BuildPhase}},
                      index::Int64,
                      project::P,
-                     sys::Union{Nothing, PSY. System},
+                     sys_UC::Union{Nothing, PSY. System},
+                     sys_ED::Union{Nothing, PSY. System},
                      simulation_dir::String,
                      iteration_year::Int64) where P <: Project{Existing}
+
     if get_end_life_year(project) == iteration_year
         set_retirement_year!(projects[index], iteration_year + 1)
         projects[index] = convert(Project{Retired}, project)
-        remove_system_component!(sys, project)
+        remove_system_component!(sys_UC, project)
+        remove_system_component!(sys_ED, project)
         remove_renewable_gen_data!(project, simulation_dir)
     end
 end

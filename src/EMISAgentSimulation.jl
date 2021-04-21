@@ -35,6 +35,7 @@ export OperatingReserve
 export Energy
 export Capacity
 export REC
+export CarbonTax
 
 export BuildPhase
 export Existing
@@ -136,6 +137,7 @@ export get_capacity_bid
 export get_capacity_factors
 export get_cap_cost_multiplier
 export get_capex_years
+export get_carbon_tax
 export get_case
 export get_constant
 export get_construction_year
@@ -149,6 +151,7 @@ export get_discount_rate
 export get_effective_investment_cost
 export get_efficiency
 export get_end_life_year
+export get_emission
 export get_energy_price
 export get_error_covariance_estimate
 export get_existing
@@ -160,6 +163,7 @@ export get_forecast
 export get_forecast_type
 export get_from_zone
 export get_fuel
+export get_heat_rate
 export get_heterogeneity
 export get_hour_weight
 export get_info_symmetry
@@ -271,13 +275,15 @@ import JuMP
 export optimizer_with_attributes
 import JLD2
 import LinearAlgebra
-import PRAS
+import PooledArrays
 import PowerSystems
 import PowerSimulations
+using PowerSimulationExtensions
 import InfrastructureSystems
 
 const PSY = PowerSystems
 const PSI = PowerSimulations
+const PSIE = PowerSimulationExtensions
 const IS = InfrastructureSystems
 
 import Random
@@ -306,6 +312,7 @@ include("structs/products/Energy.jl")
 include("structs/products/OperatingReserve.jl")
 include("structs/products/Capacity.jl")
 include("structs/products/REC.jl")
+include("structs/products/CarbonTax.jl")
 
 include("structs/Finance.jl")
 
@@ -368,6 +375,9 @@ include("struct_creators/market_structs/economic_dispatch_creator.jl")
 include("markets_simulation/ordc_construction/error_distributions.jl")
 include("markets_simulation/ordc_construction/ordc_construction.jl")
 include("markets_simulation/ordc_construction/ordc_market_creator.jl")
+
+#Include PRAS Resource adequacy functions
+include("PRAS_functions/conv.jl")
 
 #Include Test System Parsers
 include("test_system_parsers/test_system_reader.jl")

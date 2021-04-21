@@ -33,17 +33,7 @@ function run_investor_iteration(investor::Investor,
 
         set_energy_price!(market_prices, scenario_name, expected_data["energy_price"])
 
-        if in(:ReserveUp, market_names)
-            set_reserveup_price!(market_prices, scenario_name, expected_data["reserve_up_price"])
-        end
-
-        if in(:ReserveDown, market_names)
-            set_reservedown_price!(market_prices, scenario_name, expected_data["reserve_down_price"])
-        end
-
-        if in(:SynchronousReserve, market_names)
-            set_synchronous_reserve_price!(market_prices, scenario_name, expected_data["synchronous_reserve_price"])
-        end
+        set_reserve_price!(market_prices, scenario_name, expected_data["reserve_price"])
 
         if in(:Capacity, market_names)
             set_capacity_price!(market_prices, scenario_name, expected_data["capacity_price"])
@@ -56,6 +46,7 @@ function run_investor_iteration(investor::Investor,
         for project in projects
             if in(get_name(project), get_name.(active_projects_copy))
                 update_capacity_factors!(project, scenario_name, expected_data["capacity_factors"])
+                update_total_utilization!(project, scenario_name, expected_data["total_utilization"])
             end
             if in(get_name(project), get_name.(active_projects_copy))
                 update_capacity_accepted_perc!(project, scenario_name, expected_data["capacity_accepted_perc"])

@@ -8,7 +8,6 @@ mutable struct REC <: Product
     name::Symbol
     certificates::Float64
     rec_bid::Float64
-    zonal::Bool
 end
 
 # Certificates and REC bids only returned when product is of type REC

@@ -19,6 +19,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
     simulation_dir = get_data_dir(get_case(simulation))
     zones = get_zones(simulation)
     lines = get_lines(simulation)
+    case = get_case(simulation)
     annual_growth = get_annual_growth(simulation)[:, iteration_year]
 
     hour_weight = get_hour_weight(simulation)
@@ -36,39 +37,31 @@ function create_realized_marketdata(simulation::AgentSimulation,
     ######## Energy and Ancillary Services market clearing ############################################
 
     zonal_load, system = create_economic_dispatch_problem(simulation,
+                                                          sys_UC,
                                                           market_names,
                                                           num_invperiods,
                                                           load_growth,
                                                           existing_projects,
                                                           iteration_year)
 
-    num_hours = get_num_hours(system)
+    num_hours = size(zonal_load)[2]
     num_days = Int(num_hours/24)
 
     energy_price,
-    reserve_up_price,
-    reserve_down_price,
+    reserve_price,
     capacity_factors,
-    reserve_up_perc,
-    reserve_down_perc = energy_mkt_clearing(sys_UC, sys_ED, system, load_growth, zones, num_days, solver)
+    reserve_perc = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, zones, num_days, solver, iteration_year)
 
     # Replace energy_mkt_clearing(nothing, nothing, system, load_growth, zones, num_days, solver) with
     # energy_mkt_clearing(sys_UC, sys_ED, system, load_growth, zones, num_days, solver) to run SIIP production cost model
 
-    market_prices = Dict(name => zeros(num_invperiods, num_hours) for name in market_names)
-
+    # Create empty market prices struct
     market_prices = MarketPrices()
 
-    # Fill energy and ancillary services market prices data
     set_energy_price!(market_prices, "realized", energy_price)
 
-    if in(:ReserveUp, market_names)
-        set_reserveup_price!(market_prices, "realized", reserve_up_price)
-    end
+    set_reserve_price!(market_prices, "realized", reserve_price)
 
-    if in(:ReserveDown, market_names)
-        set_reservedown_price!(market_prices, "realized", reserve_down_price)
-    end
 
     ######## Capacity market clearing #####################################################################
 
@@ -77,11 +70,11 @@ function create_realized_marketdata(simulation::AgentSimulation,
         capacity_market_bool = true
     end
 
-    capacity_mkt_param_file = joinpath(simulation_dir, "markets_data", "capacity_mkt_param.csv")
+    capacity_mkt_param_file = joinpath(simulation_dir, "markets_data", "Capacity.csv")
     peak_load = get_peak_load(simulation)
     capacity_annual_increment = load_growth
 
-    average_capacity_growth = Statistics.mean(capacity_annual_increment)
+    average_load_growth = Statistics.mean(load_growth)
 
     capacity_supply_curve = Vector{Union{String, Float64}}[]
 
@@ -95,7 +88,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
     capacity_accepted_bids = Dict("no_accepted_bids" => 0.0)
 
     if in(:Capacity, market_names) && iteration_year + capacity_forward_years - 1 <= simulation_years
-        system_peak_load = (1 + average_capacity_growth) ^ (capacity_forward_years) * peak_load
+        system_peak_load = (1 + average_load_growth) ^ (capacity_forward_years) * peak_load
         capacity_demand_curve = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, capacity_market_bool)
 
         sort!(capacity_supply_curve, by = x -> x[3])      # Sort capacity supply curve by capacity bid
@@ -112,7 +105,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
         rec_market_bool = true
     end
 
-    REC_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "REC_mkt_param.csv"))
+    REC_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "REC.csv"))
     pricecap_rec = REC_mkt_params.price_cap[1]
     rec_req = REC_mkt_params.rec_req[1] * rec_market_bool
     rec_annual_increment = REC_mkt_params.annual_increment[1] * rec_market_bool
@@ -157,12 +150,10 @@ function create_realized_marketdata(simulation::AgentSimulation,
     FileIO.save(output_file,
                      "capacity_price", capacity_price,
                      "energy_price", energy_price,
-                     "reserve_up_price", reserve_up_price,
-                     "reserve_down_price", reserve_down_price,
+                     "reserve_price", reserve_price,
                      "rec_price", rec_price,
                      "capacity_factors", capacity_factors,
-                     "reserve_up_perc", reserve_up_perc,
-                     "reserve_down_perc", reserve_down_perc,
+                     "reserve_perc", reserve_perc,
                      "capacity_accepted_bids", capacity_accepted_bids,
                      "rec_accepted_bids", rec_accepted_bids
         )
@@ -170,12 +161,8 @@ function create_realized_marketdata(simulation::AgentSimulation,
     ################ Update realized load growth and peak load #########################################
 
     load_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Load", "load_$(iteration_year - 1).csv"))
-    reserve_up_demand_data = read_data(joinpath(simulation_dir,  "timeseries_data_files", "Reserves", "reserve_up_$(iteration_year - 1).csv"))
-    reserve_down_demand_data = read_data(joinpath(simulation_dir,  "timeseries_data_files", "Reserves", "reserve_down_$(iteration_year - 1).csv"))
     rep_load_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Load", "rep_load_$(iteration_year - 1).csv"))
     load_n_vg_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
-    rep_reserve_up_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_reserve_up_$(iteration_year - 1).csv"))
-    rep_reserve_down_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_reserve_down_$(iteration_year - 1).csv"))
 
     for (idx, z) in enumerate(zones)
 
@@ -187,35 +174,36 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
         load_n_vg_data[:, Symbol("load_zone_$(idx)")] = load_n_vg_data[:, Symbol("load_zone_$(idx)")] * (1 + load_growth[idx])
         load_n_vg_data[:, "Year"] = fill(load_n_vg_data[1, "Year"] + 1, DataFrames.nrow(load_n_vg_data))
-
-        reserve_up_demand_data[:, Symbol(idx)] =  reserve_up_demand_data[:, Symbol(idx)] * (1 + reserveup_annual_increment[idx])
-        reserve_up_demand_data[:, "Year"] = fill(reserve_up_demand_data[1, "Year"] + 1, DataFrames.nrow(reserve_up_demand_data))
-
-        rep_reserve_up_data[:, Symbol(idx)] =  rep_reserve_up_data[:, Symbol(idx)] * (1 + reserveup_annual_increment[idx])
-        rep_reserve_up_data[:, "Year"] = fill(rep_reserve_up_data[1, "Year"] + 1, DataFrames.nrow(rep_reserve_up_data))
-
-        reserve_down_demand_data[:, Symbol(idx)] =  reserve_down_demand_data[:, Symbol(idx)] * (1 + reservedown_annual_increment[idx])
-        reserve_down_demand_data[:, "Year"] = fill(reserve_down_demand_data[1, "Year"] + 1, DataFrames.nrow(reserve_down_demand_data))
-
-        rep_reserve_down_data[:, Symbol(idx)] =  rep_reserve_down_data[:, Symbol(idx)] * (1 + reservedown_annual_increment[idx])
-        rep_reserve_down_data[:, "Year"] = fill(rep_reserve_down_data[1, "Year"] + 1, DataFrames.nrow(rep_reserve_down_data))
     end
 
     # Write realized load and reserve demand data in a CSV file
     CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Load", "load_$(iteration_year).csv"), load_data)
     CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Load", "rep_load_$(iteration_year).csv"), rep_load_data)
-
     CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"), load_n_vg_data)
 
-    CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "reserve_up_$(iteration_year).csv"), reserve_up_demand_data)
-    CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_reserve_up_$(iteration_year).csv"), rep_reserve_up_data)
+    reserve_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"all_products"], "; ")
+    ordc_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")
+    non_ordc_products = filter(p -> !(p in ordc_products), reserve_products)
 
-    CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "reserve_down_$(iteration_year).csv"), reserve_down_demand_data)
-    CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_reserve_down_$(iteration_year).csv"), rep_reserve_down_data)
+    reserve_timeseries_data = Dict(r => read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(r)_$(iteration_year - 1).csv")) for r in non_ordc_products)
+    rep_reserve_timeseries_data = Dict(r => read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_$(r)_$(iteration_year - 1).csv")) for r in non_ordc_products)
 
-    peak_load_new = (1 + average_capacity_growth) * peak_load
+    for product in non_ordc_products
+        reserve_timeseries_data[product][:, product] = reserve_timeseries_data[product][:, product] * (1 + average_load_growth)
+        reserve_timeseries_data[product][:, "Year"] = fill(reserve_timeseries_data[product][1, "Year"] + 1, DataFrames.nrow(reserve_timeseries_data[product]))
+
+        rep_reserve_timeseries_data[product][:, product] = rep_reserve_timeseries_data[product][:, product] * (1 + average_load_growth)
+        rep_reserve_timeseries_data[product][:, "Year"] = fill(rep_reserve_timeseries_data[product][1, "Year"] + 1, DataFrames.nrow(rep_reserve_timeseries_data[product]))
+
+        CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_$(iteration_year).csv"), reserve_timeseries_data[product])
+        CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_$(product)_$(iteration_year).csv"), rep_reserve_timeseries_data[product])
+    end
+
+    #construct_ordc(simulation_dir, get_investors(simulation), iteration_year, get_rep_days(simulation))
+
+    peak_load_new = (1 + average_load_growth) * peak_load
     set_peak_load!(simulation, peak_load_new)
 
-    return market_prices, capacity_factors, reserve_up_perc, reserve_down_perc, capacity_accepted_bids, rec_accepted_bids
+    return market_prices, capacity_factors, reserve_perc, capacity_accepted_bids, rec_accepted_bids
 end
 
