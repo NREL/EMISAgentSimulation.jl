@@ -9,8 +9,10 @@ function energy_mkt_clearing(sys_UC::Nothing,
                              simulation_dir::String,
                              zones::Vector{String},
                              num_days::Int64,
-                             solver::JuMP.MOI.OptimizerWithAttributes,
-                             iteration_year::Int64)
+                             iteration_year::Int64,
+                             da_resolution::Int64,
+                             rt_resolution::Int64,
+                             solver::JuMP.MOI.OptimizerWithAttributes)
     energy_price,
     reserve_up_price,
     reserve_down_price,
@@ -34,16 +36,18 @@ function energy_mkt_clearing(sys_UC::PSY.System,
                              load_growth::AxisArrays.AxisArray{Float64, 1},
                              zones::Vector{String},
                              num_days::Int64,
-                             solver::JuMP.MOI.OptimizerWithAttributes,
-                             iteration_year::Int64)
+                             iteration_year::Int64,
+                             da_resolution::Int64,
+                             rt_resolution::Int64,
+                             solver::JuMP.MOI.OptimizerWithAttributes)
 
-    #update_PSY_timeseries!(sys_UC, load_growth, simulation_dir)
-    #update_PSY_timeseries!(sys_ED, load_growth, simulation_dir)
+    update_PSY_timeseries!(sys_UC, load_growth, simulation_dir, "UC", iteration_year, da_resolution, rt_resolution)
+    update_PSY_timeseries!(sys_ED, load_growth, simulation_dir, "ED", iteration_year, da_resolution, rt_resolution)
 
     energy_price,
     reserve_price,
     capacity_factors,
-    reserve_perc = create_simulation(sys_UC, sys_ED, simulation_dir, zones, num_days, solver, iteration_year)
+    reserve_perc = create_simulation(sys_UC, sys_ED, simulation_dir, zones, num_days, da_resolution, rt_resolution, solver)
 
     return energy_price, reserve_price, capacity_factors, reserve_perc;
 end

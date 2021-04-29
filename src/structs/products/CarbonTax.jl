@@ -41,4 +41,10 @@ end
 
 get_total_emission(prod::CarbonTax) = prod.total_emission
 
+function set_total_emission!(prod::T, emission::Vector{Float64}) where T<:Product
+    return
+end
 
+function set_total_emission!(prod::CarbonTax, emission::Vector{Float64})
+    prod.total_emission = emission
+end

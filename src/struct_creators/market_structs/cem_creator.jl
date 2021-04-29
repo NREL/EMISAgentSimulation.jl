@@ -6,6 +6,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                                     carbon_tax::Vector{Float64},
                                     reserve_products::Vector{String},
                                     ordc_products::Vector{String},
+                                    reserve_penalty::String,
                                     expected_portfolio::Vector{<: Project{<: BuildPhase}},
                                     zones::Vector{String},
                                     lines::Vector{ZonalLine},
@@ -69,7 +70,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     reserve_ordc_markets = Vector{Dict{String, ReserveORDCMarket{num_hours}}}(undef, num_invperiods)
 
     reserve_timeseries_data = Dict(r => read_data(joinpath(investor_dir, "timeseries_data_files", "Reserves", "$(r)_$(iteration_year - 1).csv"))[:, r] for r in reserve_products)
-    reserve_parameter_data = Dict(r => read_data(joinpath(investor_dir, "markets_data", "$(r).csv")) for r in reserve_products)
+    reserve_parameter_data = Dict(r => read_data(joinpath(investor_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "$(r).csv")) for r in reserve_products)
 
     reserve_eligible_projects = Dict(product => String[] for product in reserve_products)
 
@@ -129,6 +130,14 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     price_cap_rec = REC_mkt_params[1, "price_cap"]
     rec_req = REC_mkt_params[1, "rec_req"] * rec_market_bool
     rec_annual_increment = REC_mkt_params[1, "annual_increment"] * rec_market_bool
+    rec_non_binding_years = REC_mkt_params[1, "non_binding_years"] * rec_market_bool
+
+    rec_binding_array = Int.(zeros(num_invperiods))
+    binding_years_from_now = max((rec_non_binding_years - iteration_year + 1), 0) + 1
+
+    for j in binding_years_from_now:num_invperiods
+        rec_binding_array[j] = 1
+    end
 
     capacity_markets = Vector{CapacityMarket}(undef, num_invperiods)
     rec_markets = Vector{RECMarket}(undef, num_invperiods)
@@ -137,7 +146,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         system_peak_load = average_annual_increment[p] * peak_load
 
         capacity_markets[p] = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, capacity_market_bool)
-        rec_markets[p] = RECMarket(min(rec_req + rec_annual_increment * (p + iteration_year - 1), 1), price_cap_rec)
+        rec_markets[p] = RECMarket(min(rec_req + rec_annual_increment * (p + iteration_year - 1), 1), price_cap_rec, !(iszero(rec_binding_array[p])))
     end
 
     max_peak_loads = AxisArrays.AxisArray([maximum([maximum(market.demand[z, :]) for market in energy_markets]) for z in zones], zones)

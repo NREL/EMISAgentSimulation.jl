@@ -31,10 +31,10 @@ end
 """
 This function models the actual REC market clearing.
 """
-function rec_market_clearing(rec_requirement::Float64,
-    ACP::Float64,
-    supply_curve::Vector{Vector{Union{String, Float64}}},
-    solver::JuMP.MOI.OptimizerWithAttributes)
+function rec_market_clearing_non_binding(rec_requirement::Float64,
+                                        ACP::Float64,
+                                        supply_curve::Vector{Vector{Union{String, Float64}}},
+                                        solver::JuMP.MOI.OptimizerWithAttributes)
 
     #Each Element of the REC supply Curve:
     #[1] - Project Name (Symbol)
@@ -82,6 +82,69 @@ function rec_market_clearing(rec_requirement::Float64,
     #REC Market Clearing Price is the shadow variable of the REC balance constraint
     rec_price = AxisArrays.AxisArray(reshape([JuMP.dual(mkt_clear)], 1,), [1])
     rec_accepted_bid = Dict(supply_curve[s][1] => value.(Q_supply[s]) for s in 1:n_supply_seg)
+    println(rec_price)
+    println(rec_requirement)
+    println(sum(value.(Q_supply)))
+    println(value(v_REC))
+    #------------------------------------------------------------------------------------------------
+    return rec_price, rec_accepted_bid
+
+end
+
+"""
+This function models the actual REC market clearing.
+"""
+function rec_market_clearing_binding(rec_requirement::Float64,
+                                    ACP::Float64,
+                                    supply_curve::Vector{Vector{Union{String, Float64}}},
+                                    solver::JuMP.MOI.OptimizerWithAttributes)
+
+    #Each Element of the REC supply Curve:
+    #[1] - Project Name (Symbol)
+    #[2] - Project REC output (Float64)
+    #[3] - Project REC Bid (Float64)
+
+    n_supply_seg = length(supply_curve);
+
+    #----------REC Market Clearing Problem---------------------------------------------------------------------------------
+    rec_mkt = JuMP.Model(solver);
+
+    #Define the variables
+    JuMP.@variables(rec_mkt, begin
+    Q_supply[s=1:n_supply_seg] >= 0 # Quantity of cleared REC supply offers
+    end)
+
+    #Functions----------------------------------------------------------------------------------------
+
+    #Cost of procuring REC supply for each segment
+    supply_cost(Q_seg, s) = supply_curve[s][3] * Q_seg;
+
+    #Expressions---------------------------------------------------------------------------------------
+
+    #Totoal Cost of procuring REC supply
+    JuMP.@expression(rec_mkt, total_supply_cost, sum(supply_cost(Q_supply[s], s) for s = 1:n_supply_seg))
+
+    #Constraints--------------------------------------------------------------------------------------
+
+    #Cleared REC supply limit for each segment
+    JuMP.@constraint(rec_mkt, [s=1:n_supply_seg], Q_supply[s] <= supply_curve[s][2])
+
+    #Total cleared REC supply should be greater than or equal to the RPS compliance requirement
+    JuMP.@constraint(rec_mkt, mkt_clear, sum(Q_supply[s] for s in 1:n_supply_seg) >= rec_requirement)
+
+    #Define Objective Function - Social Welfare Maxmization
+    JuMP.@objective(rec_mkt, Min, total_supply_cost)
+
+    println("Actual REC Market Clearing:")
+    JuMP.optimize!(rec_mkt)
+
+    println(JuMP.termination_status(rec_mkt))
+    println(JuMP.objective_value(rec_mkt))
+
+    #REC Market Clearing Price is the shadow variable of the REC balance constraint
+    rec_price = AxisArrays.AxisArray(reshape([JuMP.dual(mkt_clear)], 1,), [1])
+    rec_accepted_bid = Dict(supply_curve[s][1] => value.(Q_supply[s]) for s in 1:n_supply_seg)
+    println(rec_price)
     #------------------------------------------------------------------------------------------------
     return rec_price, rec_accepted_bid
 

@@ -9,7 +9,7 @@ function gather_data(case::CaseDefinition)
     n_rep_days = get_num_rep_days(case)
 
     annual_growth_data = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
-    annual_growth = AxisArrays.AxisArray(collect(transpose(convert(Matrix, annual_growth_data[:, 2:end]))),
+    annual_growth = AxisArrays.AxisArray(collect(transpose(Matrix(annual_growth_data[:, 2:end]))),
                               names(annual_growth_data)[2:end],
                               1:DataFrames.nrow(annual_growth_data))
 
@@ -28,8 +28,7 @@ function gather_data(case::CaseDefinition)
         zonal_lines = [ZonalLine("line_1", zones[1], zones[1], 0.0)]
     end
 
-    markets_df = read_data(joinpath(data_dir, "markets_data", "markets.csv"))
-    markets_dict = Dict(Symbol(names(markets_df)[i]) => markets_df[1, i] for i in 1:length(names(markets_df)))
+    markets_dict = get_markets(case)
 
     if get_siip_market_clearing(case)
         base_power = 100.0
@@ -39,7 +38,7 @@ function gather_data(case::CaseDefinition)
         sys_ED = nothing
     end
 
-    simulation_years = get_simulation_years(case)
+    simulation_years = get_total_horizon(case)
 
     carbon_tax = zeros(simulation_years)
 
@@ -72,9 +71,9 @@ function gather_data(case::CaseDefinition)
     investors = create_investors(simulation_data)
     set_investors!(simulation_data, investors)
 
-    #construct_ordc(data_dir, investors, 0, representative_days)
-    add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC")
-    add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED")
+    construct_ordc(data_dir, investors, 0, representative_days, get_ordc_curved(case), get_reserve_penalty(case))
+    add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
+    add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
 
     transform_psy_timeseries!(sys_UC, sys_ED, get_da_resolution(case), get_rt_resolution(case))
 
@@ -87,7 +86,7 @@ function gather_data(case::CaseDefinition)
         write_data(joinpath(dir, "timeseries_data_files", "Availability"), "DAY_AHEAD_availability.csv", rep_projects_availability)
     end
 
-    update_simulation_derating_data!(simulation_data)
+    update_simulation_derating_data!(simulation_data, get_derating_scale(case))
 
     return simulation_data
 end

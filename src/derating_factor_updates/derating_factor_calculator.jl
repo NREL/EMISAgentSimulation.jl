@@ -3,7 +3,8 @@ This function calculates the derating data for existing and new renewable genera
 based on top 100 net-load hour methodology.
 """
 function calculate_derating_data(simulation_dir::String,
-                                active_projects::Vector{Project})
+                                active_projects::Vector{Project},
+                                derating_scale::Float64)
 
     cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
 
@@ -57,7 +58,7 @@ function calculate_derating_data(simulation_dir::String,
             gen_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load_w/o_existing_$(type_zone_id)", rev = true))
 
             load_reduction = gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] - gen_sorted_df[1:num_top_hours, "net_load"]
-            derating_factors[:, "existing_$(type_zone_id)"] .= sum(load_reduction) / type_zone_max_cap[type_zone_id] / num_top_hours
+            derating_factors[:, "existing_$(type_zone_id)"] .= min(sum(load_reduction) * derating_scale / type_zone_max_cap[type_zone_id] / num_top_hours, 1.0)
         end
     end
 
@@ -67,12 +68,12 @@ function calculate_derating_data(simulation_dir::String,
         type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
         gen_cap = get_maxcap(g)
 
-        net_load_df[:, "net_load_with_$(gen_name)"] =  deepcopy(net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * 100)
+        net_load_df[:, "net_load_with_$(gen_name)"] =  deepcopy(net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * gen_cap)
         gen_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)", rev = true))
 
         load_reduction = net_load_sorted_df[1:num_top_hours, "net_load"] - gen_sorted_df[1:num_top_hours, "net_load_with_$(gen_name)"]
 
-        derating_factors[:, "new_$(type_zone_id)"] .= sum(load_reduction) / 100 / num_top_hours
+        derating_factors[:, "new_$(type_zone_id)"] .= min(sum(load_reduction) * derating_scale / gen_cap / num_top_hours, 1.0)
     end
     write_data(joinpath(simulation_dir, "markets_data"), "derating_dict.csv", derating_factors)
     return
@@ -83,6 +84,7 @@ This function does nothing is project is not of ThermalGenEMIS, HydroGenEMIS, Re
 """
 function update_derating_factor!(project::P,
                                simulation_dir::String,
+                               derating_scale::Float64
                                ) where P <: Project{<:BuildPhase}
     return
 end
@@ -92,6 +94,7 @@ This function updates the derating factors of ThermalGenEMIS and HydroGenEMIS pr
 """
 function update_derating_factor!(project::Union{ThermalGenEMIS{<:BuildPhase}, HydroGenEMIS{<:BuildPhase}},
                                simulation_dir::String,
+                               derating_scale::Float64
                                )
 
     derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_dict.csv"))
@@ -107,6 +110,7 @@ This function updates the derating factors of existing RenewableGenEMIS projects
 """
 function update_derating_factor!(project::RenewableGenEMIS{Existing},
                                simulation_dir::String,
+                               derating_scale::Float64
                                )
 
     derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_dict.csv"))
@@ -132,6 +136,7 @@ This function updates the derating factors of new RenewableGenEMIS projects.
 """
 function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
                                simulation_dir::String,
+                               derating_scale::Float64
                                )
 
     derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_dict.csv"))
@@ -157,6 +162,7 @@ This function updates the derating factors of BatteryEMIS projects.
 """
 function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
                                simulation_dir::String,
+                               derating_scale::Float64
                                )
     tech = get_tech(project)
     duration = Int(get_storage_capacity(tech)[:max] / get_maxcap(project))
@@ -164,6 +170,7 @@ function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
 
     derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_dict.csv"))
     derating_factor = derating_data[1, project_type]
+    derating_factor = min(derating_factor * derating_scale, 1.0)
     for product in get_products(project)
         set_derating!(product, derating_factor)
     end
@@ -173,13 +180,13 @@ end
 """
 This function updates the derating factors of all active projects in the simulation.
 """
-function update_simulation_derating_data!(simulation::Union{AgentSimulation, AgentSimulationData})
+function update_simulation_derating_data!(simulation::Union{AgentSimulation, AgentSimulationData}, derating_scale::Float64)
     data_dir = get_data_dir(get_case(simulation))
     active_projects = get_activeprojects(simulation)
 
-    calculate_derating_data(data_dir, active_projects)
+    calculate_derating_data(data_dir, active_projects, derating_scale)
     for project in active_projects
-        update_derating_factor!(project, data_dir)
+        update_derating_factor!(project, data_dir, derating_scale)
     end
     return
 end

@@ -72,8 +72,6 @@ function make_ORDC_vectors(ordc_markets::Vector{Dict{String, ReserveORDCMarket{T
 
         stepped = getproperty(ordc_markets[1][product], :stepped)
 
-        println(stepped)
-
         for p in 1:inv_periods
             for t in 1:T
                 num_segments[product][p, t] = length(break_points[p][t]) - 1
@@ -316,7 +314,7 @@ function calculate_carbon_cost_ratio(product::Product, carbon_cost_ratio::Float6
 end
 
 function calculate_carbon_cost_ratio(product::CarbonTax, carbon_cost_ratio::Float64, carbon_tax::Vector{Float64}, year::Int64)
-    carbon_cost = get_emission(product) * carbon_tax[year]
+    carbon_cost = get_emission_intensity(product) * carbon_tax[year]
     ratio = carbon_cost / get_fuel_cost(product)
     if !isnan(ratio)
         carbon_cost_ratio = ratio

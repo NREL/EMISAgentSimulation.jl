@@ -76,7 +76,7 @@ function remove_leap_day!(df:: DataFrames.DataFrame, start_year::Int64)
         filter!(row -> row["Month"] != 2 || row["Day"] != 29, df)
     end
     =#
-    filter!(row -> row["Month"] != 2 || row["Day"] != 29, df)
+    #filter!(row -> row["Month"] != 2 || row["Day"] != 29, df)
 
     return
 end
@@ -180,7 +180,6 @@ This function updates the decision, construction and endlife years of Option pro
 function update_lifecycle!(project::P,
                            iteration_year::Int64,
                            simulation_years::Int64) where P <: Project{Option}
-
 
         finance_data = get_finance_data(project)
 

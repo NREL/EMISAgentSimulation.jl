@@ -77,7 +77,15 @@ function update_project_utility!(project::P,
 
     end
 
+
     set_expected_utility!(finance_data, iteration_year, expected_utility)
+
+
+    if occursin("new_CC", get_name(project)) || occursin("new_CT", get_name(project)) || occursin("new_PVe", get_name(project))
+        println(get_name(project))
+        println(get_scenario_utility(finance_data))
+        println(get_expected_utility(finance_data))
+    end
 
     return
 

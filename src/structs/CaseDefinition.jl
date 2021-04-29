@@ -12,7 +12,12 @@
         num_rep_days: Number of representative days used for price prediction.
         da_resolution: Resolution of Day Ahead market clearing (minutes)
         rt_resolution: Resolution of Real Time market clearing (minutes)
+        markets: Dictionary of which markets are simulated
+        ordc_curved: Whether to include the curved part of the ORDC
+        derating_scale: Factor for scaling derating factors
+        mopr: Whether Minimum Offer Price Rule is applied
         heterogeneity: Whether investors' heterogeneous financial characteristics and technology preferences are modeled.
+        reserve_penalty: High, Mid or Low penalty prices for reserves
         forecast_type: "Perfect" or "imperfect" forecasts used for price prediction.
         info_symmetry: Whether investors have symmetric information about forecast parameters.
         belief_update: Whether investors' beliefs are updated each year after actual market clearing.
@@ -34,6 +39,11 @@ struct CaseDefinition
     num_rep_days::Int64
     da_resolution::Int64
     rt_resolution::Int64
+    markets::Dict{Symbol, Bool}
+    ordc_curved::Bool
+    reserve_penalty::String
+    derating_scale::Float64
+    mopr::Bool
     heterogeneity::Bool
     forecast_type::String
     info_symmetry::Bool
@@ -54,6 +64,11 @@ struct CaseDefinition
                             num_rep_days,
                             da_resolution,
                             rt_resolution,
+                            markets,
+                            ordc_curved,
+                            reserve_penalty,
+                            derating_scale,
+                            mopr,
                             heterogeneity,
                             forecast_type,
                             info_symmetry,
@@ -67,6 +82,7 @@ struct CaseDefinition
 
         forecast_type = lowercase(forecast_type)
         @assert forecast_type == "perfect" || lowercase(forecast_type) == "imperfect"
+        @assert reserve_penalty == "High" || reserve_penalty == "Mid" || reserve_penalty == "Low"
 
         if forecast_type == "perfect"
             @assert info_symmetry == true
@@ -91,6 +107,11 @@ struct CaseDefinition
                    num_rep_days,
                    da_resolution,
                    rt_resolution,
+                   markets,
+                   ordc_curved,
+                   reserve_penalty,
+                   derating_scale,
+                   mopr,
                    heterogeneity,
                    forecast_type,
                    info_symmetry,
@@ -113,6 +134,11 @@ function CaseDefinition(base_dir::String,
                         num_rep_days::Int64 = 12,
                         da_resolution::Int64 = 60,
                         rt_resolution::Int64 = 5,
+                        markets::Dict{Symbol, Bool} = Dict(:Energy => true, :Synchronous => true, :Primary => true, :Reg_Up => true, :Reg_Down => true,	:Flex_Up => true, :Flex_Down => true, :Capacity => true, :REC => true, :CarbonTax => true),
+                        ordc_curved::Bool = true,
+                        reserve_penalty::String = "Mid",
+                        derating_scale::Float64 = 1.0,
+                        mopr::Bool = false,
                         heterogeneity::Bool = false,
                         forecast_type::String = "perfect",
                         info_symmetry::Bool = true,
@@ -133,6 +159,11 @@ function CaseDefinition(base_dir::String,
                    num_rep_days,
                    da_resolution,
                    rt_resolution,
+                   markets,
+                   ordc_curved,
+                   reserve_penalty,
+                   derating_scale,
+                   mopr,
                    heterogeneity,
                    forecast_type,
                    info_symmetry,
@@ -154,6 +185,11 @@ get_simulation_years(case::CaseDefinition) = case.simulation_years
 get_num_rep_days(case::CaseDefinition) = case.num_rep_days
 get_da_resolution(case::CaseDefinition) = case.da_resolution
 get_rt_resolution(case::CaseDefinition) = case.rt_resolution
+get_markets(case::CaseDefinition) = case.markets
+get_ordc_curved(case::CaseDefinition) = case.ordc_curved
+get_reserve_penalty(case::CaseDefinition) = case.reserve_penalty
+get_derating_scale(case::CaseDefinition) = case.derating_scale
+get_mopr(case::CaseDefinition) = case.mopr
 get_heterogeneity(case::CaseDefinition) = case.heterogeneity
 get_info_symmetry(case::CaseDefinition) = case.info_symmetry
 get_belief_update(case::CaseDefinition) = case.belief_update

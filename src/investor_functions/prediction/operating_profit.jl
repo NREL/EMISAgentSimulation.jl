@@ -124,6 +124,7 @@ function calculate_operating_profit(gen::P,
         if get_name(prod) == :Energy
             market_prices[get_name(prod)] = get_prices(all_prices, prod)[scenario_name][get_zone(get_tech(gen)), :, :]
         else
+            println(get_prices(all_prices, prod))
             market_prices[get_name(prod)] = get_prices(all_prices, prod)[scenario_name]
         end
     end

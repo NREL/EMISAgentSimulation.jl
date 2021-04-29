@@ -1,6 +1,14 @@
 # This file contains functions for calling, running and post-processing
 # SIIP PSI Simulation for actual Energy and A/S Market Clearing
 
+function scale_voll(price::Array{Float64, 2}, resolution::Int64)
+    for t in size(price, 2)
+        if price[1, t] >= 1000.0
+            price[1, t] = price[1, t] * resolution / 60
+        end
+    end
+end
+
 """
 This function returns realized capacity factors for Thermal generators from PSI Simulation.
 """
@@ -157,7 +165,7 @@ function create_uc_template()
     PSI.set_device_model!(template, PSY.Transformer2W, PSI.StaticBranch)
     PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
     PSI.set_device_model!(template, PSY.HVDCLine, PSI.HVDCLossless)
-    PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveUp}, PSIE.RampReserve))
+    PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveUp}, PSI.RangeReserve))
     PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveDown}, PSI.RangeReserve))
     PSI.set_service_model!(template, PSI.ServiceModel(PSY.ReserveDemandCurve{PSY.ReserveUp}, PSIE.QuadraticCostRampReserve))
 
@@ -184,7 +192,7 @@ function create_ed_template()
     PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
     PSI.set_device_model!(template, PSY.HVDCLine, PSI.HVDCLossless)
     PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveUp}, PSIE.RampReserve))
-    PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveDown}, PSI.RangeReserve))
+    PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveDown}, PSIE.RampReserve))
     PSI.set_service_model!(template, PSI.ServiceModel(PSY.ReserveDemandCurve{PSY.ReserveUp}, PSIE.QuadraticCostRampReserve))
 
     return template
@@ -211,14 +219,15 @@ function create_problem(template::PSI.OperationsProblemTemplate, sys::PSY.System
 
         if type == "UC"
             problem = PSI.OperationsProblem(
-                                    PSI.UnitCommitmentProblem,
+                                    PSIE.MILPDualProblem,
                                     template,
                                     sys;
                                     optimizer = solver,
                                     optimizer_log_print = true,
                                     balance_slack_variables = true,
                                     constraint_duals = duals,
-                                    horizon = 2,
+                                    warm_start = true,
+                                    services_slack_variables = true,
                                     )
 
         elseif type == "ED"
@@ -230,7 +239,8 @@ function create_problem(template::PSI.OperationsProblemTemplate, sys::PSY.System
                                     optimizer_log_print = false,
                                     balance_slack_variables = true,
                                     constraint_duals = duals,
-                                    horizon = 2,
+                                    warm_start = true,
+                                    services_slack_variables = true,
                                     )
         else
             error("Type should be either UC or ED")
@@ -242,14 +252,14 @@ end
 """
 This function creates the Sequences for PSI Simulation.
 """
-function create_sequence(problems::PSI.SimulationProblems)
+function create_sequence(problems::PSI.SimulationProblems, da_resolution::Int64)
 
     sequence = PSI.SimulationSequence(
         problems = problems,
-        feedforward_chronologies = Dict(("UC" => "ED") => PSI.Synchronize(periods = 24)),
+        feedforward_chronologies = Dict(("UC" => "ED") => PSI.Synchronize(periods = 24 * 60 / da_resolution)),
         intervals = Dict(
-            "UC" => (Dates.Hour(24), PSI.Consecutive()),
-            "ED" => (Dates.Hour(1), PSI.Consecutive()),
+            "UC" => (Dates.Hour(24 * 60 / da_resolution), PSI.Consecutive()),
+            "ED" => (Dates.Hour(1 * 60 / da_resolution), PSI.Consecutive()),
         ),
         feedforward = Dict(
             ("ED", :devices, Symbol("PowerSystems.ThermalStandard")) => PSI.SemiContinuousFF(
@@ -272,8 +282,9 @@ function create_simulation( sys_UC::PSY.System,
                             simulation_dir::String,
                             zones::Vector{String},
                             days::Int64,
-                            solver::JuMP.MOI.OptimizerWithAttributes,
-                            iteration_year::Int64;
+                            da_resolution::Int64,
+                            rt_resolution::Int64,
+                            solver::JuMP.MOI.OptimizerWithAttributes;
                             kwargs...)
 
 
@@ -288,10 +299,10 @@ function create_simulation( sys_UC::PSY.System,
                                     ED = ed_problem,
                                       )
 
-    sequence = create_sequence(problems)
+    sequence = create_sequence(problems, da_resolution)
 
     sim = PSI.Simulation(
-                    name = "emis_energy_mkt_$(iteration_year)",
+                    name = "emis_energy_mkt",
                     steps = 2,
                     problems = problems,
                     sequence = sequence,
@@ -310,6 +321,7 @@ function create_simulation( sys_UC::PSY.System,
     dual_values_ed = PSI.read_realized_duals(res_ed)
     dual_values_uc = PSI.read_realized_duals(res_uc)
 
+    #println(dual_values_uc)
 
     data_length_ed = DataFrames.nrow(dual_values_ed[:nodal_balance_active__Bus])
     data_length_uc = DataFrames.nrow(dual_values_uc[:nodal_balance_active__Bus])
@@ -341,8 +353,8 @@ function create_simulation( sys_UC::PSY.System,
             end
 
     end
-    println("energy_price")
-    println(energy_price)
+
+    println(energy_price["zone_1", 1, :])
 
     for service in get_system_services(sys_ED)
         name = PSY.get_name(service)
@@ -350,21 +362,18 @@ function create_simulation( sys_UC::PSY.System,
         if typeof(service) == PSY.VariableReserve{PSY.ReserveUp}
             reserve_price[name][1, :] = abs.(round.(dual_values_ed[Symbol("requirement__VariableReserve_PowerSystems.ReserveUp")][:, Symbol("$(name)")], digits = 5)) / base_power
             replace!(reserve_price[name], NaN => 0.0)
-            replace!(reserve_price[name], 10000.0 => 10000 / 12)
-            replace!(reserve_price[name], 1000.0 => 1000 / 12)
-            println(reserve_price[name])
+            scale_voll(reserve_price[name], rt_resolution)
+            #println(reserve_price[name])
         elseif typeof(service) == PSY.ReserveDemandCurve{PSY.ReserveUp}
             reserve_price[name][1, :] = abs.(round.(dual_values_ed[Symbol("requirement__ReserveDemandCurve_PowerSystems.ReserveUp")][:, Symbol("$(name)")], digits = 5)) / base_power
             replace!(reserve_price[name], NaN => 0.0)
-            replace!(reserve_price[name], 10000.0 => 10000 / 12)
-            replace!(reserve_price[name], 1000.0 => 1000 / 12)
+            scale_voll(reserve_price[name], rt_resolution)
             println(reserve_price[name])
         elseif typeof(service) == PSY.VariableReserve{PSY.ReserveDown}
             reserve_price[name][1, :] = abs.(round.(dual_values_ed[Symbol("requirement__VariableReserve_PowerSystems.ReserveDown")][:, Symbol("$(name)")], digits = 5)) / base_power
             replace!(reserve_price[name], NaN => 0.0)
-            replace!(reserve_price[name], 10000.0 => 10000 / 12)
-            replace!(reserve_price[name], 1000.0 => 1000 / 12)
-            println(reserve_price[name])
+            scale_voll(reserve_price[name], rt_resolution)
+            #println(reserve_price[name])
         end
     end
 
@@ -374,18 +383,12 @@ function create_simulation( sys_UC::PSY.System,
             if typeof(service) == PSY.VariableReserve{PSY.ReserveUp}
                 reserve_price[name][1, :] = abs.(round.(dual_values_uc[Symbol("requirement__VariableReserve_PowerSystems.ReserveUp")][:, Symbol("$(name)")], digits = 5)) / base_power
                 replace!(reserve_price[name], NaN => 0.0)
-                replace!(reserve_price[name], 10000.0 => 10000 / 12)
-                replace!(reserve_price[name], 1000.0 => 1000 / 12)
             elseif typeof(service) == PSY.ReserveDemandCurve{PSY.ReserveUp}
                 reserve_price[name][1, :] = abs.(round.(dual_values_uc[Symbol("requirement__ReserveDemandCurve_PowerSystems.ReserveUp")][:, Symbol("$(name)")], digits = 5)) / base_power
                 replace!(reserve_price[name], NaN => 0.0)
-                replace!(reserve_price[name], 10000.0 => 10000 / 12)
-                replace!(reserve_price[name], 1000.0 => 1000 / 12)
             elseif typeof(service) == PSY.VariableReserve{PSY.ReserveDown}
                 reserve_price[name][1, :] = abs.(round.(dual_values_uc[Symbol("requirement__VariableReserve_PowerSystems.ReserveDown")][:, Symbol("$(name)")], digits = 5)) / base_power
                 replace!(reserve_price[name], NaN => 0.0)
-                replace!(reserve_price[name], 10000.0 => 10000 / 12)
-                replace!(reserve_price[name], 1000.0 => 1000 / 12)
             end
         end
     end
@@ -405,6 +408,7 @@ function create_simulation( sys_UC::PSY.System,
         end
     end
 
+
     for tech in sys_techs
         name = get_name(tech)
         capacity_factors[name][1, :] = get_realized_capacity_factors(tech, result_variables_ed)
@@ -412,9 +416,7 @@ function create_simulation( sys_UC::PSY.System,
         services_ED = PSY.get_services(tech)
         services_UC = PSY.get_services(PSY.get_components_by_name(PSY.Device, sys_UC, name)[1])
 
-        services = append!(services_UC, services_ED)
-
-        for service in services
+        for service in services_UC
             update_realized_reserve_perc!(tech,
                                          service,
                                          result_variables_ed,
@@ -424,11 +426,6 @@ function create_simulation( sys_UC::PSY.System,
                                          only_da_products)
 
         end
-
-        open("model_ED_$(iteration_year).txt", "w") do f
-            println(f, sim.problems["ED"].internal.optimization_container.JuMPmodel)
-        end
-
     end
 
     return energy_price, reserve_price, capacity_factors, reserve_perc;

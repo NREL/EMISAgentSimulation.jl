@@ -4,7 +4,9 @@ This function constructs the ORDCs for spinning and primary reserve products.
 function construct_ordc(simulation_dir::String,
                         investors::Vector{Investor},
                         iteration_year::Int64,
-                        rep_days::Dict{Dates.Date,Int64})
+                        rep_days::Dict{Dates.Date,Int64},
+                        ordc_curved::Bool,
+                        reserve_penalty::String)
 
     products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")
     println("Creating ORDC for products: $(products)")
@@ -22,12 +24,11 @@ function construct_ordc(simulation_dir::String,
 
     for product in products
 
-        product_data = read_data(joinpath(simulation_dir, "markets_data", "$(product).csv"))
+        product_data = read_data(joinpath(simulation_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "$(product).csv"))
 
         MRR_scale = product_data[1,"MRR_scale"]
         penalty = product_data[1,"penalty"]
         step_size = product_data[1, "stepsize (MW)"]
-        curve = product_data[1, "curve"]
 
         MRR = calculate_min_reserve_req(simulation_dir, generators, MRR_scale, zonal)
 
@@ -104,7 +105,11 @@ function construct_ordc(simulation_dir::String,
                                     (1 - Distributions.cdf(aggregate_distribution[zone], step * step_size)) * penalty)
                                     for step in 1:Int64(maximum_error/step_size)]
 
-                        ordc_points = append!(initial_points, ordc_points)
+                        if ordc_curved
+                            ordc_points = append!(initial_points, ordc_points)
+                        else
+                            ordc_points = initial_points
+                        end
 
                     end
 
@@ -142,8 +147,10 @@ function construct_ordc(simulation_dir::String,
                     ordc_points = [((step * step_size) + MRR,
                                 (1 - Distributions.cdf(aggregate_distribution, step * step_size)) * penalty)
                                 for step in 1:n_steps]
-                    if curve
+                    if ordc_curved
                         ordc_points = append!(initial_points, ordc_points)
+                    else
+                        ordc_points = initial_points
                     end
 
                     for month in months
@@ -176,17 +183,48 @@ function construct_ordc(simulation_dir::String,
     return
 end
 
+function process_ordc_data_for_siip(raw_data::Union{Vector{String}, PooledArrays.PooledVector{String, UInt32, Vector{UInt32}}})
+    T = length(raw_data)
+
+    product_da_ts = Vector{Vector{Tuple{Float64, Float64}}}(undef, T)
+
+    for t = 1:T
+        tuples = split.(chop.(split(chop(raw_data[t], head = 1, tail = 2), "), "), head = 1, tail = 0), ", ")
+        product_da_ts[t] = [(parse.(Float64, tuple)[2], parse.(Float64, tuple)[1]) for tuple in tuples]
+        l = length(product_da_ts[t])
+        if l > 2
+            for s in 3:2:(l * 2) - 2
+                temp_1 = copy(product_da_ts[t][1:(s-1)])
+                temp_2 = copy(product_da_ts[t][s:end])
+                push!(temp_1, (product_da_ts[t][s][1], product_da_ts[t][s-1][2]))
+                new = vcat(temp_1, temp_2)
+                product_da_ts[t] = copy(new)
+            end
+         end
+    end
+
+    return product_da_ts
+end
+
 function add_psy_ordc!(simulation_dir::String,
              markets_dict::Dict{Symbol, Bool},
              sys::Nothing,
-             type::String)
+             type::String,
+             iteration_year::Int64,
+             da_resolution::Int64,
+             rt_resolution::Int64,
+             reserve_penalty::String)
     return
 end
 
 function add_psy_ordc!(simulation_dir::String,
              markets_dict::Dict{Symbol, Bool},
              sys::PSY.System,
-             type::String
+             type::String,
+             iteration_year::Int64,
+             da_resolution::Int64,
+             rt_resolution::Int64,
+             reserve_penalty::String
             )
 
     products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")
@@ -195,7 +233,7 @@ function add_psy_ordc!(simulation_dir::String,
 
     for product in products
         if markets_dict[Symbol(product)]
-            product_data = read_data(joinpath(simulation_dir, "markets_data", "$(product).csv"))
+            product_data = read_data(joinpath(simulation_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "$(product).csv"))
             eligible_categories = product_data[1, "eligible categories"]
 
             ####### Adding ORDC reserve
@@ -221,12 +259,11 @@ function add_psy_ordc!(simulation_dir::String,
                         PSY.add_service!(component, reserve, sys)
                     end
                 end
-                if occursin("Battery", eligible_categories)
+                if occursin("BA", eligible_categories)
                     for component in PSY.get_components(PSY.GenericBattery, sys)
-                        PSY.add_service!(component, reserve_UC, sys)
+                        PSY.add_service!(component, reserve, sys)
                     end
                 end
-
 
             time_stamps = TS.timestamp(PSY.get_data(PSY.get_time_series(
                                                     PSY.SingleTimeSeries,
@@ -235,25 +272,24 @@ function add_psy_ordc!(simulation_dir::String,
                                                     )))
 
             if type == "UC"
-                product_da_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_0.csv"))[:, product]
+                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_$(iteration_year - 1).csv"))[:, product]
+                product_data_ts = process_ordc_data_for_siip(product_ts_raw)
+                intervals = Int(24 * 60 / da_resolution)
+                append!(product_data_ts, product_data_ts[(length(product_data_ts) - intervals + 1):end])
+                data = Dict(time_stamps[i] => product_data_ts[i:(i + intervals - 1)] for i in 1:intervals:length(time_stamps))
+                forecast = PSY.Deterministic("variable_cost", data, Dates.Minute(da_resolution))
             elseif type == "ED"
-                product_da_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_REAL_TIME_0.csv"))[:, product]
+                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_REAL_TIME_$(iteration_year - 1).csv"))[:, product]
+                product_data_ts = process_ordc_data_for_siip(product_ts_raw)
+                intervals =  Int(60 / rt_resolution)
+                append!(product_data_ts, product_data_ts[(length(product_data_ts) - intervals + 1):end])
+                data = Dict(time_stamps[i] => product_data_ts[i:(i + intervals  - 1)] for i in 1:intervals:length(time_stamps))
+                forecast = PSY.Deterministic("variable_cost", data, Dates.Minute(rt_resolution))
             else
-                error("Type should be either DA or ED")
+                error("Type should be UC or ED")
             end
 
-            T = length(product_da_ts_raw)
-
-            product_da_ts = Vector{Vector{Tuple{Float64, Float64}}}(undef, T)
-
-            for t = 1:T
-                tuples = split.(chop.(split(chop(product_da_ts_raw[t], head = 1, tail = 2), "), "), head = 1, tail = 0), ", ")
-                product_da_ts[t] = [(parse.(Float64, tuple)[2], parse.(Float64, tuple)[1]) for tuple in tuples]
-            end
-
-            ts = TS.TimeArray(time_stamps, product_da_ts);
-            forecast = PSY.SingleTimeSeries("variable_cost", ts)
-            PSY.set_variable_cost!(sys, reserve, forecast)
+            PSY.add_time_series!(sys, reserve, forecast)
         end
     end
 

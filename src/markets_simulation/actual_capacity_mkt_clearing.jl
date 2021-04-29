@@ -144,6 +144,7 @@ function capacity_market_clearing(demand_curve::CapacityMarket,
    #Capacity Market Clearing Price is the shadow variable of the capacity balance constraint
    cap_price = AxisArrays.AxisArray(reshape([JuMP.dual(mkt_clear)], 1,), [1])
    cap_accepted_bid = Dict(supply_curve[s][1] => value.(Q_supply[s]) / supply_curve[s][2]  for s in 1:n_supply_seg)
+   println(cap_price)
 #------------------------------------------------------------------------------------------------
    return cap_price, cap_accepted_bid
 

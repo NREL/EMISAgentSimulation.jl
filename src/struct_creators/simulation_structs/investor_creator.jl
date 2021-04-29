@@ -145,7 +145,7 @@ function create_investors(simulation_data::AgentSimulationData)
         end
 
         #Carbon Tax Data
-        simulation_years = get_simulation_years(get_case(simulation_data))
+        simulation_years = get_total_horizon(get_case(simulation_data))
         start_year = get_start_year(get_case(simulation_data))
 
         carbon_tax = zeros(simulation_years)
@@ -175,6 +175,8 @@ function create_investors(simulation_data::AgentSimulationData)
             risk_preference = RiskNeutral()
         end
 
+        retirement_lookback = characteristics.retire_lookback[1]
+
         investors[i] = Investor(investor_names[i],
                                 investor_dir,
                                 projects,
@@ -185,7 +187,8 @@ function create_investors(simulation_data::AgentSimulationData)
                                 forecast,
                                 capital_cost_multiplier,
                                 max_annual_projects,
-                                risk_preference)
+                                risk_preference,
+                                retirement_lookback)
     end
 
     return investors

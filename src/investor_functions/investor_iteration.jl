@@ -3,13 +3,14 @@ function run_investor_iteration(investor::Investor,
                                  iteration_year::Int64,
                                  yearly_horizon::Int64,
                                  simulation_years::Int64,
-                                 start_year::Int64,
                                  capacity_forward_years::Int64,
-                                 sys_data_dir::String,
                                  sys_UC::Union{Nothing, PSY.System},
-                                 services::Vector{PSY.Service},
-                                 solver::JuMP.MOI.OptimizerWithAttributes
+                                 sys_ED::Union{Nothing, PSY.System},
+                                 case::CaseDefinition
                             )
+
+    sys_data_dir = get_data_dir(case)
+    solver = get_solver(case)
 
     investor_dir = get_data_dir(investor)
     projects = get_projects(investor)
@@ -61,6 +62,7 @@ function run_investor_iteration(investor::Investor,
 
     retire_unprofitable!(investor,
                          sys_UC,
+                         sys_ED,
                          sys_data_dir,
                          iteration_year,
                          yearly_horizon,
@@ -76,6 +78,8 @@ function run_investor_iteration(investor::Investor,
                       capacity_forward_years,
                       solver)
 
+    println(get_name.(get_queue(investor)))
+
     for (i, project) in enumerate(projects)
         start_construction!(projects,
                             i,
@@ -86,10 +90,11 @@ function run_investor_iteration(investor::Investor,
                             i,
                             project,
                             sys_UC,
-                            services,
+                            sys_ED,
                             sys_data_dir,
                             iteration_year,
-                            start_year)
+                            get_da_resolution(case),
+                            get_rt_resolution(case))
 
         update_lifecycle!(project,
                           iteration_year,

@@ -64,7 +64,7 @@ function add_profitable_option(projects::Vector{Project},
                                   solver::JuMP.MOI.OptimizerWithAttributes) where {R <: RiskPreference}
 
     if length(projects) >= 1
-        if  get_construction_year(projects[1]) <= simulation_years && get_construction_year(projects[1]) <= yearly_horizon
+        if  get_construction_year(projects[1]) <= simulation_years && (get_construction_year(projects[1]) <= iteration_year + yearly_horizon)
 
             total_counter = 1
             counter_by_zone = AxisArrays.AxisArray(ones(length(projects)), get_zone.(get_tech.(projects)))

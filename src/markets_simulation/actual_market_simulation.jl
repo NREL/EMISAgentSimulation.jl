@@ -6,6 +6,8 @@ function create_realized_marketdata(simulation::AgentSimulation,
                                     sys_UC::Union{Nothing, PSY.System},
                                     sys_ED::Union{Nothing, PSY.System},
                                     market_names::Vector{Symbol},
+                                    reserve_penalty::String,
+                                    ordc_curved::Bool,
                                     existing_projects::Vector{<: Project{<: BuildPhase}},
                                     capacity_market_projects::Vector{<: Project{<: BuildPhase}},
                                     capacity_forward_years::Int64,
@@ -47,10 +49,12 @@ function create_realized_marketdata(simulation::AgentSimulation,
     num_hours = size(zonal_load)[2]
     num_days = Int(num_hours/24)
 
+
+
     energy_price,
     reserve_price,
     capacity_factors,
-    reserve_perc = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, zones, num_days, solver, iteration_year)
+    reserve_perc = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), solver)
 
     # Replace energy_mkt_clearing(nothing, nothing, system, load_growth, zones, num_days, solver) with
     # energy_mkt_clearing(sys_UC, sys_ED, system, load_growth, zones, num_days, solver) to run SIIP production cost model
@@ -109,6 +113,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
     pricecap_rec = REC_mkt_params.price_cap[1]
     rec_req = REC_mkt_params.rec_req[1] * rec_market_bool
     rec_annual_increment = REC_mkt_params.annual_increment[1] * rec_market_bool
+    rec_non_binding_years = REC_mkt_params.non_binding_years[1] * rec_market_bool
 
     rec_supply_curve = Vector{Union{String, Float64}}[]
 
@@ -136,8 +141,13 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
 
             sort!(rec_supply_curve, by = x -> x[3])      # Sort REC supply curve by REC bid
-
-            rec_price, rec_accepted_bids = rec_market_clearing(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+            if iteration_year <= rec_non_binding_years
+                println("REC SUPPLY")
+                println(rec_supply_curve)
+                rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+            else
+                rec_price, rec_accepted_bids = rec_market_clearing_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+            end
 
             set_rec_price!(market_prices, "realized", rec_price)
         end
@@ -167,13 +177,13 @@ function create_realized_marketdata(simulation::AgentSimulation,
     for (idx, z) in enumerate(zones)
 
         load_data[:, Symbol(idx)] =  load_data[:, Symbol(idx)] * (1 + load_growth[idx])
-        load_data[:, "Year"] = fill(load_data[1, "Year"] + 1, DataFrames.nrow(load_data))
+        #load_data[:, "Year"] = fill(load_data[1, "Year"] + 1, DataFrames.nrow(load_data))
 
         rep_load_data[:, Symbol(idx)] =  rep_load_data[:, Symbol(idx)] * (1 + load_growth[idx])
-        rep_load_data[:, "Year"] = fill(rep_load_data[1, "Year"] + 1, DataFrames.nrow(rep_load_data))
+        #rep_load_data[:, "Year"] = fill(rep_load_data[1, "Year"] + 1, DataFrames.nrow(rep_load_data))
 
         load_n_vg_data[:, Symbol("load_zone_$(idx)")] = load_n_vg_data[:, Symbol("load_zone_$(idx)")] * (1 + load_growth[idx])
-        load_n_vg_data[:, "Year"] = fill(load_n_vg_data[1, "Year"] + 1, DataFrames.nrow(load_n_vg_data))
+        #load_n_vg_data[:, "Year"] = fill(load_n_vg_data[1, "Year"] + 1, DataFrames.nrow(load_n_vg_data))
     end
 
     # Write realized load and reserve demand data in a CSV file
@@ -190,16 +200,16 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
     for product in non_ordc_products
         reserve_timeseries_data[product][:, product] = reserve_timeseries_data[product][:, product] * (1 + average_load_growth)
-        reserve_timeseries_data[product][:, "Year"] = fill(reserve_timeseries_data[product][1, "Year"] + 1, DataFrames.nrow(reserve_timeseries_data[product]))
+        #reserve_timeseries_data[product][:, "Year"] = fill(reserve_timeseries_data[product][1, "Year"] + 1, DataFrames.nrow(reserve_timeseries_data[product]))
 
         rep_reserve_timeseries_data[product][:, product] = rep_reserve_timeseries_data[product][:, product] * (1 + average_load_growth)
-        rep_reserve_timeseries_data[product][:, "Year"] = fill(rep_reserve_timeseries_data[product][1, "Year"] + 1, DataFrames.nrow(rep_reserve_timeseries_data[product]))
+        #rep_reserve_timeseries_data[product][:, "Year"] = fill(rep_reserve_timeseries_data[product][1, "Year"] + 1, DataFrames.nrow(rep_reserve_timeseries_data[product]))
 
         CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_$(iteration_year).csv"), reserve_timeseries_data[product])
         CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_$(product)_$(iteration_year).csv"), rep_reserve_timeseries_data[product])
     end
 
-    #construct_ordc(simulation_dir, get_investors(simulation), iteration_year, get_rep_days(simulation))
+    construct_ordc(simulation_dir, get_investors(simulation), iteration_year, get_rep_days(simulation), ordc_curved, reserve_penalty)
 
     peak_load_new = (1 + average_load_growth) * peak_load
     set_peak_load!(simulation, peak_load_new)

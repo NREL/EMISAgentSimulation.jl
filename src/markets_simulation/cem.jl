@@ -133,10 +133,12 @@ function cem(system::MarketClearingProblem{Z, T},
 
     price_cap_rec = AxisArrays.AxisArray(zeros(length(invperiods)), invperiods)
     rec_requirement = AxisArrays.AxisArray(zeros(length(invperiods)), invperiods)
+    rec_binding = AxisArrays.AxisArray(falses(length(invperiods)), invperiods)
 
     for p in invperiods
         price_cap_rec[p] = getproperty(getproperty(system.inv_periods[p], :rec), :price_cap)
         rec_requirement[p] = getproperty(getproperty(system.inv_periods[p], :rec), :rec_req)
+        rec_binding[p] = getproperty(getproperty(system.inv_periods[p], :rec), :binding)
         for z in zones
             price_cap_e[z, p] = getproperty(getproperty(system.inv_periods[p], :energy), :price_cap)[z]
             demand_e[z, p, :] = getproperty(getproperty(system.inv_periods[p], :energy), :demand)[z, :]
@@ -507,6 +509,10 @@ function cem(system::MarketClearingProblem{Z, T},
                 end
             end
         end
+
+        if rec_binding[p]
+            JuMP.@constraint(m, v_rec[p] == 0)
+        end
     end
 
     # Market Clearing Constraints:
@@ -644,7 +650,6 @@ function cem(system::MarketClearingProblem{Z, T},
     end
     println(nominal_capacity_price)
 
-
     for z in zones
         for p in invperiods
             for t in opperiods
@@ -654,6 +659,8 @@ function cem(system::MarketClearingProblem{Z, T},
             end
         end
     end
+
+    println(new_options)
 
     return nominal_capacity_price,
            nominal_energy_price,

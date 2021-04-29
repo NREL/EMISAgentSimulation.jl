@@ -11,6 +11,7 @@ This struct contains all the data for an investor.
     cap_cost_multiplier: Capital cost multiplier.
     max_annual_projects: Maximum number of projects.
     risk_preference: Whether investor is Risk Neutral or Risk Averse.
+    retirement_lookback: Number of past years' data taken into account for making retirement decision
 """
 mutable struct Investor
     name::String
@@ -24,6 +25,7 @@ mutable struct Investor
     cap_cost_multiplier::Float64
     max_annual_projects::Int64
     risk_preference::T where T <: RiskPreference
+    retirement_lookback::Int64
 end
 
 get_name(investor::Investor) = investor.name
@@ -37,6 +39,7 @@ get_forecast(investor::Investor) = investor.forecast
 get_cap_cost_multiplier(investor::Investor) = investor.cap_cost_multiplier
 get_max_annual_projects(investor::Investor) = investor.max_annual_projects
 get_risk_preference(investor::Investor) = investor.risk_preference
+get_retirement_lookback(investor::Investor) = investor.retirement_lookback
 
 # Get projects based on their buildphases
 function get_existing(investor::Investor)

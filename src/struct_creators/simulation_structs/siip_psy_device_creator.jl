@@ -16,6 +16,11 @@ function create_PSY_generator(gen::ThermalGenEMIS{<: BuildPhase}, sys::PSY.Syste
         end
     end
 
+    type = deepcopy(get_type(tech))
+    if type == "RE_CT"
+        type = "CT"
+    end
+
     PSY_gen =  PSY.ThermalStandard(
         get_name(gen), # name
         true,   # available
@@ -30,8 +35,8 @@ function create_PSY_generator(gen::ThermalGenEMIS{<: BuildPhase}, sys::PSY.Syste
         get_operation_cost(tech), # operation cost
         base_power, # base power
         get_time_limits(tech), # up and down time limits
-        PSY.PrimeMovers.Symbol(get_type(tech)), # primemover
-        PSY.ThermalFuels.Symbol(get_fuel(tech)), # fuel type
+        PSY.PrimeMovers(findfirst(x -> Symbol(x) == Symbol(type), collect(instances(PSY.PrimeMovers)))), # primemover
+        PSY.ThermalFuels(findfirst(x -> Symbol(x) == Symbol(get_fuel(tech)), collect(instances(PSY.ThermalFuels)))), # fuel type
     )
     return PSY_gen
 end

@@ -8,6 +8,9 @@ function create_products(simulation_data::AgentSimulationData,
 
     markets = get_markets(simulation_data)
 
+    reserve_penalty = get_reserve_penalty(get_case(simulation_data))
+    mopr = get_mopr(get_case(simulation_data))
+
     simulation_horizon = get_simulation_years(get_case(simulation_data))
 
     # Energy market product
@@ -19,7 +22,7 @@ function create_products(simulation_data::AgentSimulationData,
     reserve_products = split(reserve_definition[1, "all_products"], "; ")
 
     for product in reserve_products
-        product_data = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "$(product).csv"))
+        product_data = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "$(reserve_penalty)_reserve_penalty", "$(product).csv"))
         eligible_zones = ["zone_$(n)" for n in split(product_data[1, "eligible_zones"], ";")]
 
         if markets[Symbol(product)] && (projectdata["Zone"] in eligible_zones) && occursin(projectdata["Category"], product_data[1, "eligible categories"])
@@ -37,7 +40,14 @@ function create_products(simulation_data::AgentSimulationData,
         end
     end
 
-    if markets[:Capacity] && projectdata["Capacity Eligible"]
+    capacity_eligible = projectdata["Capacity Eligible"]
+    if mopr
+        if projectdata["Category"] == "Wind" || projectdata["Category"] == "Solar PV"
+            capacity_eligible = false
+        end
+    end
+
+    if markets[:Capacity] && capacity_eligible
         push!(products, Capacity(:Capacity,
                                  0.0,
                                  Dict{String, Array{Float64, 1}}(),

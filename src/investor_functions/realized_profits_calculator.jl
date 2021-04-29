@@ -160,6 +160,9 @@ function calculate_realized_profit(project::Project,
                                                 realized_hour_weight,
                                                 rt_resolution)
 
+        for product in get_products(project)
+            set_total_emission!(product, carbon_emissions)
+        end
         return profit, update_year
     else
         return nothing, update_year
