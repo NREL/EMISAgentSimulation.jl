@@ -116,12 +116,11 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
         PSY.add_component!(sys_UC, PSY_project_UC)
         PSY.add_component!(sys_ED, PSY_project_ED)
 
-        #=
+
         for product in get_products(project)
             add_device_services!(sys_UC, PSY_project_UC, product)
             add_device_services!(sys_ED, PSY_project_ED, product)
         end
-        =#
 
         type = get_type(get_tech(project))
         zone = get_zone(get_tech(project))

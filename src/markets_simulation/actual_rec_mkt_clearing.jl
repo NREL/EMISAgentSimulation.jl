@@ -29,6 +29,52 @@ function update_rec_supply_curve!(rec_supply_curve::Vector{Vector{Union{String, 
 end
 
 """
+This function does nothing if the product is not REC
+"""
+function find_clean_energy_production(product::T,
+                                        project::P) where {T <: Product, P <: Project{<: BuildPhase}}
+
+    return 0.0
+end
+
+# This function pushes project bids in the REC supply curve
+function find_clean_energy_production(product::REC,
+                                        project::P) where {P <: Project{<: BuildPhase}}
+
+
+    return get_project_rec_output(project)
+end
+
+"""
+This function returns 0 if the project is not of type BatteryEMIS and product is not of type Energy
+"""
+function find_storage_energy_consumption(product::T,
+                                        project::P) where {T <: Product, P <: Project{<: BuildPhase}}
+
+    return 0.0
+end
+
+function find_storage_energy_consumption(product::T,
+                                        project::BatteryEMIS{Existing}) where {T <: Product}
+
+    return 0.0
+end
+
+function find_storage_energy_consumption(product::Energy,
+                                        project::P) where {P <: Project{<: BuildPhase}}
+
+    return 0.0
+end
+
+# This function pushes project bids in the REC supply curve
+function find_storage_energy_consumption(product::Energy,
+                                        project::BatteryEMIS{Existing})
+
+
+    return get_expected_production(product)
+end
+
+"""
 This function models the actual REC market clearing.
 """
 function rec_market_clearing_non_binding(rec_requirement::Float64,
@@ -83,9 +129,6 @@ function rec_market_clearing_non_binding(rec_requirement::Float64,
     rec_price = AxisArrays.AxisArray(reshape([JuMP.dual(mkt_clear)], 1,), [1])
     rec_accepted_bid = Dict(supply_curve[s][1] => value.(Q_supply[s]) for s in 1:n_supply_seg)
     println(rec_price)
-    println(rec_requirement)
-    println(sum(value.(Q_supply)))
-    println(value(v_REC))
     #------------------------------------------------------------------------------------------------
     return rec_price, rec_accepted_bid
 

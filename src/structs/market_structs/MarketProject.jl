@@ -39,6 +39,8 @@ mutable struct MarketProject
     remaining_life::Int64                # Remaining life_time
     capacity_eligible::Bool              # eligible for capacity market participation
     rec_eligible::Bool                   # eligible for rps compliance
+    inertia_constant::Float64            # inertia H constant
+    synchronous_inertia::Bool            # whether inertia is synchronous
     zone::String                         # project zone
     ownedby::Vector{String}              # onned by which investors
 
@@ -77,6 +79,8 @@ mutable struct MarketProject
         remaining_life::Int64,
         capacity_eligible::Bool,
         rec_eligible::Bool,
+        inertia_constant::Float64,
+        synchronous_inertia::Bool,
         zone::String,
         ownedby::Vector{String})
 
@@ -143,6 +147,8 @@ mutable struct MarketProject
             remaining_life,
             rec_eligible,
             capacity_eligible,
+            inertia_constant,
+            synchronous_inertia,
             zone,
             ownedby
             )

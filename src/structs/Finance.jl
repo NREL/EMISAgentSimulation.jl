@@ -137,6 +137,7 @@ end
 
 function set_realized_profit!(finance_data::Finance, profit::AxisArrays.AxisArray{Float64, 2})
     finance_data.realized_profit = profit
+    
     return
 end
 
@@ -152,6 +153,7 @@ function set_realized_profit!(finance_data::Finance,
                     year_index::Int64,
                     profit::Float64)
     finance_data.realized_profit[product_name, year_index] = profit
+    
     return
 end
 
@@ -161,6 +163,7 @@ function set_realized_profit!(finance_data::Finance,
                     end_year::Int64,
                     profit::Vector{Float64})
     finance_data.realized_profit[product_name, start_year:end_year] = profit
+    
     return
 end
 

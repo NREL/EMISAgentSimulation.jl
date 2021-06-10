@@ -53,7 +53,7 @@ This function adds ReserveUp service for PSY Devices.
 """
 function add_device_services!(sys::PSY.System,
                               device::PSY.Device,
-                              product::Union{OperatingReserve{ReserveUpEMIS}, OperatingReserve{ReserveDownEMIS}})
+                              product::Union{OperatingReserve{ReserveUpEMIS}, OperatingReserve{ReserveDownEMIS}, Inertia})
 
 
     for service in get_system_services(sys)
@@ -273,4 +273,50 @@ function transform_psy_timeseries!(sys_UC::PSY.System,
     PSY.transform_single_time_series!(sys_UC, Int(24 * 60 / da_resolution), Dates.Hour(24))
     PSY.transform_single_time_series!(sys_ED, Int(60 / rt_resolution), Dates.Hour(1))
     return
+end
+
+function add_psy_inertia!(simulation_dir::String,
+                          sys::Nothing,
+                          system_peak_load::Float64)
+
+    return
+
+end
+
+function add_psy_inertia!(simulation_dir::String,
+                          sys::PSY.System,
+                          system_peak_load::Float64)
+
+    inertia_data = read_data(joinpath(simulation_dir, "markets_data", "Inertia.csv"))
+
+    inertia_requirement = system_peak_load * inertia_data[1, "requirement_multiplier"]
+
+    ####### Adding Inertia reserve
+    inertia_reserve = PSY.VariableReserve{PSY.ReserveSymmetric}(
+        "Inertia",
+        true,
+        60,
+        inertia_requirement,
+    )
+    contri_devices =
+        vcat(collect(PSY.get_components(PSY.ThermalStandard, sys)),
+        collect(PSY.get_components(PSY.RenewableDispatch, sys)),
+        collect(PSY.get_components(PSY.HydroDispatch, sys)),
+        collect(PSY.get_components(PSY.HydroEnergyReservoir, sys)),
+        collect(PSY.get_components(PSY.GenericBattery, sys))
+        );
+
+    PSY.add_service!(sys, inertia_reserve, contri_devices)
+
+    time_stamps = TS.timestamp(PSY.get_data(PSY.get_time_series(
+                    PSY.SingleTimeSeries,
+                    first(PSY.get_components(PSY.ElectricLoad, sys)),
+                    "max_active_power"
+                    )))
+
+    ts_data = ones(length(time_stamps))
+    ts = TimeSeries.TimeArray(time_stamps, ts_data);
+    forecast = PSY.SingleTimeSeries("requirement", ts)
+    PSY.add_time_series!(sys, inertia_reserve, forecast)
+
 end

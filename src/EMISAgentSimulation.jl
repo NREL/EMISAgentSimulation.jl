@@ -36,6 +36,7 @@ export Energy
 export Capacity
 export REC
 export CarbonTax
+export Inertia
 
 export BuildPhase
 export Existing
@@ -70,6 +71,7 @@ export ReserveDownMarket
 export ReserveORDCMarket
 export CapacityMarket
 export RECMarket
+export InertiaMarket
 export MarketCollection
 export MarketClearingProblem
 
@@ -313,6 +315,7 @@ include("structs/products/OperatingReserve.jl")
 include("structs/products/Capacity.jl")
 include("structs/products/REC.jl")
 include("structs/products/CarbonTax.jl")
+include("structs/products/Inertia.jl")
 
 include("structs/Finance.jl")
 
@@ -344,6 +347,7 @@ include("structs/market_structs/ReserveDownMarket.jl")
 include("structs/market_structs/ReserveORDCMarket.jl")
 include("structs/market_structs/CapacityMarket.jl")
 include("structs/market_structs/RECMarket.jl")
+include("structs/market_structs/InertiaMarket.jl")
 include("structs/market_structs/MarketCollection.jl")
 include("structs/market_structs/MarketClearingProblem.jl")
 

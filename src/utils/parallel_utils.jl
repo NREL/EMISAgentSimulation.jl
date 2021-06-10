@@ -49,12 +49,12 @@ function create_parallel_workers(case::CaseDefinition, hpc::Bool)
     if num_workers_required > 0
         if hpc
           nodes = split(ENV["SLURM_NODELIST"], ",")
-          num_procs = min(Int(ceil(num_workers_required / length(nodes))), 3)
+          num_procs = min(Int(ceil(num_workers_required / length(nodes))), 4)
 
           node_pairs = [(n, num_procs) for n in  nodes]
           Distributed.addprocs(node_pairs)
         else
-          Distributed.addprocs(min(Int(num_workers_required), 3), lazy=false)
+          Distributed.addprocs(min(Int(num_workers_required), 4), lazy=false)
         end
     end
 
@@ -67,6 +67,7 @@ This function runs price prediction if investors are parallelized but scenarios 
 function parallelize_only_investors(investor::Investor,
                                     sys_data_dir::String,
                                     expected_portfolio::Vector{<: Project{<: BuildPhase}},
+                                    rps_target::String,
                                     reserve_penalty::String,
                                     zones::Vector{String},
                                     lines::Vector{ZonalLine},
@@ -93,6 +94,7 @@ function parallelize_only_investors(investor::Investor,
                                 carbon_tax,
                                 reserve_products,
                                 ordc_products,
+                                rps_target,
                                 reserve_penalty,
                                 expected_portfolio,
                                 zones,

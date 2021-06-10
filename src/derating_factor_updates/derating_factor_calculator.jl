@@ -1,4 +1,16 @@
 """
+function for ifelse elementwise treatment
+"""
+function elementwise_ifelse(x, y)
+    if x <= 0
+        z = x
+    else
+        z = y
+    end
+    return z
+end
+
+"""
 This function calculates the derating data for existing and new renewable generation
 based on top 100 net-load hour methodology.
 """
@@ -75,6 +87,59 @@ function calculate_derating_data(simulation_dir::String,
 
         derating_factors[:, "new_$(type_zone_id)"] .= min(sum(load_reduction) * derating_scale / gen_cap / num_top_hours, 1.0)
     end
+
+    # Storage CC script
+    battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
+    peak_reductions = [sum(get_maxcap.(battery_existing))]
+    if length(battery_existing) > 0
+        eff_charge = Statistics.mean(get_efficiency(get_tech(battery_existing[1])))
+        stor_duration = Int(Statistics.mean(get_storage_capacity(get_tech(battery_existing[1]))[:max] ./ get_maxcap(battery_existing[1])))
+    else
+        eff_charge = 0.85
+        stor_duration = 4
+    end
+
+    stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
+
+    inc = 1 #set to 1 for system-wide, but will need to be replaced with zonal level array if/when convert to zonal
+
+    max_demands = repeat((maximum(net_load_df[:,"net_load"]) .- peak_reductions), num_hours)
+
+    batt_powers = repeat(peak_reductions, num_hours)
+
+    poss_charges = min(batt_powers .* eff_charge, (max_demands - net_load_df[:,"net_load"]) .* eff_charge)
+
+    necessary_discharges = (max_demands - net_load_df[:,"net_load"])
+
+    poss_batt_changes = zeros(size(necessary_discharges)[1])
+    for n in collect(1:1:size(necessary_discharges)[1])
+        poss_batt_changes[n] = elementwise_ifelse(necessary_discharges[n], poss_charges[n])
+    end
+
+    batt_e_level = zeros((inc, num_hours))
+    batt_e_level[1] = min(poss_batt_changes[1], 0)
+    for n in collect(2:1:num_hours)
+        batt_e_level[n] = batt_e_level[n - 1] + poss_batt_changes[n]
+        batt_e_level[n] = min(batt_e_level[n], 0.0)
+    end
+
+    required_MWhs = -minimum(batt_e_level)
+
+    # This line of code will implement a buffer on all storage duration
+    # requirements, i.e. if the stor_buffer_minutes is set to 60 minutes
+    # then a 2-hour peak would be served by a 3-hour device, a 3-hour peak
+    # by a 4-hour device, etc.
+    stor_buffer_hrs = stor_buffer_minutes / 60
+    required_MWhs = required_MWhs + (batt_powers[1] * stor_buffer_hrs)[1]
+
+    if length(battery_existing) > 0
+        stor_CC = peak_reductions[1] * stor_duration[1] / required_MWhs
+        stor_CC = min(stor_CC, 1.0)
+    else
+        stor_CC = 1.0
+    end
+
+    derating_factors[:, "BA_$(stor_duration)"] .= stor_CC
     write_data(joinpath(simulation_dir, "markets_data"), "derating_dict.csv", derating_factors)
     return
 end

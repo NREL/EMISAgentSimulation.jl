@@ -49,7 +49,7 @@ function update_expected_profit!(project::P,
                                                       solver)
         push!(operating_profit_array, operating_profit)
 
-        # Calculate expected energy production
+        # Calculate expected energy production (NOTE: For storage, we save expected energy consumption (instead of production) here, for adding to clean energy (REC) requirement constraint)
         expected_energy_production += get_probability(scenario) * energy_production
 
         capacity_revenues = zeros(profit_array_length)
@@ -131,14 +131,25 @@ function update_expected_profit!(project::P,
     end
 
     #Calculate REC market bid.
-    rec_market_bid = max(0.0, (total_annual_cost[1] - expected_annual_operating_profit[1] - expected_capacity_revenues[1]) / max(1e-3, expected_energy_production[1]))
-
-    for product in get_products(project)
-        update_bid!(product,
-                    capacity_market_bid,
-                    rec_market_bid,
-                    expected_energy_production[1]
-                    )
+    if length(expected_annual_operating_profit) >= 1
+        rec_market_bid = max(0.0, (total_annual_cost[1] - expected_annual_operating_profit[1] - expected_capacity_revenues[1]) / max(1e-3, expected_energy_production[1]))
+        for product in get_products(project)
+            update_bid!(product,
+                        capacity_market_bid,
+                        rec_market_bid,
+                        expected_energy_production[1]
+                        )
+            set_expected_production!(product, expected_energy_production[1])
+        end
+    else
+        rec_market_bid = 0.0
+        for product in get_products(project)
+            update_bid!(product,
+                        capacity_market_bid,
+                        rec_market_bid,
+                        0.0,
+                        )
+        end
     end
 
     # Sets the project profit values beyond the horizon equal to the last value.

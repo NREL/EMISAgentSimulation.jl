@@ -30,6 +30,8 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
     average_capital_cost_multiplier = Statistics.mean(get_cap_cost_multiplier.(investors))
 
+    clean_energy_percentage_vector = zeros(simulation_years)
+
     for iteration_year = 1:simulation_years
 
         yearly_horizon = min(total_horizon - iteration_year + 1, rolling_horizon)
@@ -43,6 +45,13 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                                                    active_projects,
                                                    iteration_year,
                                                    simulation_years)
+
+        derating_factors = read_data(joinpath(get_data_dir(get_case(simulation)), "markets_data", "derating_dict.csv"))
+
+        output_file = joinpath(get_results_dir(simulation), "derating_data_year_$(iteration_year).jld2")
+
+        FileIO.save(output_file, "derating_factors", derating_factors)
+
         create_investor_predictions(investors,
                                           active_projects,
                                           iteration_year,
@@ -53,6 +62,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                                           get_zones(simulation),
                                           get_lines(simulation),
                                           get_peak_load(simulation),
+                                          get_rps_target(get_case(simulation)),
                                           get_reserve_penalty(get_case(simulation)),
                                           get_solver(get_case(simulation)),
                                           get_parallel_investors(get_case(simulation)),
@@ -71,52 +81,12 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                                     get_case(simulation)
                                     )
 
-
         end
 
         =#
-        project = filter(x -> occursin("new_CC", get_name(x)), active_projects)[1]
-
-        simulation_dir = get_data_dir(get_case(simulation))
-        da_resolution = get_da_resolution(get_case(simulation))
-        rt_resolution = get_rt_resolution(get_case(simulation))
-
-        PSY_project_UC = create_PSY_generator(project, sys_UC)
-        PSY_project_ED = create_PSY_generator(project, sys_ED)
-
-        PSY.add_component!(sys_UC, PSY_project_UC)
-        PSY.add_component!(sys_ED, PSY_project_ED)
-
-        services_UC = get_system_services(sys_UC)
-        services_ED = get_system_services(sys_ED)
-
-        for product in get_products(project)
-            add_device_services!(sys_UC, PSY_project_UC, product)
-            add_device_services!(sys_ED, PSY_project_ED, product)
-        end
-
-        println(PSY_project_UC)
-
-        type = get_type(get_tech(project))
-        zone = get_zone(get_tech(project))
-
-        availability_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv"))
-        availability_df_rt = read_data(joinpath(simulation_dir, "timeseries_data_files", "Availability", "REAL_TIME_availability.csv"))
-
-        if in(get_name(project), names(availability_df))
-            availability_raw = availability_df[:, Symbol(get_name(project))]
-            availability_raw_rt = availability_df_rt[:, Symbol(get_name(project))]
-        elseif in("$(type)_$(zone)", names(availability_df))
-            availability_raw = availability_df[:, Symbol("$(type)_$(zone)")]
-            availability_raw_rt = availability_df_rt[:, Symbol("$(type)_$(zone)")]
-        end
-
-
-
         update_simulation_derating_data!(simulation, get_derating_scale(get_case(simulation)))
         #Get all existing projects to calculate realized profits for energy and REC markets.
         all_existing_projects = vcat(get_existing.(get_investors(simulation))...)
-        println(get_name.(all_existing_projects))
 
         # Get all projects which are expected to be online for the forward capacity market auction.
         capacity_market_year = iteration_year + capacity_forward_years - 1
@@ -134,7 +104,6 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
             update_operation_cost!(project, sys_ED, get_carbon_tax(simulation), iteration_year)
 
         end
-
         installed_capacity = update_installed_cap!(installed_capacity,
                                                    all_existing_projects,
                                                    iteration_year,
@@ -149,11 +118,14 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         realized_market_prices,
         realized_capacity_factors,
         realized_reserve_perc,
+        realized_inertia_perc,
         capacity_accepted_bids,
-        rec_accepted_bids = create_realized_marketdata(simulation,
+        rec_accepted_bids,
+        clean_energy_percentage_vector[iteration_year] = create_realized_marketdata(simulation,
                                                              sys_UC,
                                                              sys_ED,
                                                              markets,
+                                                             get_rps_target(get_case(simulation)),
                                                              get_reserve_penalty(get_case(simulation)),
                                                              get_ordc_curved(get_case(simulation)),
                                                              all_existing_projects,
@@ -181,6 +153,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                                          realized_market_prices,
                                          realized_capacity_factors,
                                          realized_reserve_perc,
+                                         realized_inertia_perc,
                                          capacity_accepted_bids,
                                          rec_accepted_bids,
                                          get_hour_weight(simulation),
@@ -213,6 +186,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         extrapolate_profits!(project, simulation_years)
     end
 
+    FileIO.save(joinpath(get_results_dir(simulation), "clean_energy_percentage.jld2"), "clean_energy_percentage", clean_energy_percentage_vector)
     FileIO.save(joinpath(get_results_dir(simulation), "simulation_data.jld2"), "simulation_data", simulation)
 
     return

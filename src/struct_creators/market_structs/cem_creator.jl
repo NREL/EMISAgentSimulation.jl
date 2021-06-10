@@ -6,6 +6,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                                     carbon_tax::Vector{Float64},
                                     reserve_products::Vector{String},
                                     ordc_products::Vector{String},
+                                    rps_target::String,
                                     reserve_penalty::String,
                                     expected_portfolio::Vector{<: Project{<: BuildPhase}},
                                     zones::Vector{String},
@@ -115,6 +116,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
     capacity_market_bool = false
     rec_market_bool = false
+    inertia_market_bool = false
 
    if in(:Capacity, market_names)
         capacity_market_bool = true
@@ -126,7 +128,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
     capacity_mkt_param_file = joinpath(investor_dir, "markets_data", "Capacity.csv")
 
-    REC_mkt_params = read_data(joinpath(investor_dir, "markets_data", "REC.csv"))
+    REC_mkt_params = read_data(joinpath(investor_dir, "markets_data", "REC_$(rps_target)_RPS.csv"))
     price_cap_rec = REC_mkt_params[1, "price_cap"]
     rec_req = REC_mkt_params[1, "rec_req"] * rec_market_bool
     rec_annual_increment = REC_mkt_params[1, "annual_increment"] * rec_market_bool
@@ -135,18 +137,28 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     rec_binding_array = Int.(zeros(num_invperiods))
     binding_years_from_now = max((rec_non_binding_years - iteration_year + 1), 0) + 1
 
-    for j in binding_years_from_now:num_invperiods
+    for j in max(4, binding_years_from_now):num_invperiods
         rec_binding_array[j] = 1
     end
 
+    if in(:Inertia, market_names)
+        inertia_market_bool = true
+    end
+
+    inertia_mkt_params = read_data(joinpath(investor_dir, "markets_data", "Inertia.csv"))
+    price_cap_inertia = inertia_mkt_params[1, "price_cap"]
+    inertia_req_multiplier = inertia_mkt_params[1, "requirement_multiplier"] * inertia_market_bool
+
     capacity_markets = Vector{CapacityMarket}(undef, num_invperiods)
     rec_markets = Vector{RECMarket}(undef, num_invperiods)
+    inertia_markets = Vector{InertiaMarket}(undef, num_invperiods)
 
     for p in 1:num_invperiods
         system_peak_load = average_annual_increment[p] * peak_load
 
         capacity_markets[p] = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, capacity_market_bool)
         rec_markets[p] = RECMarket(min(rec_req + rec_annual_increment * (p + iteration_year - 1), 1), price_cap_rec, !(iszero(rec_binding_array[p])))
+        inertia_markets[p] = InertiaMarket(system_peak_load * inertia_req_multiplier, price_cap_inertia)
     end
 
     max_peak_loads = AxisArrays.AxisArray([maximum([maximum(market.demand[z, :]) for market in energy_markets]) for z in zones], zones)
@@ -156,7 +168,8 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                                 reserve_up_markets,
                                 reserve_down_markets,
                                 reserve_ordc_markets,
-                                rec_markets)
+                                rec_markets,
+                                inertia_markets)
     #-----------------------------------------------------------------------------------------------------------------------------
     availability_df = read_data(joinpath(investor_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv"))
 

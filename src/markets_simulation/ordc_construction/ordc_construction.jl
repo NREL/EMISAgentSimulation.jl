@@ -265,31 +265,24 @@ function add_psy_ordc!(simulation_dir::String,
                     end
                 end
 
-            time_stamps = TS.timestamp(PSY.get_data(PSY.get_time_series(
-                                                    PSY.SingleTimeSeries,
-                                                    first(PSY.get_components(PSY.ElectricLoad, sys)),
-                                                    "max_active_power"
-                                                    )))
+                time_stamps = TS.timestamp(PSY.get_data(PSY.get_time_series(
+                    PSY.SingleTimeSeries,
+                    first(PSY.get_components(PSY.ElectricLoad, sys)),
+                    "max_active_power"
+                    )))
 
-            if type == "UC"
+                if type == "UC"
                 product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_$(iteration_year - 1).csv"))[:, product]
                 product_data_ts = process_ordc_data_for_siip(product_ts_raw)
-                intervals = Int(24 * 60 / da_resolution)
-                append!(product_data_ts, product_data_ts[(length(product_data_ts) - intervals + 1):end])
-                data = Dict(time_stamps[i] => product_data_ts[i:(i + intervals - 1)] for i in 1:intervals:length(time_stamps))
-                forecast = PSY.Deterministic("variable_cost", data, Dates.Minute(da_resolution))
-            elseif type == "ED"
+                elseif type == "ED"
                 product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_REAL_TIME_$(iteration_year - 1).csv"))[:, product]
                 product_data_ts = process_ordc_data_for_siip(product_ts_raw)
-                intervals =  Int(60 / rt_resolution)
-                append!(product_data_ts, product_data_ts[(length(product_data_ts) - intervals + 1):end])
-                data = Dict(time_stamps[i] => product_data_ts[i:(i + intervals  - 1)] for i in 1:intervals:length(time_stamps))
-                forecast = PSY.Deterministic("variable_cost", data, Dates.Minute(rt_resolution))
-            else
-                error("Type should be UC or ED")
-            end
 
-            PSY.add_time_series!(sys, reserve, forecast)
+                else
+                error("Type should be UC or ED")
+                end
+                forecast = PSY.SingleTimeSeries("variable_cost", TimeSeries.TimeArray(time_stamps, product_data_ts))
+                PSY.add_time_series!(sys, reserve, forecast)
         end
     end
 

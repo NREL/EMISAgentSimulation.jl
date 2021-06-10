@@ -44,6 +44,10 @@ function run_investor_iteration(investor::Investor,
             set_rec_price!(market_prices, scenario_name, expected_data["rec_price"])
         end
 
+        if in(:Inertia, market_names)
+            set_inertia_price!(market_prices, scenario_name, expected_data["inertia_price"])
+        end
+
         for project in projects
             if in(get_name(project), get_name.(active_projects_copy))
                 update_capacity_factors!(project, scenario_name, expected_data["capacity_factors"])

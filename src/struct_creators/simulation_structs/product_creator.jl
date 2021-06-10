@@ -10,12 +10,13 @@ function create_products(simulation_data::AgentSimulationData,
 
     reserve_penalty = get_reserve_penalty(get_case(simulation_data))
     mopr = get_mopr(get_case(simulation_data))
+    bat_cap = get_battery_cap_mkt(get_case(simulation_data))
 
     simulation_horizon = get_simulation_years(get_case(simulation_data))
 
     # Energy market product
     variable_cost = projectdata["Fuel Price \$/MMBTU"] * projectdata["HR_avg_0"] / 1000
-    push!(products, Energy(:Energy, Dict{String, Array{Float64, 2}}(), variable_cost))
+    push!(products, Energy(:Energy, Dict{String, Array{Float64, 2}}(), variable_cost, 0.0))
 
     reserve_definition = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "reserve_products.csv"))
 
@@ -47,6 +48,12 @@ function create_products(simulation_data::AgentSimulationData,
         end
     end
 
+    if !(bat_cap)
+        if projectdata["Category"] == "Battery"
+            capacity_eligible = false
+        end
+    end
+
     if markets[:Capacity] && capacity_eligible
         push!(products, Capacity(:Capacity,
                                  0.0,
@@ -66,6 +73,12 @@ function create_products(simulation_data::AgentSimulationData,
                               projectdata["Fuel Price \$/MMBTU"],
                               zeros(length(simulation_horizon))))
 
+    if markets[:Inertia]
+        push!(products, Inertia(:Inertia,
+                                projectdata["Synchronous_Inertia"],
+                                projectdata["Inertia MJ/MW"],
+                                0.0))
+    end
     return products
 end
 

@@ -71,9 +71,14 @@ function gather_data(case::CaseDefinition)
     investors = create_investors(simulation_data)
     set_investors!(simulation_data, investors)
 
-    construct_ordc(data_dir, investors, 0, representative_days, get_ordc_curved(case), get_reserve_penalty(case))
+    #construct_ordc(data_dir, investors, 0, representative_days, get_ordc_curved(case), get_reserve_penalty(case))
     add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
     add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
+
+    if markets_dict[:Inertia]
+        add_psy_inertia!(data_dir, sys_UC, system_peak_load)
+        add_psy_inertia!(data_dir, sys_ED, system_peak_load)
+    end
 
     transform_psy_timeseries!(sys_UC, sys_ED, get_da_resolution(case), get_rt_resolution(case))
 

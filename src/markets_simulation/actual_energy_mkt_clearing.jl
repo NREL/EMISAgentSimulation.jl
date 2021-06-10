@@ -12,6 +12,7 @@ function energy_mkt_clearing(sys_UC::Nothing,
                              iteration_year::Int64,
                              da_resolution::Int64,
                              rt_resolution::Int64,
+                             case_name::String,
                              solver::JuMP.MOI.OptimizerWithAttributes)
     energy_price,
     reserve_up_price,
@@ -39,6 +40,7 @@ function energy_mkt_clearing(sys_UC::PSY.System,
                              iteration_year::Int64,
                              da_resolution::Int64,
                              rt_resolution::Int64,
+                             case_name::String,
                              solver::JuMP.MOI.OptimizerWithAttributes)
 
     update_PSY_timeseries!(sys_UC, load_growth, simulation_dir, "UC", iteration_year, da_resolution, rt_resolution)
@@ -46,8 +48,10 @@ function energy_mkt_clearing(sys_UC::PSY.System,
 
     energy_price,
     reserve_price,
+    inertia_price,
     capacity_factors,
-    reserve_perc = create_simulation(sys_UC, sys_ED, simulation_dir, zones, num_days, da_resolution, rt_resolution, solver)
+    reserve_perc,
+    inertia_perc = create_simulation(sys_UC, sys_ED, simulation_dir, zones, num_days, da_resolution, rt_resolution, case_name, solver)
 
-    return energy_price, reserve_price, capacity_factors, reserve_perc;
+    return energy_price, reserve_price, inertia_price, capacity_factors, reserve_perc, inertia_perc;
 end
