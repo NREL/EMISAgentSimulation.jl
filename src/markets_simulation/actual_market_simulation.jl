@@ -57,7 +57,12 @@ function create_realized_marketdata(simulation::AgentSimulation,
     inertia_price,
     capacity_factors,
     reserve_perc,
-    inertia_perc = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver)
+    inertia_perc,
+    start_up_costs,
+    shut_down_costs,
+    energy_voll,
+    reserve_voll,
+    inertia_voll = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver)
 
     # Replace energy_mkt_clearing(nothing, nothing, system, load_growth, zones, num_days, solver) with
     # energy_mkt_clearing(sys_UC, sys_ED, system, load_growth, zones, num_days, solver) to run SIIP production cost model
@@ -147,10 +152,6 @@ function create_realized_marketdata(simulation::AgentSimulation,
         total_clean_production += clean_production
     end
 
-    println(total_storage_consumption)
-
-    total_demand += total_storage_consumption
-
     clean_energy_percentage = min(1.0, (total_clean_production / total_demand))
     println(clean_energy_percentage)
 
@@ -163,6 +164,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
             if iteration_year <= rec_non_binding_years
 
                 rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+                println(rec_energy_requirment)
                 rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
             else
                 total = 0
@@ -170,8 +172,8 @@ function create_realized_marketdata(simulation::AgentSimulation,
                     total += i[2]
                 end
                 println(total)
-                println(rec_energy_requirment)
                 rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+                println(rec_energy_requirment)
                 rec_price, rec_accepted_bids = rec_market_clearing_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
             end
 
@@ -193,7 +195,12 @@ function create_realized_marketdata(simulation::AgentSimulation,
                      "reserve_perc", reserve_perc,
                      "capacity_accepted_bids", capacity_accepted_bids,
                      "rec_accepted_bids", rec_accepted_bids,
-                     "inertia_perc", inertia_perc
+                     "inertia_perc", inertia_perc,
+                     "start_up_costs", start_up_costs,
+                     "shut_down_costs", shut_down_costs,
+                     "energy_voll", energy_voll,
+                     "reserve_voll", reserve_voll,
+                     "inertia_voll", inertia_voll
         )
 
     ################ Update realized load growth and peak load #########################################

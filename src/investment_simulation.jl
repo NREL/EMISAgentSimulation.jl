@@ -5,7 +5,6 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
     rolling_horizon = get_rolling_horizon(get_case(simulation))
 
     installed_capacity =  zeros(simulation_years)
-
     capacity_forward_years = get_capacity_forward_years(simulation)
 
     # Set initial capacity market profits considering forward capacity auctions
@@ -40,7 +39,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         set_iteration_year!(simulation, iteration_year)
 
         active_projects = deepcopy(get_activeprojects(simulation))
-        #=
+
         installed_capacity = update_installed_cap!(installed_capacity,
                                                    active_projects,
                                                    iteration_year,
@@ -83,7 +82,6 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         end
 
-        =#
         update_simulation_derating_data!(simulation, get_derating_scale(get_case(simulation)))
         #Get all existing projects to calculate realized profits for energy and REC markets.
         all_existing_projects = vcat(get_existing.(get_investors(simulation))...)

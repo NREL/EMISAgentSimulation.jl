@@ -51,7 +51,12 @@ function energy_mkt_clearing(sys_UC::PSY.System,
     inertia_price,
     capacity_factors,
     reserve_perc,
-    inertia_perc = create_simulation(sys_UC, sys_ED, simulation_dir, zones, num_days, da_resolution, rt_resolution, case_name, solver)
+    inertia_perc,
+    start_up_costs,
+    shut_down_costs,
+    energy_voll,
+    reserve_voll,
+    inertia_voll = create_simulation(sys_UC, sys_ED, simulation_dir, zones, num_days, da_resolution, rt_resolution, case_name, solver)
 
-    return energy_price, reserve_price, inertia_price, capacity_factors, reserve_perc, inertia_perc;
+    return energy_price, reserve_price, inertia_price, capacity_factors, reserve_perc, inertia_perc, start_up_costs, shut_down_costs, energy_voll, reserve_voll, inertia_voll;
 end

@@ -570,7 +570,7 @@ function cem(system::MarketClearingProblem{Z, T},
     # REC market
     JuMP.@constraint(m, rps_compliance[p in invperiods],
         sum(p_e[g, p, t] * rep_hour_weight[t] for g in rps_compliant_projects, t in opperiods) + v_rec[p]
-        >= (sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods) + sum(p_in[g, p, t] * rep_hour_weight[t] for g in storage_projects, t in opperiods )) * rec_requirement[p])
+        >= (sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods)) * rec_requirement[p])
 
     # Inertia market
     JuMP.@constraint(m, inertia_market[p in invperiods, t in opperiods],
@@ -666,7 +666,6 @@ function cem(system::MarketClearingProblem{Z, T},
 
     for p in invperiods
         println(p)
-        #=
         println("Energy")
         println(Statistics.mean(nominal_energy_price[:, p, :]))
         println(maximum(nominal_energy_price[:, p, :]))
@@ -678,9 +677,10 @@ function cem(system::MarketClearingProblem{Z, T},
         println("Inertia")
         println(Statistics.mean(nominal_inertia_price[p, :]))
         println(maximum(nominal_inertia_price[p, :]))
-        =#
+
+        #=
         println("Total Demand")
-        println(sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods) + sum(value.(p_in[g, p, t]) * rep_hour_weight[t] for g in storage_projects, t in opperiods ))
+        println(sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods))
 
         println("Total Generation")
         println(sum(value.(p_e[g, p, t]) * rep_hour_weight[t] for g in generator_projects, t in opperiods))
@@ -692,8 +692,8 @@ function cem(system::MarketClearingProblem{Z, T},
         println(rec_requirement[p])
 
         println("RPS Achieved")
-        println(sum(value.(p_e[g, p, t]) * rep_hour_weight[t] for g in rps_compliant_projects, t in opperiods) / (sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods) + sum(value.(p_in[g, p, t]) * rep_hour_weight[t] for g in storage_projects, t in opperiods )))
-
+        println(sum(value.(p_e[g, p, t]) * rep_hour_weight[t] for g in rps_compliant_projects, t in opperiods) / (sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods)))
+        =#
     end
 
     println(nominal_capacity_price)
