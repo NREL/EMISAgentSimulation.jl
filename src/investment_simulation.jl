@@ -82,6 +82,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         end
 
+
         update_simulation_derating_data!(simulation, get_derating_scale(get_case(simulation)))
         #Get all existing projects to calculate realized profits for energy and REC markets.
         all_existing_projects = vcat(get_existing.(get_investors(simulation))...)

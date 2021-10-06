@@ -123,13 +123,13 @@ function get_realized_capacity_factors(device::PSY.GenericBattery,
     capacity_factors = energy_production / get_device_size(device)
     generation = filter(x -> x > 0, capacity_factors)
     println(maximum(generation))
-    println(sum(generation) * get_device_size(device) * 100 / 6)
+    println(sum(generation) * get_device_size(device) * 100 / 12)
 
     energy_production_uc = results_uc[:Pout__GenericBattery][:, Symbol(get_name(device))] - results_uc[:Pin__GenericBattery][:, Symbol(get_name(device))]
     capacity_factors_uc = energy_production_uc / get_device_size(device)
     generation_uc = filter(x -> x > 0, capacity_factors_uc)
     println(maximum(generation_uc))
-    println(sum(generation_uc) * get_device_size(device) * 2 * 100)
+    println(sum(generation_uc) * get_device_size(device) * 1 * 100)
     return capacity_factors
 end
 
@@ -172,6 +172,7 @@ function update_realized_reserve_perc!(device::PSY.Device,
         reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
 
     end
+
     return
 end
 
@@ -284,7 +285,7 @@ function create_uc_template(inertia_product)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
         PSI.set_device_model!(template, PSY.HydroEnergyReservoir, PSI.HydroDispatchRunOfRiver)
         PSI.set_device_model!(template, PSY.HydroDispatch, PSI.HydroDispatchRunOfRiver) # TODO: check which hydro device we have
-        PSI.set_device_model!(template, PSY.GenericBattery, PSI.BookKeeping)
+        PSI.set_device_model!(template, PSY.GenericBattery, PSI.BookKeepingwReservation)
         PSI.set_device_model!(template, PSY.Line, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.Transformer2W, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
@@ -313,7 +314,7 @@ function create_ed_template(inertia_product)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
         PSI.set_device_model!(template, PSY.HydroEnergyReservoir, PSI.HydroDispatchRunOfRiver)
         PSI.set_device_model!(template, PSY.HydroDispatch, PSI.HydroDispatchRunOfRiver) # TODO: check which hydro device we have
-        PSI.set_device_model!(template, PSY.GenericBattery, PSIE.BookKeepingwInertia)
+        PSI.set_device_model!(template, PSY.GenericBattery, PSI.BookKeeping)
         PSI.set_device_model!(template, PSY.Line, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.Transformer2W, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
@@ -349,7 +350,7 @@ end
 This function creates the Problem for PSI Simulation.
 """
 
-function create_problem(template::PSI.OperationsProblemTemplate, sys::PSY.System, type::String, solver::JuMP.MOI.OptimizerWithAttributes)
+function create_problem(template::PSI.OperationsProblemTemplate, sys::PSY.System, type::String, solver::JuMP.MOI.OptimizerWithAttributes, inertia_product)
 
     duals = [:nodal_balance_active__Bus]
 
@@ -381,17 +382,31 @@ function create_problem(template::PSI.OperationsProblemTemplate, sys::PSY.System
                                     )
 
         elseif type == "ED"
-            problem = PSI.OperationsProblem(
-                                    PSI.EconomicDispatchProblem,
-                                    template,
-                                    sys;
-                                    optimizer = solver,
-                                    optimizer_log_print = false,
-                                    balance_slack_variables = true,
-                                    constraint_duals = duals,
-                                    warm_start = true,
-                                    services_slack_variables = true,
-                                    )
+            if !(isempty(inertia_product))
+                problem = PSI.OperationsProblem(
+                                        PSI.EconomicDispatchProblem,
+                                        template,
+                                        sys;
+                                        optimizer = solver,
+                                        optimizer_log_print = false,
+                                        balance_slack_variables = true,
+                                        constraint_duals = duals,
+                                        warm_start = true,
+                                        services_slack_variables = true,
+                                        )
+            else
+                problem = PSI.OperationsProblem(
+                                        PSI.EconomicDispatchProblem,
+                                        template,
+                                        sys;
+                                        optimizer = solver,
+                                        optimizer_log_print = false,
+                                        balance_slack_variables = true,
+                                        constraint_duals = duals,
+                                        warm_start = true,
+                                        services_slack_variables = true,
+                                        )
+            end
         else
             error("Type should be either UC or ED")
         end
@@ -438,8 +453,8 @@ function create_simulation( sys_UC::PSY.System,
     template_uc = create_uc_template(inertia_product)
     template_ed = create_ed_template(inertia_product)
 
-    uc_problem = create_problem(template_uc, sys_UC, "UC", solver)
-    ed_problem = create_problem(template_ed, sys_ED, "ED", solver)
+    uc_problem = create_problem(template_uc, sys_UC, "UC", solver, inertia_product)
+    ed_problem = create_problem(template_ed, sys_ED, "ED", solver, inertia_product)
 
     if isempty(inertia_product)
         feedforward_dict = Dict(
@@ -487,7 +502,7 @@ function create_simulation( sys_UC::PSY.System,
 
     sim = PSI.Simulation(
                     name = "emis_$(case_name)",
-                    steps = 30,
+                    steps = 5,
                     problems = problems,
                     sequence = sequence,
                     simulation_folder = ".",

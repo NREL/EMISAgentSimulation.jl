@@ -497,9 +497,6 @@ function calculate_operating_profit(storage::P,
 
     energy_consumption = AxisArrays.AxisArray([sum(value(p_in[y, h]) * rep_hour_weight[h] for h in 1:num_hours) for y in start_year:end_year],
                         AxisArrays.Axis{:year}(start_year:end_year))
-                        println(get_name(storage))
-                        println(energy_consumption)
-                        println(profit_array)
 
 
     return profit_array, energy_consumption

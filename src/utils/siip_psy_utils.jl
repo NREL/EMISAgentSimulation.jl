@@ -215,7 +215,7 @@ function update_PSY_timeseries!(sys::PSY.System,
                 data = Dict(time_stamps[i] => product_data_ts[i:(i + intervals - 1)] for i in 1:intervals:length(time_stamps))
                 forecast = PSY.Deterministic("variable_cost", data, Dates.Minute(da_resolution))
             elseif type == "ED"
-                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(service_name)_REAL_TIME_$(iteration_year - 1                                       ).csv"))[:, service_name]
+                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(service_name)_REAL_TIME_$(iteration_year - 1).csv"))[:, service_name]
                 product_data_ts = process_ordc_data_for_siip(product_ts_raw)
                 intervals =  Int(60 / rt_resolution)
                 append!(product_data_ts, product_data_ts[(length(product_data_ts) - intervals + 1):end])

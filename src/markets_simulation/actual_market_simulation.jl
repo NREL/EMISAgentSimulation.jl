@@ -153,7 +153,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
     end
 
     clean_energy_percentage = min(1.0, (total_clean_production / total_demand))
-    println(clean_energy_percentage)
+    #println(clean_energy_percentage)
 
     if in(:REC, market_names)
         if length(rec_supply_curve) >= 1
@@ -164,16 +164,16 @@ function create_realized_marketdata(simulation::AgentSimulation,
             if iteration_year <= rec_non_binding_years
 
                 rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
-                println(rec_energy_requirment)
+                #println(rec_energy_requirment)
                 rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
             else
                 total = 0
                 for i in rec_supply_curve
                     total += i[2]
                 end
-                println(total)
+                #println(total)
                 rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
-                println(rec_energy_requirment)
+                #println(rec_energy_requirment)
                 rec_price, rec_accepted_bids = rec_market_clearing_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
             end
 

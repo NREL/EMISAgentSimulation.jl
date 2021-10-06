@@ -93,7 +93,7 @@ function construct_ordc(simulation_dir::String,
 
                     for zone in zones
                         aggregate_distribution_mean = error_mean[zone] + unavail_mean[zone]
-                        aggregate_distribution_std = sqrt(error_mean[zone]^2 + unavail_mean[zone]^2)
+                        aggregate_distribution_std = sqrt(error_var[zone] + unavail_std[zone]^2)
                         aggregate_distribution[zone] = Distributions.Normal(aggregate_distribution_mean, aggregate_distribution_std)
 
                         three_std = aggregate_distribution_mean + 3 * aggregate_distribution_std
@@ -131,7 +131,7 @@ function construct_ordc(simulation_dir::String,
 
                 else
                     aggregate_distribution_mean = error_mean + unavail_mean
-                    aggregate_distribution_std = sqrt(error_mean^2 + unavail_mean^2)
+                    aggregate_distribution_std = sqrt(error_var + unavail_std^2)
 
                     aggregate_distribution = Distributions.Normal(aggregate_distribution_mean, aggregate_distribution_std)
 
@@ -259,7 +259,7 @@ function add_psy_ordc!(simulation_dir::String,
                         PSY.add_service!(component, reserve, sys)
                     end
                 end
-                if occursin("BA", eligible_categories)
+                if occursin("Battery", eligible_categories)
                     for component in PSY.get_components(PSY.GenericBattery, sys)
                         PSY.add_service!(component, reserve, sys)
                     end

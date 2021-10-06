@@ -3,6 +3,7 @@ function cem(system::MarketClearingProblem{Z, T},
     solver::JuMP.MOI.OptimizerWithAttributes,
     resultfile::String="") where {Z, T}
 
+
     lines = [line.name for line in system.lines] # Lines
     projects = [project.name for project in system.projects] # Projects
     invperiods = 1:length(system.inv_periods)     # Investment periods
@@ -665,6 +666,7 @@ function cem(system::MarketClearingProblem{Z, T},
     end
 
     for p in invperiods
+        #=
         println(p)
         println("Energy")
         println(Statistics.mean(nominal_energy_price[:, p, :]))
@@ -678,7 +680,7 @@ function cem(system::MarketClearingProblem{Z, T},
         println(Statistics.mean(nominal_inertia_price[p, :]))
         println(maximum(nominal_inertia_price[p, :]))
 
-        #=
+
         println("Total Demand")
         println(sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods))
 
@@ -700,9 +702,6 @@ function cem(system::MarketClearingProblem{Z, T},
     println(nominal_REC_price)
 
     println(new_options)
-
-    println("REC")
-    println(value.(v_rec))
 
     for z in zones
         for p in invperiods

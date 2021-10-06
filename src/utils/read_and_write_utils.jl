@@ -11,7 +11,6 @@ end
 function write_data(dir:: String, file_name::String, data::DataFrames.DataFrame)
 
     dir_exists(dir::String)
-
     CSV.write(joinpath(dir, file_name), data)
 
     return

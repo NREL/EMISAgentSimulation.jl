@@ -326,7 +326,6 @@ function calculate_realized_profit(project::Project,
                                                 output,
                                                 realized_hour_weight)
 
-        println(project_name)
 
         return profit, update_year
     else

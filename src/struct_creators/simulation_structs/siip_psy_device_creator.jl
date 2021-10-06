@@ -116,7 +116,7 @@ function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
         project_bus[1], # bus
         PSY.PrimeMovers.BA, # primemover
         get_soc(tech) / (base_power), #initial state of charge
-        (min = get_storage_capacity(tech)[:min] / (base_power), max = get_storage_capacity(tech)[:max] / (base_power)), # state of charge limits
+        (min = get_storage_capacity(tech)[:min] / base_power, max = get_storage_capacity(tech)[:max] / base_power), # state of charge limits
         get_maxcap(gen) / base_power, # rating
         get_maxcap(gen) / base_power, # active power
         (min = get_input_active_power_limits(tech)[:min] / base_power, max = get_input_active_power_limits(tech)[:max] / base_power), # input active power limits
@@ -130,5 +130,6 @@ function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
     for product in get_products(gen)
         add_inertia_constant!(PSY_gen, product)
     end
+
     return PSY_gen
 end

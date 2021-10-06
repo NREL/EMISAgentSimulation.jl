@@ -301,7 +301,7 @@ function get_name(case::CaseDefinition)
     if get_vre_reserves(case)
         vre_reserves = "VRE_reserves"
     else
-        vre_reserves = "No_VRE_reserves"
+        vre_reserves = "No_VRE_and Bat_reserves"
     end
 
     if get_markets(case)[:Inertia]
