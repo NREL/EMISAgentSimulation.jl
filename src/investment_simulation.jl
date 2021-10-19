@@ -174,6 +174,10 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                             iteration_year)
 
             end
+
+            update_portfolio_preference_multipliers!(investor, iteration_year)
+
+            println(get_portfolio_preference_multipliers(investor))
         end
 
         println("COMPLETED YEAR $(iteration_year)")

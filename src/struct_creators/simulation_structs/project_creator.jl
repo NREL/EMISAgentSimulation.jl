@@ -237,6 +237,7 @@ function create_investment_data(size::Float64,
         age = 0
         remaining_lifetime = projectdata["Lifetime"]
         project_capex = [capex_data[capex_row, "$(start_year + y - 1)"] for y in 1:max_horizon]
+        preference_multiplier = projectdata["Preference Multiplier"] * ones(max_horizon)
     else
         online_year = projectdata["Online Year"]
         age = start_year - online_year
@@ -247,6 +248,7 @@ function create_investment_data(size::Float64,
             project_capex[y] = capex_data[capex_row, "pre $(start_year)"]
         end
 
+        preference_multiplier = ones(max_horizon)
     end
 
     investment_cost, discount_rate = calculate_capcost_and_wacc(project_capex, category, investor_dir, online_year)
@@ -287,6 +289,7 @@ function create_investment_data(size::Float64,
 
     finance_data = Finance(investment_cost,
                            effective_investment_cost,
+                           preference_multiplier,
                            projectdata["Lagtime"],
                            remaining_lifetime,
                            capex_years,

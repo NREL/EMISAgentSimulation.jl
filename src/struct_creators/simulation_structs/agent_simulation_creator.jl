@@ -71,7 +71,7 @@ function gather_data(case::CaseDefinition)
     investors = create_investors(simulation_data)
     set_investors!(simulation_data, investors)
 
-    construct_ordc(data_dir, investors, 0, representative_days, get_ordc_curved(case), get_reserve_penalty(case))
+    #construct_ordc(data_dir, investors, 0, representative_days, get_ordc_curved(case), get_reserve_penalty(case))
     add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
     add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
 

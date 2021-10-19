@@ -4,6 +4,7 @@ module EMISAgentSimulation
 # Exports
 
 # Export Structs
+using Base: Tuple, Float64
 export CaseDefinition
 
 export AgentSimulation
@@ -281,6 +282,7 @@ import PooledArrays
 import PowerSystems
 import PowerSimulations
 using PowerSimulationExtensions
+using PRAS
 import InfrastructureSystems
 
 const PSY = PowerSystems
@@ -293,8 +295,9 @@ import UUIDs
 import StatsBase
 import Statistics
 import TimeSeries
-
 const TS = TimeSeries
+
+import TimeZones
 
 import Base.convert
 import JuMP.value
@@ -382,6 +385,7 @@ include("markets_simulation/ordc_construction/ordc_market_creator.jl")
 
 #Include PRAS Resource adequacy functions
 include("PRAS_functions/conv.jl")
+include("PRAS_functions/PSY2PRAS.jl")
 
 #Include Test System Parsers
 include("test_system_parsers/test_system_reader.jl")

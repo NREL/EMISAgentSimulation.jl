@@ -62,3 +62,11 @@ function set_effective_investment_cost!(project::P,
                                       investment_cost::Float64) where P <: Project{<: BuildPhase}
     project.finance_data.effective_investment_cost = investment_cost
 end
+
+function get_project_preference_multiplier(project::Project)
+    return get_preference_multiplier(get_finance_data(project))
+end
+
+function set_preference_multiplier!(project::Project, iteration_year::Int64, value:: Float64)
+    project.finance_data.preference_multiplier[iteration_year] = value
+end

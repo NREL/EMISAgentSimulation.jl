@@ -374,7 +374,7 @@ function create_problem(template::PSI.OperationsProblemTemplate, sys::PSY.System
                                     template,
                                     sys;
                                     optimizer = solver,
-                                    optimizer_log_print = true,
+                                    optimizer_log_print = false,
                                     balance_slack_variables = true,
                                     constraint_duals = duals,
                                     warm_start = true,

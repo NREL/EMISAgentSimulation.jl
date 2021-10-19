@@ -134,6 +134,21 @@ function create_investors(simulation_data::AgentSimulationData)
 
         add_investor_project_availability!(simulation_data_dir, projects)
 
+        option_leaftypes = leaftypes(Project{Option})
+
+        option_projects = filter(project -> in(typeof(project), option_leaftypes), projects)
+
+        portfolio_preference_multipliers = Dict{Tuple{String, String}, Vector{Float64}}()
+
+        for project in option_projects
+            project_tech_specs = get_tech(project)
+            tech = get_type(project_tech_specs)
+            zone = get_zone(project_tech_specs)
+            portfolio_preference_multipliers[(tech, zone)] = get_project_preference_multiplier(project)
+        end
+
+        preference_multiplier_range = (min = characteristics[1, "min_pref_multiplier"], max = characteristics[1, "max_pref_multiplier"])
+
         #Names of the markets in which the investor is participating.
         markets = Symbol[]
         simulation_markets = get_markets(simulation_data)
@@ -186,6 +201,8 @@ function create_investors(simulation_data::AgentSimulationData)
                                 rep_hour_weight,
                                 forecast,
                                 capital_cost_multiplier,
+                                preference_multiplier_range,
+                                portfolio_preference_multipliers,
                                 max_annual_projects,
                                 risk_preference,
                                 retirement_lookback)
