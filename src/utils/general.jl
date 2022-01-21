@@ -56,7 +56,7 @@ end
 """
 This function returns the size of the PSY Device.
 """
-get_device_size(device::PSY.ThermalStandard) = PSY.get_active_power_limits(device)[:max]
+get_device_size(device::T) where T <: PSY.ThermalGen = PSY.get_active_power_limits(device)[:max]
 get_device_size(device::PSY.RenewableDispatch) = PSY.get_rating(device)
 get_device_size(device::Union{PSY.HydroEnergyReservoir, PSY.HydroDispatch}) = PSY.get_active_power_limits(device)[:max]
 get_device_size(device::PSY.GenericBattery) = PSY.get_rating(device)
@@ -303,4 +303,16 @@ function find_rt_periods(hours::Vector{Int64}, num_rt_intervals::Int64)
         append!(rt_periods, collect(((hour - 1) * num_rt_intervals + 1):(hour * num_rt_intervals)))
     end
     return rt_periods
+end
+
+function parsebool(s)
+  return  lowercase(s) == "true" ? true : false
+end
+
+function parseint(s)
+    return parse(Int64, s)
+end
+
+function parsefloat(s)
+    return parse(Float64, s)
 end

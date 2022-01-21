@@ -279,7 +279,8 @@ This function does nothing if the product is not of Capacity or REC type.
 function update_bid!(product::T,
                      capacity_market_bid::Float64,
                      rec_market_bid::Float64,
-                     energy_production::Float64) where T <: Product
+                     energy_production::Float64,
+                     iteration_year::Int64) where T <: Product
     return
 end
 
@@ -289,7 +290,8 @@ This function updates the Capacity market bid of projects.
 function update_bid!(product::Capacity,
                      capacity_market_bid::Float64,
                      rec_market_bid::Float64,
-                     energy_production::Float64)
+                     energy_production::Float64,
+                     iteration_year::Int64)
 
     set_capacity_bid!(product, capacity_market_bid)
 
@@ -302,10 +304,11 @@ This function updates the REC market bid of projects.
 function update_bid!(product::REC,
                      capacity_market_bid::Float64,
                      rec_market_bid::Float64,
-                     energy_production::Float64)
+                     energy_production::Float64,
+                     iteration_year::Int64)
 
     set_rec_bid!(product, rec_market_bid)
-    set_rec_certificates!(product, energy_production)
+    set_expected_rec_certificates!(product, energy_production * get_rec_correction_factor(product, iteration_year))
     return
 end
 

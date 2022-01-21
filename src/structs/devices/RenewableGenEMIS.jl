@@ -15,6 +15,7 @@ struct RenewableTech <: Tech
     bus::Int64
     zone::String
     FOR::Float64
+    MTTR::Int64
 end
 
 get_type(tech::RenewableTech) = tech.type
@@ -24,6 +25,7 @@ get_operation_cost(tech::RenewableTech) = tech.operation_cost
 get_bus(tech::RenewableTech) = tech.bus
 get_zone(tech::RenewableTech) = tech.zone
 get_FOR(tech::RenewableTech) = tech.FOR
+get_MTTR(tech::RenewableTech) = tech.MTTR
 
 """
 This struct contains all the data for a renewable generator.

@@ -64,6 +64,7 @@ function create_products(simulation_data::AgentSimulationData,
     if markets[:REC] && projectdata["REC Eligible"]
         push!(products, REC(:REC,
                             0.0,
+                            ones(simulation_horizon),
                             0.0))
     end
 
@@ -71,7 +72,7 @@ function create_products(simulation_data::AgentSimulationData,
                               projectdata["CO2_Emissions ton/MMBTU"],
                               projectdata["HR_avg_0"] / 1000,
                               projectdata["Fuel Price \$/MMBTU"],
-                              zeros(length(simulation_horizon))))
+                              zeros(simulation_horizon)))
 
     if markets[:Inertia]
         push!(products, Inertia(:Inertia,

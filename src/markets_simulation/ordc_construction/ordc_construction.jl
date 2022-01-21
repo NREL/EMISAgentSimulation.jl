@@ -1,11 +1,13 @@
 """
 This function constructs the ORDCs for spinning and primary reserve products.
 """
-function construct_ordc(simulation_dir::String,
+function construct_ordc(sys::PSY.System,
+                        simulation_dir::String,
                         investors::Vector{Investor},
                         iteration_year::Int64,
                         rep_days::Dict{Dates.Date,Int64},
                         ordc_curved::Bool,
+                        ordc_unavailability_method::String,
                         reserve_penalty::String)
 
     products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")
@@ -13,14 +15,17 @@ function construct_ordc(simulation_dir::String,
     generators = filter(p -> in(typeof(p), leaftypes(GeneratorEMIS{Existing})), vcat(get_existing.(investors)...))
     zonal = false
 
+    smc_unavailability_timeseries = construct_smc_unavailabilities(sys, ordc_unavailability_method)
+    conv_unavail_mean, conv_unavail_std = construct_conv_unavailabilities(simulation_dir, generators, zonal, ordc_unavailability_method)
+
     load_n_vg_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
     load_n_vg_df_rt = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data_rt.csv"))
     zones = chop.(filter(n -> occursin("load", n), names(load_n_vg_df)), head = 5, tail = 0)
 
+
     num_rt_intervals = round(Int, DataFrames.nrow(load_n_vg_df_rt)/DataFrames.nrow(load_n_vg_df))
 
     renewable_generators = filter(g -> typeof(g) == RenewableGenEMIS{Existing}, generators)
-    unavail_mean, unavail_std = construct_gen_unavail_distribution(simulation_dir, generators, zonal)
 
     for product in products
 
@@ -70,7 +75,7 @@ function construct_ordc(simulation_dir::String,
 
         ordc_df = load_n_vg_df[:, 1:4]
         ordc_df_rt = load_n_vg_df_rt[:, 1:4]
-
+        #Need code fix to work with zonal ORDC markets
         if zonal
             for zone in zones
                 ordc_df[:,"$(product)_$(zone)"] = Vector{Vector{Tuple{Float64, Float64}}}(undef, DataFrames.nrow(ordc_df))
@@ -88,6 +93,8 @@ function construct_ordc(simulation_dir::String,
                 rt_periods = find_rt_periods(hours, num_rt_intervals)
 
                 error_mean, error_var = construct_net_load_forecast_error_distribution(simulation_dir, renewable_generators, months, hours, zonal)
+                unavail_mean, unavail_std = construct_gen_unavail_distribution(simulation_dir, smc_unavailability_timeseries, conv_unavail_mean, conv_unavail_std, months, hours)
+
                 if zonal
                     aggregate_distribution = Dict{String, Distributions.Normal}()
 
@@ -241,10 +248,18 @@ function add_psy_ordc!(simulation_dir::String,
                 nothing,
                 product,
                 true,
-                product_data[1, "timescale (min)"],
+                product_data[1, "timescale (min)"] * 60,
             )
 
                 PSY.add_service!(sys, reserve, PSY.get_components(PSY.ThermalStandard, sys))
+
+                for component in PSY.get_components(PSYE.ThermalCleanEnergy, sys)
+                    PSY.add_service!(component, reserve, sys)
+                end
+
+                for component in PSY.get_components(ThermalFastStartSIIP, sys)
+                    PSY.add_service!(component, reserve, sys)
+                end
 
                 if occursin("Hydro", eligible_categories)
                     for component in PSY.get_components(PSY.HydroDispatch, sys)
@@ -272,14 +287,14 @@ function add_psy_ordc!(simulation_dir::String,
                     )))
 
                 if type == "UC"
-                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_$(iteration_year - 1).csv"))[:, product]
-                product_data_ts = process_ordc_data_for_siip(product_ts_raw)
+                    product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_$(iteration_year - 1).csv"))[:, product]
+                    product_data_ts = process_ordc_data_for_siip(product_ts_raw)
                 elseif type == "ED"
-                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_REAL_TIME_$(iteration_year - 1).csv"))[:, product]
-                product_data_ts = process_ordc_data_for_siip(product_ts_raw)
+                    product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(product)_REAL_TIME_$(iteration_year - 1).csv"))[:, product]
+                    product_data_ts = process_ordc_data_for_siip(product_ts_raw)
 
                 else
-                error("Type should be UC or ED")
+                    error("Type should be UC or ED")
                 end
                 forecast = PSY.SingleTimeSeries("variable_cost", TimeSeries.TimeArray(time_stamps, product_data_ts))
                 PSY.add_time_series!(sys, reserve, forecast)
@@ -288,3 +303,12 @@ function add_psy_ordc!(simulation_dir::String,
 
     return
 end
+
+#=
+system = SystemModel("../PLEXOS2PRAS/test/rts/rts_interfaces.pras")
+nsamples = 100
+
+unavailable = unavailabilities(system, nsamples) # samples x timesteps
+mus = vec(mean(unavailable, dims=1))
+sigmas = vec(std(unavailable, dims=1))
+=#

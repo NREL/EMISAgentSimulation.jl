@@ -50,7 +50,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
     num_hours = size(zonal_load)[2]
     num_days = Int(num_hours/24)
 
-
+    rec_perc_requirement = get_rec_requirement(simulation)[iteration_year]
 
     energy_price,
     reserve_price,
@@ -62,7 +62,34 @@ function create_realized_marketdata(simulation::AgentSimulation,
     shut_down_costs,
     energy_voll,
     reserve_voll,
-    inertia_voll = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver)
+    inertia_voll = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, reserve_penalty, rec_perc_requirement, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver)
+
+    println("Clean energy requirement for this year is $(get_rec_requirement(simulation)[iteration_year] * 100) percent")
+    total_production = 0.0
+    total_cec_production = 0.0
+    day = 0
+    for time in 1:288:(288 * 360)
+        day += 1
+        daily_total_production = 0.0
+        daily_cec_production = 0.0
+        for gen in get_all_techs(sys_ED)
+            name = PSY.get_name(gen)
+            if !(occursin("BA", name))
+                energy_production = sum(capacity_factors[name][time:time + 287]) * get_device_size(gen)
+                total_production += energy_production
+                daily_total_production += energy_production
+                if occursin("WT", name) || occursin("WIND", name) || occursin("PV", name) || occursin("HY", name) || occursin("NU", name) || occursin("RE", name)
+                    total_cec_production += energy_production
+                    daily_cec_production += energy_production
+                end
+            end
+        end
+        #println("Clean energy contribution for day $(day) is $(round(daily_cec_production * 100.0 / daily_total_production, digits = 2)) percent")
+    end
+
+    println("Total Annual clean energy contribution is $(round(total_cec_production * 100.0 / total_production, digits = 2)) percent")
+
+    cet_achieved_ratio = round(total_cec_production / total_production, digits = 2) / get_rec_requirement(simulation)[iteration_year]
 
     # Replace energy_mkt_clearing(nothing, nothing, system, load_growth, zones, num_days, solver) with
     # energy_mkt_clearing(sys_UC, sys_ED, system, load_growth, zones, num_days, solver) to run SIIP production cost model
@@ -93,6 +120,9 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
     capacity_supply_curve = Vector{Union{String, Float64}}[]
 
+    delta_irm = get_delta_irm(get_resource_adequacy(simulation), iteration_year)
+    irm_scalar = get_irm_scalar(get_case(simulation))
+
     for project in capacity_market_projects
         for product in get_products(project)
             capacity_supply_curve = update_capacity_supply_curve!(capacity_supply_curve, product, project)
@@ -104,7 +134,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
     if in(:Capacity, market_names) && iteration_year + capacity_forward_years - 1 <= simulation_years
         system_peak_load = (1 + average_load_growth) ^ (capacity_forward_years) * peak_load
-        capacity_demand_curve = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, capacity_market_bool)
+        capacity_demand_curve = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, irm_scalar, delta_irm, capacity_market_bool)
 
         sort!(capacity_supply_curve, by = x -> x[3])      # Sort capacity supply curve by capacity bid
 
@@ -244,11 +274,13 @@ function create_realized_marketdata(simulation::AgentSimulation,
         CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "rep_$(product)_$(iteration_year).csv"), rep_reserve_timeseries_data[product])
     end
 
-    construct_ordc(simulation_dir, get_investors(simulation), iteration_year, get_rep_days(simulation), ordc_curved, reserve_penalty)
+    ordc_unavailability_method = get_ordc_unavailability_method(get_case(simulation))
+
+    construct_ordc(deepcopy(sys_UC), simulation_dir, get_investors(simulation), iteration_year, get_rep_days(simulation), ordc_curved, ordc_unavailability_method, reserve_penalty)
 
     peak_load_new = (1 + average_load_growth) * peak_load
     set_peak_load!(simulation, peak_load_new)
 
-    return market_prices, capacity_factors, reserve_perc, inertia_perc, capacity_accepted_bids, rec_accepted_bids, clean_energy_percentage
+    return market_prices, capacity_factors, reserve_perc, inertia_perc, capacity_accepted_bids, rec_accepted_bids, clean_energy_percentage, cet_achieved_ratio
 end
 

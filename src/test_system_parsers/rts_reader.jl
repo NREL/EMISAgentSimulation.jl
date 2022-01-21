@@ -141,7 +141,7 @@ function read_rts(data_dir::String,
         elseif existing_generator_data[i, "Unit Type"] == "RTPV"
             gen_availability_df[:, existing_generator_data[i, "GEN UID"]] = rtpv_timeseries_data[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
             gen_availability_df_rt[:, existing_generator_data[i, "GEN UID"]] = rtpv_timeseries_data_rt[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
-        elseif existing_generator_data[i, "Unit Type"] == "HYDRO"
+        elseif existing_generator_data[i, "Unit Type"] == "HYDRO" || existing_generator_data[i, "Unit Type"] == "ROR"
             gen_availability_df[:, existing_generator_data[i, "GEN UID"]] = hydro_timeseries_data[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
             gen_availability_df_rt[:, existing_generator_data[i, "GEN UID"]] = hydro_timeseries_data_rt[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
         else

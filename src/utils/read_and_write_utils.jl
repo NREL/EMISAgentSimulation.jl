@@ -5,6 +5,7 @@ function read_data(file_name::String)
     projectdata = DataFrames.DataFrame(CSV.File(file_name;
                         truestrings=["T", "TRUE", "true"],
                         falsestrings=["F", "FALSE", "false"]));
+
     return projectdata
 end
 

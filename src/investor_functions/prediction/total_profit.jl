@@ -137,7 +137,8 @@ function update_expected_profit!(project::P,
             update_bid!(product,
                         capacity_market_bid,
                         rec_market_bid,
-                        expected_energy_production[1]
+                        expected_energy_production[1],
+                        iteration_year
                         )
             set_expected_production!(product, expected_energy_production[1])
         end
@@ -148,6 +149,7 @@ function update_expected_profit!(project::P,
                         capacity_market_bid,
                         rec_market_bid,
                         0.0,
+                        iteration_year
                         )
         end
     end

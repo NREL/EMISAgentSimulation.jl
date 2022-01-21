@@ -39,6 +39,7 @@ mutable struct MarketProject
     remaining_life::Int64                # Remaining life_time
     capacity_eligible::Bool              # eligible for capacity market participation
     rec_eligible::Bool                   # eligible for rps compliance
+    rec_correction::Float64              # rec correction factor based on actual production
     inertia_constant::Float64            # inertia H constant
     synchronous_inertia::Bool            # whether inertia is synchronous
     zone::String                         # project zone
@@ -79,6 +80,7 @@ mutable struct MarketProject
         remaining_life::Int64,
         capacity_eligible::Bool,
         rec_eligible::Bool,
+        rec_correction::Float64,
         inertia_constant::Float64,
         synchronous_inertia::Bool,
         zone::String,
@@ -112,6 +114,7 @@ mutable struct MarketProject
         @assert capex_years >- 0
         @assert life_time >= 0
         @assert remaining_life >= 0
+        @assert rec_correction >= 0
 
         new(name,
             project_type,
@@ -145,8 +148,9 @@ mutable struct MarketProject
             capex_years,
             life_time,
             remaining_life,
-            rec_eligible,
             capacity_eligible,
+            rec_eligible,
+            rec_correction,
             inertia_constant,
             synchronous_inertia,
             zone,

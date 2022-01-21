@@ -50,6 +50,9 @@ function create_PSY_generator(gen::ThermalGenEMIS{<: BuildPhase}, sys::PSY.Syste
     for product in get_products(gen)
         add_inertia_constant!(PSY_gen, product)
     end
+
+    add_outage_info!(PSY_gen, tech)
+
     return PSY_gen
 end
 
@@ -91,6 +94,9 @@ function create_PSY_generator(gen::RenewableGenEMIS{<: BuildPhase}, sys::PSY.Sys
     for product in get_products(gen)
         add_inertia_constant!(PSY_gen, product)
     end
+
+    add_outage_info!(PSY_gen, tech)
+
     return PSY_gen
 end
 
@@ -130,6 +136,8 @@ function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
     for product in get_products(gen)
         add_inertia_constant!(PSY_gen, product)
     end
+
+    add_outage_info!(PSY_gen, tech)
 
     return PSY_gen
 end

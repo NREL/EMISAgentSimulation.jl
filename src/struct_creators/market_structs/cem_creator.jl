@@ -8,6 +8,8 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                                     ordc_products::Vector{String},
                                     rps_target::String,
                                     reserve_penalty::String,
+                                    resource_adequacy::ResourceAdequacy,
+                                    irm_scalar::Float64,
                                     expected_portfolio::Vector{<: Project{<: BuildPhase}},
                                     zones::Vector{String},
                                     lines::Vector{ZonalLine},
@@ -126,6 +128,8 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         rec_market_bool = true
     end
 
+    delta_irm = get_delta_irm(resource_adequacy, iteration_year)
+
     capacity_mkt_param_file = joinpath(investor_dir, "markets_data", "Capacity.csv")
 
     REC_mkt_params = read_data(joinpath(investor_dir, "markets_data", "REC_$(rps_target)_RPS.csv"))
@@ -145,7 +149,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         inertia_market_bool = true
     end
 
-    inertia_mkt_params = read_data(joinpath(investor_dir, "markets_data", "Inertia.csv"))
+    inertia_mkt_params = read_data(joinpath(investor_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "Inertia.csv"))
     price_cap_inertia = inertia_mkt_params[1, "price_cap"]
     inertia_req_multiplier = inertia_mkt_params[1, "requirement_multiplier"] * inertia_market_bool
 
@@ -156,7 +160,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     for p in 1:num_invperiods
         system_peak_load = average_annual_increment[p] * peak_load
 
-        capacity_markets[p] = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, capacity_market_bool)
+        capacity_markets[p] = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, irm_scalar, delta_irm, capacity_market_bool)
         rec_markets[p] = RECMarket(min(rec_req + rec_annual_increment * (p + iteration_year - 1), 1), price_cap_rec, !(iszero(rec_binding_array[p])))
         inertia_markets[p] = InertiaMarket(system_peak_load * inertia_req_multiplier, price_cap_inertia)
     end

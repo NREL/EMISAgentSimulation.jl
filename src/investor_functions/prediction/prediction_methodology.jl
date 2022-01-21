@@ -51,6 +51,8 @@ function create_investor_predictions(investors::Vector{Investor},
                                           peak_load::Float64,
                                           rps_target::String,
                                           reserve_penalty::String,
+                                          resource_adequacy::ResourceAdequacy,
+                                          irm_scalar::Float64,
                                           solver::JuMP.MOI.OptimizerWithAttributes,
                                           parallelize_investors::Bool,
                                           parallelize_scenarios::Bool)
@@ -68,6 +70,8 @@ function create_investor_predictions(investors::Vector{Investor},
             ordc_products_pmap = Vector{String}[]
             rps_target_pmap = String[]
             reserve_penalty_pmap = String[]
+            resource_adequacy_pmap = ResourceAdequacy[]
+            irm_scalar_pmap = Float64[]
             rep_hour_weight_pmap = Vector{Float64}[]
             expected_portfolio_pmap = Vector{Project}[]
 
@@ -92,6 +96,8 @@ function create_investor_predictions(investors::Vector{Investor},
                     push!(ordc_products_pmap, ordc_products)
                     push!(rps_target_pmap, rps_target)
                     push!(reserve_penalty_pmap, reserve_penalty)
+                    push!(resource_adequacy_pmap, resource_adequacy)
+                    push!(irm_scalar_pmap, irm_scalar)
                     push!(rep_hour_weight_pmap, rep_hour_weight)
                     push!(expected_portfolio_pmap, active_projects)
 
@@ -108,6 +114,8 @@ function create_investor_predictions(investors::Vector{Investor},
                  ordc_products_pmap,
                  rps_target_pmap,
                  reserve_penalty_pmap,
+                 resource_adequacy_pmap,
+                 irm_scalar_pmap,
                  expected_portfolio_pmap,
                  repeat([zones], num_tasks),
                  repeat([lines], num_tasks),
@@ -130,6 +138,8 @@ function create_investor_predictions(investors::Vector{Investor},
                             repeat([active_projects], num_tasks),
                             repeat([rps_target], num_tasks),
                             repeat([reserve_penalty], num_tasks),
+                            repeat([resource_adequacy], num_tasks),
+                            repeat([irm_scalar], num_tasks),
                             repeat([zones], num_tasks),
                             repeat([lines], num_tasks),
                             repeat([peak_load], num_tasks),
@@ -166,6 +176,8 @@ function create_investor_predictions(investors::Vector{Investor},
                     repeat([ordc_products], num_scenarios),
                     repeat([rps_target], num_scenarios),
                     repeat([reserve_penalty], num_scenarios),
+                    repeat([resource_adequacy], num_scenarios),
+                    repeat([irm_scalar], num_scenarios),
                     repeat([active_projects], num_scenarios),
                     repeat([zones], num_scenarios),
                     repeat([lines], num_scenarios),
@@ -189,6 +201,8 @@ function create_investor_predictions(investors::Vector{Investor},
                                             ordc_products,
                                             rps_target,
                                             reserve_penalty,
+                                            resource_adequacy,
+                                            irm_scalar,
                                             active_projects,
                                             zones,
                                             lines,

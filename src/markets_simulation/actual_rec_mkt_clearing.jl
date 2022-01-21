@@ -22,7 +22,7 @@ function update_rec_supply_curve!(rec_supply_curve::Vector{Vector{Union{String, 
 
 
     push!(rec_supply_curve, [get_name(project),
-    get_project_rec_output(project),
+    get_project_expected_rec_output(project),
     get_project_rec_market_bid(project)])
 
     return rec_supply_curve
@@ -42,7 +42,7 @@ function find_clean_energy_production(product::REC,
                                         project::P) where {P <: Project{<: BuildPhase}}
 
 
-    return get_project_rec_output(project)
+    return get_project_expected_rec_output(project)
 end
 
 """
@@ -72,6 +72,18 @@ function find_storage_energy_consumption(product::Energy,
 
 
     return get_expected_production(product)
+end
+
+
+function get_expected_rec_certificates(project::Project)
+    certificates = 0.0
+    for product in get_products(project)
+        temp = get_expected_rec_certificates(product)
+        if !(isnothing(temp))
+            certificates = temp
+        end
+    end
+    return certificates
 end
 
 """
@@ -191,4 +203,54 @@ function rec_market_clearing_binding(rec_requirement::Float64,
     #------------------------------------------------------------------------------------------------
     return rec_price, rec_accepted_bid
 
+end
+
+function update_rec_correction_factors!(active_projects::Vector{Project},
+                                       realized_capacity_factors::Dict{String, Array{Float64, 2}},
+                                       rt_resolution::Int64,
+                                       iteration_year::Int64)
+
+    zones = unique(get_zone.(get_tech.(active_projects)))
+    techs = unique(get_type.(get_tech.(active_projects)))
+
+    zone_tech_expected = Dict(["$(zone)_$(tech)" => 0.0 for zone in zones, tech in techs])
+    zone_tech_actual = Dict(["$(zone)_$(tech)" => 0.0 for zone in zones, tech in techs])
+
+    for project in active_projects
+        project_name = get_name(project)
+        zone = get_zone(get_tech(project))
+        tech = get_type(get_tech(project))
+
+        if project_name in keys(realized_capacity_factors)
+            #println(project_name)
+            expected_rec_production = get_expected_rec_certificates(project)
+            #println(expected_rec_production)
+            actual_rec_production = sum(realized_capacity_factors[project_name]) * get_maxcap(project) * rt_resolution / 60
+            #println(actual_rec_production)
+            zone_tech_expected["$(zone)_$(tech)"] += expected_rec_production
+            zone_tech_actual["$(zone)_$(tech)"] += actual_rec_production
+        end
+
+    end
+
+    for project in active_projects
+        zone = get_zone(get_tech(project))
+        tech = get_type(get_tech(project))
+        expected_rec_production = zone_tech_expected["$(zone)_$(tech)"]
+        actual_rec_production = zone_tech_actual["$(zone)_$(tech)"]
+        previous_correction_factor = get_rec_correction_factor(project, iteration_year)
+        if !(iszero(expected_rec_production))
+            correction_factor = min((actual_rec_production / expected_rec_production), 1.0)
+        else
+            correction_factor = 1.0
+        end
+
+        for product in get_products(project)
+            set_rec_correction_factor!(product, iteration_year + 1, (correction_factor + previous_correction_factor) / 2)
+        end
+
+    end
+
+
+    return
 end

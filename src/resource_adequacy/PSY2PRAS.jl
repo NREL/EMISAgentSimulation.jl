@@ -40,7 +40,7 @@ function outage_to_rate(outage_data::Tuple{Float64, Int64})
     if (mttr != 0)
         μ = 1 / mttr
     else
-        μ = 0.0
+        μ = 1.0
     end
     λ = (μ * for_gen) / (1 - for_gen)
 
@@ -247,7 +247,7 @@ function make_pras_system(sys::PSY.System;
             gen_cap_array[idx,:] = fill.(floor.(Int,PSY.get_max_active_power(g)),1,N);
         end
         if (~outage_flag)
-            if (gen_categories[idx] == "PowerSystems.ThermalStandard")
+            if (gen_categories[idx] == "PowerSystems.ThermalStandard") || (gen_categories[idx] == "PowerSystemExtensions.ThermalCleanEnergy") || (gen_categories[idx] == "ThermalFastStartSIIP")
                 p_m = string(PSY.get_prime_mover(g))
                 fl = string(PSY.get_fuel(g))
 
@@ -371,8 +371,8 @@ function make_pras_system(sys::PSY.System;
         stor_charge_cap_array[idx,:] = fill.(floor.(Int,getfield(PSY.get_input_active_power_limits(s), :max)),1,N);
         stor_discharge_cap_array[idx,:] = fill.(floor.(Int,getfield(PSY.get_output_active_power_limits(s), :max)),1,N);
         stor_energy_cap_array[idx,:] = fill.(floor.(Int,PSY.get_rating(s)),1,N);
-        stor_chrg_eff_array[idx,:] = fill.(floor.(Int,getfield(PSY.get_efficiency(s), :in)),1,N);
-        stor_dischrg_eff_array[idx,:]  = fill.(floor.(Int,getfield(PSY.get_efficiency(s), :out)),1,N);
+        stor_chrg_eff_array[idx,:] = fill.(getfield(PSY.get_efficiency(s), :in),1,N)
+        stor_dischrg_eff_array[idx,:]  = fill.(getfield(PSY.get_efficiency(s), :out),1,N);
 
         if (~outage_flag)
             @warn "No outage information is available for $(PSY.get_name(s)) of type $(stor_categories[idx]). Using nominal outage and recovery probabilities for this generator."

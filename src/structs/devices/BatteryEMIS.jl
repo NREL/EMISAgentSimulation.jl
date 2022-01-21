@@ -22,6 +22,7 @@ struct BatteryTech <: Tech
     bus::Int64
     zone::String
     FOR::Float64
+    MTTR::Int64
 end
 
 get_type(tech::BatteryTech) = tech.type
@@ -34,6 +35,7 @@ get_efficiency(tech::BatteryTech) = tech.efficiency
 get_bus(tech::BatteryTech) = tech.bus
 get_zone(tech::BatteryTech) = tech.zone
 get_FOR(tech::BatteryTech) = tech.FOR
+get_MTTR(tech::BatteryTech) = tech.MTTR
 
 """
 This struct contains all the data for battery storage.

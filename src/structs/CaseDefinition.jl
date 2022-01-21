@@ -1,6 +1,7 @@
 """
     This struct contains all the required data, parameters and solvers
     for creating and running AgentSimulation.
+        name: Case name
         base_dir: Directory where Simulation input data for markets and investors are stored.
         sys_dir: Test system directory.
         cem_solver: Solvers used for optimization problems. (The solver should be able to solve QP for price prediction and MILP for SIIP production cost model)
@@ -16,13 +17,17 @@
         rps_target: High, Mid or Low RPS Target
         markets: Dictionary of which markets are simulated
         ordc_curved: Whether to include the curved part of the ORDC
+        ordc_unavailability_method: Which method (Sequential Monte Carlo or Convolution) to use for generating unavailability distribution for ORDCs
         derating_scale: Factor for scaling derating factors
         mopr: Whether Minimum Offer Price Rule is applied
         battery_cap_mkt: Whether Batteries can paritcipate in capacity markets
         vre_reserves: Whether VRE can provide reserves
         heterogeneity: Whether investors' heterogeneous financial characteristics and technology preferences are modeled.
         reserve_penalty: High, Mid or Low penalty prices for reserves
+        static_capacity_market: Whether the capacity market demand curve is static or RA-informed
+        irm_scalar: Scalar for installed reserve margin to be used for creating the capacity market demand curve.
         forecast_type: "Perfect" or "imperfect" forecasts used for price prediction.
+        max_carbon_tax_increase: Maximum annual increase in carbon prices due to under-achievement of Clean Energy Targets.
         info_symmetry: Whether investors have symmetric information about forecast parameters.
         belief_update: Whether investors' beliefs are updated each year after actual market clearing.
         uncertainty: Whether multiple probability weighted scenarios are used instead of a deterministic forecast.
@@ -32,6 +37,7 @@
 """
 
 struct CaseDefinition
+    name::String
     base_dir::String
     sys_dir::String
     solver::JuMP.MOI.OptimizerWithAttributes
@@ -46,13 +52,17 @@ struct CaseDefinition
     rps_target::String
     markets::Dict{Symbol, Bool}
     ordc_curved::Bool
+    ordc_unavailability_method::String
     reserve_penalty::String
+    static_capacity_market::Bool
+    irm_scalar::Float64
     derating_scale::Float64
     mopr::Bool
     battery_cap_mkt::Bool
     vre_reserves::Bool
     heterogeneity::Bool
     forecast_type::String
+    max_carbon_tax_increase::Float64
     info_symmetry::Bool
     belief_update::Bool
     uncertainty::Bool
@@ -60,7 +70,8 @@ struct CaseDefinition
     parallel_investors::Bool
     parallel_scenarios::Bool
 
-    function CaseDefinition(base_dir,
+    function CaseDefinition(name,
+                            base_dir,
                             sys_dir,
                             solver,
                             siip_market_clearing,
@@ -74,13 +85,17 @@ struct CaseDefinition
                             rps_target,
                             markets,
                             ordc_curved,
+                            ordc_unavailability_method,
                             reserve_penalty,
+                            static_capacity_market,
+                            irm_scalar,
                             derating_scale,
                             mopr,
                             battery_cap_mkt,
                             vre_reserves,
                             heterogeneity,
                             forecast_type,
+                            max_carbon_tax_increase,
                             info_symmetry,
                             belief_update,
                             uncertainty,
@@ -103,12 +118,14 @@ struct CaseDefinition
         end
 
         @assert da_resolution >= rt_resolution
+        @assert irm_scalar >= 0.0
         #=
         if !(siip_market_clearing)
             @assert da_resolution == rt_resolution
         end
         =#
-        return new(base_dir,
+        return new(name,
+                   base_dir,
                    sys_dir,
                    solver,
                    siip_market_clearing,
@@ -122,13 +139,17 @@ struct CaseDefinition
                    rps_target,
                    markets,
                    ordc_curved,
+                   ordc_unavailability_method,
                    reserve_penalty,
+                   static_capacity_market,
+                   irm_scalar,
                    derating_scale,
                    mopr,
                    battery_cap_mkt,
                    vre_reserves,
                    heterogeneity,
                    forecast_type,
+                   max_carbon_tax_increase,
                    info_symmetry,
                    belief_update,
                    uncertainty,
@@ -138,7 +159,8 @@ struct CaseDefinition
     end
 end
 
-function CaseDefinition(base_dir::String,
+function CaseDefinition(name::String,
+                        base_dir::String,
                         sys_dir::String,
                         solver::JuMP.MOI.OptimizerWithAttributes;
                         siip_market_clearing::Bool = true,
@@ -152,13 +174,17 @@ function CaseDefinition(base_dir::String,
                         rps_target::String = "Mid",
                         markets::Dict{Symbol, Bool} = Dict(:Energy => true, :Synchronous => true, :Primary => true, :Reg_Up => true, :Reg_Down => true,	:Flex_Up => true, :Flex_Down => true, :Capacity => true, :REC => true, :CarbonTax => true),
                         ordc_curved::Bool = true,
+                        ordc_unavailability_method::String = "Convolution",
                         reserve_penalty::String = "Mid",
+                        static_capacity_market::Bool = true,
+                        irm_scalar::Float64 = 1.0,
                         derating_scale::Float64 = 1.0,
                         mopr::Bool = false,
                         battery_cap_mkt::Bool = true,
                         vre_reserves::Bool = true,
                         heterogeneity::Bool = false,
                         forecast_type::String = "perfect",
+                        max_carbon_tax_increase::Float64 = 0.0,
                         info_symmetry::Bool = true,
                         belief_update::Bool = false,
                         uncertainty::Bool = false,
@@ -166,7 +192,8 @@ function CaseDefinition(base_dir::String,
                         parallel_investors::Bool = false,
                         parallel_scenarios::Bool = false)
 
-    CaseDefinition(base_dir,
+    CaseDefinition(name,
+                   base_dir,
                    sys_dir,
                    solver,
                    siip_market_clearing,
@@ -180,13 +207,17 @@ function CaseDefinition(base_dir::String,
                    rps_target,
                    markets,
                    ordc_curved,
+                   ordc_unavailability_method,
                    reserve_penalty,
+                   static_capacity_market,
+                   irm_scalar,
                    derating_scale,
                    mopr,
                    battery_cap_mkt,
                    vre_reserves,
                    heterogeneity,
                    forecast_type,
+                   max_carbon_tax_increase,
                    info_symmetry,
                    belief_update,
                    uncertainty,
@@ -210,6 +241,9 @@ get_rps_target(case::CaseDefinition) = case.rps_target
 get_markets(case::CaseDefinition) = case.markets
 get_ordc_curved(case::CaseDefinition) = case.ordc_curved
 get_reserve_penalty(case::CaseDefinition) = case.reserve_penalty
+get_static_capacity_market(case::CaseDefinition) = case.static_capacity_market
+get_irm_scalar(case::CaseDefinition) = case.irm_scalar
+get_ordc_unavailability_method(case::CaseDefinition) = case.ordc_unavailability_method
 get_derating_scale(case::CaseDefinition) = case.derating_scale
 get_mopr(case::CaseDefinition) = case.mopr
 get_battery_cap_mkt(case::CaseDefinition) = case.battery_cap_mkt
@@ -218,6 +252,7 @@ get_heterogeneity(case::CaseDefinition) = case.heterogeneity
 get_info_symmetry(case::CaseDefinition) = case.info_symmetry
 get_belief_update(case::CaseDefinition) = case.belief_update
 get_forecast_type(case::CaseDefinition) = case.forecast_type
+get_max_carbon_tax_increase(case::CaseDefinition) = case.max_carbon_tax_increase
 get_uncertainty(case::CaseDefinition) = case.uncertainty
 get_risk_aversion(case::CaseDefinition) = case.risk_aversion
 get_parallel_investors(case::CaseDefinition) = case.parallel_investors
@@ -251,14 +286,15 @@ function get_name(case::CaseDefinition)
     end
 
     case_name = "$(investors)_$(information)_Forecast-$(get_forecast_type(case))_$(uncertainty)_$(update)_$(risk)_$(get_simulation_years(case))years"
-    =#
-    #New case name
+
 
     if get_heterogeneity(case)
         investors = "Het"
     else
         investors = "Hom"
     end
+
+    #New case name
 
     rps = "$(get_rps_target(case))_RPS"
 
@@ -281,6 +317,7 @@ function get_name(case::CaseDefinition)
     else
         carbon = "No_Carbon_Tax"
     end
+
 
     if get_mopr(case)
         mopr = "MOPR_ON"
@@ -313,6 +350,9 @@ function get_name(case::CaseDefinition)
     case_name = "$(investors)_$(rps)_$(capacity)_$(ordc)_$(penalty)_$(carbon)_$(derating)_$(mopr)_$(bat_cap)_$(vre_reserves)_$(inertia)"
 
     return case_name
+
+    =#
+    return "$(case.name)_$(get_rps_target(case))_RPS"
 end
 
 function get_data_dir(case::CaseDefinition)

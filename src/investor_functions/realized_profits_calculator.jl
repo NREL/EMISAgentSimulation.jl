@@ -31,7 +31,7 @@ function calculate_realized_operating_profit(prices::AxisArrays.AxisArray{Float6
     replace!(output, NaN => 0.0)
     replace!(marginal_cost, NaN => 0.0)
 
-    profit = sum(((prices[1, i] - marginal_cost[i]) * output[1, i] - carbon_emissions[i] * carbon_tax)
+    profit = sum((max(0.0, (prices[1, i] - marginal_cost[i]) * output[1, i] - carbon_emissions[i] * carbon_tax))
                  for i in 1:size(output, 2))
 
 
@@ -51,7 +51,7 @@ function calculate_realized_operating_profit(prices::Array{Float64, 2},
     replace!(prices, NaN => 0.0)
     replace!(output, NaN => 0.0)
 
-    profit = sum(((prices[1, i] - marginal_cost) * output[1, i])
+    profit = sum((max(0.0, (prices[1, i] - marginal_cost) * output[1, i]))
                  for i in 1:size(output, 2))
     return profit
 

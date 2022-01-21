@@ -229,7 +229,7 @@ function create_investment_data(size::Float64,
 
     capex_data = read_data(joinpath(investor_dir, "project_capex.csv"))
 
-    category = projectdata["Category"]
+    category = String(projectdata["Category"])
     capex_row = findfirst(x-> x == category, capex_data[:, "Category"])
 
     if lag_bool
@@ -336,6 +336,7 @@ function create_tech_type(name::String,
     zone = projectdata["Zone"]
     bus = projectdata["Bus ID"]
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     if !isnothing(sys_UC)
         sys_base_power = PSY.get_base_power(sys_UC)
@@ -409,7 +410,8 @@ function create_tech_type(name::String,
                        heat_rate,
                        bus,
                        zone,
-                       FOR)
+                       FOR,
+                       MTTR)
 
         return  ThermalGenEMIS{BuildPhase}(name,
                                  tech,
@@ -426,7 +428,8 @@ function create_tech_type(name::String,
                         operation_cost,
                         bus,
                         zone,
-                        FOR)
+                        FOR,
+                        MTTR)
 
         return  RenewableGenEMIS{BuildPhase}(name,
                                  tech,
@@ -445,7 +448,8 @@ function create_tech_type(name::String,
                        operation_cost,
                        bus,
                        zone,
-                       FOR)
+                       FOR,
+                       MTTR)
 
         return  HydroGenEMIS{BuildPhase}(name,
                                  tech,
@@ -467,7 +471,8 @@ function create_tech_type(name::String,
                         (in = parse(Float64, projectdata["Round Trip Efficiency pu"]), out = 1.0),
                         bus,
                         zone,
-                        FOR)
+                        FOR,
+                        MTTR)
         return BatteryEMIS{BuildPhase}(name,
                         tech,
                         decision_year,
@@ -518,6 +523,7 @@ function create_tech_type(name::String,
     end
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     output_point_fields = String[]
     heat_rate_fields = String[]
@@ -581,7 +587,8 @@ function create_tech_type(name::String,
                        heat_rate,
                        deepcopy(PSY.get_number(bus)),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
     return  ThermalGenEMIS{BuildPhase}(name,
                                  tech,
@@ -616,6 +623,7 @@ function create_tech_type(name::String,
     type = string(deepcopy(PSY.get_prime_mover(device)))
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     tech = RenewableTech(type,
                        (min = 0.0, max = size),
@@ -623,7 +631,8 @@ function create_tech_type(name::String,
                        deepcopy(PSY.get_operation_cost(device)),
                        deepcopy(PSY.get_number(bus)),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
     return  RenewableGenEMIS{BuildPhase}(name,
                                  tech,
@@ -665,6 +674,7 @@ function create_tech_type(name::String,
     end
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     tech = HydroTech("HY",
                        (min = min_cap, max = size),
@@ -673,7 +683,8 @@ function create_tech_type(name::String,
                        deepcopy(PSY.get_operation_cost(device)),
                        deepcopy( PSY.get_number(bus)),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
         return  HydroGenEMIS{BuildPhase}(name,
                                  tech,
@@ -711,6 +722,7 @@ function create_tech_type(name::String,
     storage_capacity = deepcopy(PSY.get_state_of_charge_limits(device))
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     tech = BatteryTech(type,
                        (min = input_active_power_limits[:min] * base_power, down = input_active_power_limits[:max] * base_power),
@@ -721,7 +733,8 @@ function create_tech_type(name::String,
                        PSY.get_efficiency(device),
                        PSY.get_number(bus),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
     return  BatteryEMIS{BuildPhase}(name,
                                  tech,
@@ -744,10 +757,17 @@ function create_project(projectdata::DataFrames.DataFrameRow,
                           scenario_names::Vector{String},
                           lag_bool::Bool)
 
-    name = projectdata["GEN_UID"]
+    name = String(projectdata["GEN_UID"])
+
+    unit_type = String(projectdata["Unit Type"])
+    size_raw = projectdata["Size"]
+    if typeof(size_raw) !== Float64
+        size_raw = String(size_raw)
+    end
+
     size = Float64(size_in_MW(investor_dir,
-                     projectdata["Unit Type"],
-                     projectdata["Size"]))
+                     unit_type,
+                     size_raw))
 
     base_power = size
     carbon_tax = get_carbon_tax(simulation_data)

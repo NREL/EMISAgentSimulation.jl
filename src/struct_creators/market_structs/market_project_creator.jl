@@ -160,10 +160,10 @@ end
 This function returns the project's REC energy output to be passed the REC market market clearing module.
 Returns 0 if there is no REC market participation.
 """
-function get_project_rec_output(project::P) where P <: Project{<: BuildPhase}
+function get_project_expected_rec_output(project::P) where P <: Project{<: BuildPhase}
     rec_output = 0.
     for product in get_products(project)
-        rec_output_temp = get_rec_certificates(product)
+        rec_output_temp = get_expected_rec_certificates(product)
         if !isnothing(rec_output_temp)
             rec_output = rec_output_temp
         end
@@ -226,6 +226,17 @@ function get_synchronous_inertia(project::Project)
         end
     end
     return synchronous_inertia
+end
+
+function get_rec_correction_factor(project::Project, iteration_year::Int64)
+    value = 1.0
+    for product in get_products(project)
+        temp = get_rec_correction_factor(product, iteration_year)
+        if !(isnothing(temp))
+            value = temp
+        end
+    end
+    return value
 end
 
 """
@@ -302,6 +313,7 @@ function populate_market_project(project::P,
         remaining_life_time,                                                                      # remaining life_time
         in(:Capacity, get_name.(get_products(project))),                                         # eligible for capacity markets
         in(:REC, get_name.(get_products(project))),                                              # eligible for rps compliance
+        get_rec_correction_factor(project, iteration_year),                                      # rec correction factor
         inertia_constant,                                                                        # inertia H-constant,
         synchronous_inertia,                                                                     # whether inertia is synchronous
         get_zone(get_tech(project)),                                                             # project zone

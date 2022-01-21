@@ -106,8 +106,6 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
                              iteration_year::Int64,
                              da_resolution::Int64,
                              rt_resolution::Int64) where P <: Project{Planned}
-     println("FINISHED CONSTRUCTING:")
-     println(get_name(project))
      if get_construction_year(project) == iteration_year
         projects[index] = convert(Project{Existing}, project)
         PSY_project_UC = create_PSY_generator(project, sys_UC)
@@ -115,7 +113,6 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
         PSY.add_component!(sys_UC, PSY_project_UC)
         PSY.add_component!(sys_ED, PSY_project_ED)
-
 
         for product in get_products(project)
             add_device_services!(sys_UC, PSY_project_UC, product)
@@ -138,7 +135,18 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
         add_device_forecast!(simulation_dir, sys_UC, sys_ED, PSY_project_UC, PSY_project_ED, availability_raw, availability_raw_rt, da_resolution, rt_resolution)
 
+        if type == "NU_ST" || type == "RE_CT"
+            convert_to_thermal_clean_energy!(PSY_project_UC, sys_UC)
+            convert_to_thermal_clean_energy!(PSY_project_ED, sys_ED)
+        elseif type == "CT"
+            convert_to_thermal_fast_start!(PSY_project_UC, sys_UC)
+            convert_to_thermal_fast_start!(PSY_project_ED, sys_ED)
+        end
+
+
+        add_clean_energy_contribution!(sys_UC, PSY_project_UC)
      end
+     println("FINISHED CONSTRUCTING: $(get_name(project))")
 
      return
 end
