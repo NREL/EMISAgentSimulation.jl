@@ -72,8 +72,6 @@ function make_ORDC_vectors(ordc_markets::Vector{Dict{String, ReserveORDCMarket{T
 
         stepped = getproperty(ordc_markets[1][product], :stepped)
 
-        println(stepped)
-
         for p in 1:inv_periods
             for t in 1:T
                 num_segments[product][p, t] = length(break_points[p][t]) - 1
@@ -281,7 +279,8 @@ This function does nothing if the product is not of Capacity or REC type.
 function update_bid!(product::T,
                      capacity_market_bid::Float64,
                      rec_market_bid::Float64,
-                     energy_production::Float64) where T <: Product
+                     energy_production::Float64,
+                     iteration_year::Int64) where T <: Product
     return
 end
 
@@ -291,7 +290,8 @@ This function updates the Capacity market bid of projects.
 function update_bid!(product::Capacity,
                      capacity_market_bid::Float64,
                      rec_market_bid::Float64,
-                     energy_production::Float64)
+                     energy_production::Float64,
+                     iteration_year::Int64)
 
     set_capacity_bid!(product, capacity_market_bid)
 
@@ -304,10 +304,11 @@ This function updates the REC market bid of projects.
 function update_bid!(product::REC,
                      capacity_market_bid::Float64,
                      rec_market_bid::Float64,
-                     energy_production::Float64)
+                     energy_production::Float64,
+                     iteration_year::Int64)
 
     set_rec_bid!(product, rec_market_bid)
-    set_rec_certificates!(product, energy_production)
+    set_expected_rec_certificates!(product, energy_production * get_rec_correction_factor(product, iteration_year))
     return
 end
 
@@ -316,7 +317,7 @@ function calculate_carbon_cost_ratio(product::Product, carbon_cost_ratio::Float6
 end
 
 function calculate_carbon_cost_ratio(product::CarbonTax, carbon_cost_ratio::Float64, carbon_tax::Vector{Float64}, year::Int64)
-    carbon_cost = get_emission(product) * carbon_tax[year]
+    carbon_cost = get_emission_intensity(product) * carbon_tax[year]
     ratio = carbon_cost / get_fuel_cost(product)
     if !isnan(ratio)
         carbon_cost_ratio = ratio

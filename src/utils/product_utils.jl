@@ -22,6 +22,13 @@ function get_maxperc(product::OperatingReserve, scenario_name::String, num_years
 end
 
 """
+This funtion returns the array of ones if product is inertia.
+"""
+function get_maxperc(product::Inertia, scenario_name::String, num_years::Int64, num_hours::Int64)
+    return ones(num_years, num_hours)
+end
+
+"""
 This function does nothing if the product is not an operating market product.
 """
 function push_operating!(array::Array{OperatingProduct}, product::T) where T <: Product

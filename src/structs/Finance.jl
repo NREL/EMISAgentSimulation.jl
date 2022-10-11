@@ -21,6 +21,7 @@ This struct contains the financial data of projects.
 mutable struct Finance
     investment_cost::Vector{Float64}
     effective_investment_cost::Float64
+    preference_multiplier::Vector{Float64}
     lag_time::Int64
     life_time::Int64
     capex_years::Int64
@@ -40,6 +41,7 @@ end
 
 get_investment_cost(finance_data::Finance) = finance_data.investment_cost
 get_effective_investment_cost(finance_data::Finance) = finance_data.effective_investment_cost
+get_preference_multiplier(finance_data::Finance) = finance_data.preference_multiplier
 get_lag_time(finance_data::Finance) = finance_data.lag_time
 get_life_time(finance_data::Finance) = finance_data.life_time
 get_capex_years(finance_data::Finance) = finance_data.capex_years
@@ -55,6 +57,7 @@ get_scenario_utility(finance_data::Finance) = finance_data.scenario_utility
 get_expected_utility(finance_data::Finance) = finance_data.expected_utility
 get_annual_cashflow(finance_data::Finance) = finance_data.annual_cashflow
 get_ownedby(finance_data::Finance) = finance_data.ownedby
+
 
 function set_scenario_npv!(finance_data::Finance, scenario_name::String, iteration_year::Int64, npv::Float64)
     finance_data.scenario_npv[scenario_name][iteration_year] = npv
@@ -137,6 +140,7 @@ end
 
 function set_realized_profit!(finance_data::Finance, profit::AxisArrays.AxisArray{Float64, 2})
     finance_data.realized_profit = profit
+
     return
 end
 
@@ -152,6 +156,7 @@ function set_realized_profit!(finance_data::Finance,
                     year_index::Int64,
                     profit::Float64)
     finance_data.realized_profit[product_name, year_index] = profit
+
     return
 end
 
@@ -161,9 +166,12 @@ function set_realized_profit!(finance_data::Finance,
                     end_year::Int64,
                     profit::Vector{Float64})
     finance_data.realized_profit[product_name, start_year:end_year] = profit
+
     return
 end
 
 function set_annual_cashflow!(finance_data::Finance, year::Int64, cashflow::Float64)
     finance_data.annual_cashflow[year] = cashflow
 end
+
+

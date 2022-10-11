@@ -17,7 +17,8 @@ function specify_pruned_units()
                                          "101_CT_1", "101_CT_2", "102_CT_1", "102_CT_2",
                                          "201_CT_1", "201_CT_2", "202_CT_1", "202_CT_2",
                                          "301_CT_1", "301_CT_2", "302_CT_1", "302_CT_2",
-                                         "207_CT_1", "307_CT_1", "101_STEAM_4"]
+                                         "207_CT_1", "307_CT_1", "101_STEAM_4",
+                                         "123_STEAM_3", "223_STEAM_1", "223_STEAM_3"]
     pruned_unit[PSY.RenewableFix] = ["308_RTPV_1", "313_RTPV_1", "313_RTPV_2", "313_RTPV_3", "313_RTPV_4", "313_RTPV_5", "313_RTPV_6", "313_RTPV_7",
                                         "313_RTPV_8", "313_RTPV_9", "313_RTPV_10", "313_RTPV_11", "313_RTPV_12", "320_RTPV_1", "320_RTPV_2", "320_RTPV_3",
                                         "313_RTPV_13", "320_RTPV_4", "320_RTPV_5", "118_RTPV_1", "118_RTPV_2", "118_RTPV_3", "118_RTPV_4", "118_RTPV_5",
@@ -36,45 +37,87 @@ function create_rts_sys(rts_dir::String,
                         da_resolution::Int64,
                         rt_resolution::Int64)
 
-    da_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"da_products"], "; ")
+    # da_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"da_products"], "; ")
+    #
+    # rts_src_dir = joinpath(rts_dir, "RTS_Data", "SourceData")
+    # rts_siip_dir = joinpath(rts_dir, "RTS_Data", "FormattedData", "SIIP");
+    #
+    # rawsys = PSY.PowerSystemTableData(
+    #         rts_src_dir,
+    #         base_power,
+    #         joinpath(rts_siip_dir, "user_descriptors.yaml"),
+    #         timeseries_metadata_file = joinpath(rts_siip_dir, "timeseries_pointers.json"),
+    #         );
+    #
+    # sys_UC = PSY.System(rawsys; time_series_resolution = Dates.Minute(da_resolution));
+    #
+    # services_UC = get_system_services(sys_UC)
+    #
+    # for service in services_UC
+    #     if !(PSY.get_name(service) in da_products)
+    #         PSY.remove_component!(sys_UC, service)
+    #     end
+    # end
+    #
+    # rt_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"rt_products"], "; ")
+    #
+    # sys_ED = PSY.System(rawsys; time_series_resolution = Dates.Minute(rt_resolution));
+    #
+    # services_ED = get_system_services(sys_ED)
+    #
+    # for service in services_ED
+    #     if !(PSY.get_name(service) in rt_products)
+    #         PSY.remove_component!(sys_ED, service)
+    #     end
+    # end
+    #
+    # pruned_unit = specify_pruned_units()
+    # prune_system_devices!(sys_UC, pruned_unit)
+    # prune_system_devices!(sys_ED, pruned_unit)
 
-    rts_src_dir = joinpath(rts_dir, "RTS_Data", "SourceData")
-    rts_siip_dir = joinpath(rts_dir, "RTS_Data", "FormattedData", "SIIP");
+    sys_UC = PSY.System(joinpath(rts_dir,"DA_sys_EMIS_v0811.json"), time_series_directory = "/tmp/scratch")
+    sys_ED = PSY.System(joinpath(rts_dir,"RT_sys_EMIS_v0811.json"), time_series_directory = "/tmp/scratch")
 
-    rawsys = PSY.PowerSystemTableData(
-            rts_src_dir,
-            base_power,
-            joinpath(rts_siip_dir, "user_descriptors.yaml"),
-            timeseries_metadata_file = joinpath(rts_siip_dir, "timeseries_pointers.json"),
-            );
-
-    sys_UC = PSY.System(rawsys; time_series_resolution = Dates.Minute(da_resolution));
-
-    services_UC = get_system_services(sys_UC)
-
-    for service in services_UC
-        if !(PSY.get_name(service) in da_products)
-            PSY.remove_component!(sys_UC, service)
-        end
+    removegen_name = ["AUSTIN_1","AUSTIN_2"]
+    for sys in [sys_UC, sys_ED]
+    	for d in PSY.get_components(PSY.Generator, sys, x -> x.name ∈ removegen_name)
+    		# println("Now removing $(get_name(d))")
+    		PSY.remove_component!(sys, d)
+    	end
     end
 
-    rt_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"rt_products"], "; ")
-
-    sys_ED = PSY.System(rawsys; time_series_resolution = Dates.Minute(rt_resolution));
-
-    services_ED = get_system_services(sys_ED)
-
-    for service in services_ED
-        if !(PSY.get_name(service) in rt_products)
-            PSY.remove_component!(sys_ED, service)
-        end
+    for sys in [sys_UC, sys_ED]
+        d= PSY.get_component(PSY.VariableReserve,sys,"SPIN")
+        PSY.remove_component!(sys,d)
     end
 
-    pruned_unit = specify_pruned_units()
-    device_list = Dict{Type{<:PSY.Component}, Array{AbstractString}}()
-    prune_system_devices!(sys_UC, pruned_unit)
-    prune_system_devices!(sys_ED, pruned_unit)
+    for sys in [sys_UC, sys_ED]
+        d= PSY.get_component(PSY.VariableReserveNonSpinning,sys,"NONSPIN")
+        PSY.remove_component!(sys,d)
+    end
+
+    for sys in [sys_UC, sys_ED]
+        d= PSY.get_component(PSY.VariableReserve,sys,"REG_DN")
+        PSY.set_name!(sys,d,"Reg_Down")
+    end
+
+    for sys in [sys_UC, sys_ED]
+        d= PSY.get_component(PSY.VariableReserve,sys,"REG_UP")
+        PSY.set_name!(sys,d,"Reg_Up")
+    end
+
+    PSY.set_units_base_system!(sys_UC, PSY.IS.UnitSystem.DEVICE_BASE)
+    PSY.set_units_base_system!(sys_ED, PSY.IS.UnitSystem.DEVICE_BASE)
 
     return sys_UC, sys_ED
 end
 
+function remove_vre_gens!(sys::PSY.System)
+    for gen in get_all_techs(sys)
+        if typeof(gen) == PSY.RenewableDispatch
+            println(PSY.get_name(gen))
+            println(PSY.get_ext(gen))
+            PSY.remove_component!(sys, gen)
+        end
+    end
+end

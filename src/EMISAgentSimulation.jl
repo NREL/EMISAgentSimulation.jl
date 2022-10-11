@@ -4,6 +4,7 @@ module EMISAgentSimulation
 # Exports
 
 # Export Structs
+using Base: Tuple, Float64, project_deps_get
 export CaseDefinition
 
 export AgentSimulation
@@ -36,6 +37,8 @@ export Energy
 export Capacity
 export REC
 export CarbonTax
+export Inertia
+export ResourceAdequacy
 
 export BuildPhase
 export Existing
@@ -60,6 +63,7 @@ export RenewableGenEMIS
 
 export ThermalTech
 export ThermalGenEMIS
+export ThermalFastStartSIIP
 
 export ZonalLine
 
@@ -70,6 +74,7 @@ export ReserveDownMarket
 export ReserveORDCMarket
 export CapacityMarket
 export RECMarket
+export InertiaMarket
 export MarketCollection
 export MarketClearingProblem
 
@@ -118,6 +123,9 @@ export update_installed_cap!
 export update_PSY_timeseries!
 export update_simulation_derating_data!
 export write_data
+export parsebool
+export parseint
+export parsefloat
 
 # Export Getter Functions
 export get_accepted_perc
@@ -208,7 +216,7 @@ export get_queue
 export get_queue_cost
 export get_ramp_limits
 export get_realized_profit
-export get_rec_certificates
+export get_expected_rec_certificates
 export get_rec_price
 export get_rec_bid
 export get_rep_hour_weight
@@ -278,12 +286,15 @@ import LinearAlgebra
 import PooledArrays
 import PowerSystems
 import PowerSimulations
+using PowerSystemExtensions
 using PowerSimulationExtensions
+using PRAS
 import InfrastructureSystems
 
 const PSY = PowerSystems
 const PSI = PowerSimulations
 const PSIE = PowerSimulationExtensions
+const PSYE = PowerSystemExtensions
 const IS = InfrastructureSystems
 
 import Random
@@ -291,8 +302,9 @@ import UUIDs
 import StatsBase
 import Statistics
 import TimeSeries
-
 const TS = TimeSeries
+
+import TimeZones
 
 import Base.convert
 import JuMP.value
@@ -302,6 +314,11 @@ import MathOptInterface: AbstractOptimizer
 const MOI = MathOptInterface
 
 import Revise
+
+import PowerSystems:
+    get_value,
+    set_value
+
 ################################################################################
 # Includes
 
@@ -313,6 +330,8 @@ include("structs/products/OperatingReserve.jl")
 include("structs/products/Capacity.jl")
 include("structs/products/REC.jl")
 include("structs/products/CarbonTax.jl")
+include("structs/products/Inertia.jl")
+include("structs/ResourceAdequacy.jl")
 
 include("structs/Finance.jl")
 
@@ -322,6 +341,7 @@ include("structs/devices/BatteryEMIS.jl")
 include("structs/devices/HydroGenEMIS.jl")
 include("structs/devices/RenewableGenEMIS.jl")
 include("structs/devices/ThermalGenEMIS.jl")
+include("structs/devices/ThermalFastStartSIIP.jl")
 
 include("structs/CaseDefinition.jl")
 include("structs/MarketPrices.jl")
@@ -344,6 +364,7 @@ include("structs/market_structs/ReserveDownMarket.jl")
 include("structs/market_structs/ReserveORDCMarket.jl")
 include("structs/market_structs/CapacityMarket.jl")
 include("structs/market_structs/RECMarket.jl")
+include("structs/market_structs/InertiaMarket.jl")
 include("structs/market_structs/MarketCollection.jl")
 include("structs/market_structs/MarketClearingProblem.jl")
 
@@ -377,7 +398,11 @@ include("markets_simulation/ordc_construction/ordc_construction.jl")
 include("markets_simulation/ordc_construction/ordc_market_creator.jl")
 
 #Include PRAS Resource adequacy functions
-include("PRAS_functions/conv.jl")
+include("resource_adequacy/conv.jl")
+include("resource_adequacy/PSY2PRAS.jl")
+include("resource_adequacy/parsers/power_system_table_data.jl")
+include("resource_adequacy/ra_utils.jl")
+include("resource_adequacy/generator_unavailability.jl")
 
 #Include Test System Parsers
 include("test_system_parsers/test_system_reader.jl")

@@ -78,21 +78,22 @@ function take_retirement_decision(project::P,
                                   market_prices::MarketPrices,
                                   carbon_tax_data::Vector{Float64},
                                   risk_preference::R,
-                                  sys::Union{Nothing, PSY.System},
+                                  sys_UC::Union{Nothing, PSY.System},
+                                  sys_ED::Union{Nothing, PSY.System},
                                   simulation_dir::String,
                                   iteration_year::Int64,
                                   yearly_horizon::Int64,
                                   simulation_years::Int64,
                                   rep_hour_weight::Vector{Float64},
                                   capacity_forward_years::Int64,
+                                  retirement_lookback::Int64,
                                   solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{<: BuildPhase}, R <: RiskPreference}
 
     return
 end
 
-
 """
-This function decides whether or not to retire Existing and Planned projects.
+This function decides whether or not to retire Existing projects.
 """
 function take_retirement_decision(project::P,
                                   index::Int64,
@@ -101,19 +102,21 @@ function take_retirement_decision(project::P,
                                   market_prices::MarketPrices,
                                   carbon_tax_data::Vector{Float64},
                                   risk_preference::R,
-                                  sys::Union{Nothing, PSY.System},
+                                  sys_UC::Union{Nothing, PSY.System},
+                                  sys_ED::Union{Nothing, PSY.System},
                                   simulation_dir::String,
                                   iteration_year::Int64,
                                   yearly_horizon::Int64,
                                   simulation_years::Int64,
                                   rep_hour_weight::Vector{Float64},
                                   capacity_forward_years::Int64,
-                                  solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Union{Project{Existing}, Project{Planned}}, R <: RiskPreference}
+                                  retirement_lookback::Int64,
+                                  solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{Existing}, R <: RiskPreference}
 
     finance_data = get_finance_data(project)
     queue_cost = get_queue_cost(finance_data)
 
-    if  get_construction_year(project) <= simulation_years
+    if  (get_construction_year(project) <= simulation_years)
 
         update_project_utility!(project,
                               scenario_data,
@@ -137,13 +140,64 @@ function take_retirement_decision(project::P,
 
         annual_profit = annual_revenue - get_fixed_OM_cost(finance_data)
 
-        if annual_profit < -1 && project_utility < 0
-            set_retirement_year!(projects[index], iteration_year)
-            projects[index] = retire_project!(project)
-            remove_system_component!(sys, project)
-            remove_renewable_gen_data!(project, simulation_dir)
-            remove_future_profits!(project, iteration_year)
+        cash_flow = get_annual_cashflow(finance_data)
+        if (iteration_year > retirement_lookback)
+            previous_cashflow = cash_flow[(iteration_year - retirement_lookback):(iteration_year - 1)]
+            if (annual_profit < -1) && (project_utility < 0) && (all(previous_cashflow .< -1))
+                println("RETIRING:")
+                println(get_name(project))
+                set_retirement_year!(projects[index], iteration_year)
+                projects[index] = retire_project!(project)
+                remove_system_component!(sys_UC, project)
+                remove_system_component!(sys_ED, project)
+                remove_renewable_gen_data!(project, simulation_dir)
+                remove_future_profits!(project, iteration_year)
+            end
         end
+
+    end
+
+    return
+
+end
+
+"""
+This function decides whether or not to retire Planned projects.
+"""
+function take_retirement_decision(project::P,
+                                  index::Int64,
+                                  projects::Vector{<: Project{<: BuildPhase}},
+                                  scenario_data::Vector{Scenario},
+                                  market_prices::MarketPrices,
+                                  carbon_tax_data::Vector{Float64},
+                                  risk_preference::R,
+                                  sys_UC::Union{Nothing, PSY.System},
+                                  sys_ED::Union{Nothing, PSY.System},
+                                  simulation_dir::String,
+                                  iteration_year::Int64,
+                                  yearly_horizon::Int64,
+                                  simulation_years::Int64,
+                                  rep_hour_weight::Vector{Float64},
+                                  capacity_forward_years::Int64,
+                                  retirement_lookback::Int64,
+                                  solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{Planned}, R <: RiskPreference}
+
+    finance_data = get_finance_data(project)
+    queue_cost = get_queue_cost(finance_data)
+
+    if  (get_construction_year(project) <= simulation_years)
+
+        update_project_utility!(project,
+                              scenario_data,
+                              market_prices,
+                              carbon_tax_data,
+                              risk_preference,
+                              rep_hour_weight,
+                              iteration_year,
+                              yearly_horizon,
+                              queue_cost,
+                              capacity_forward_years,
+                              solver)
     end
 
     return
@@ -160,13 +214,15 @@ function take_retirement_decision(project::P,
                                   market_prices::MarketPrices,
                                   carbon_tax_data::Vector{Float64},
                                   risk_preference::R,
-                                  sys::Union{Nothing, PSY.System},
+                                  sys_UC::Union{Nothing, PSY.System},
+                                  sys_ED::Union{Nothing, PSY.System},
                                   simulation_dir::String,
                                   iteration_year::Int64,
                                   yearly_horizon::Int64,
                                   simulation_years::Int64,
                                   rep_hour_weight::Vector{Float64},
                                   capacity_forward_years::Int64,
+                                  retirement_lookback::Int64,
                                   solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{Queue}, R <: RiskPreference}
 
     finance_data = get_finance_data(project)
@@ -205,7 +261,8 @@ This function makes the retirement decisions each year.
 Returns nothing.
 """
 function retire_unprofitable!(investor::Investor,
-                              sys::Union{Nothing, PSY.System},
+                              sys_UC::Union{Nothing, PSY.System},
+                              sys_ED::Union{Nothing, PSY.System},
                               simulation_dir::String,
                               iteration_year::Int64,
                               yearly_horizon::Int64,
@@ -219,21 +276,23 @@ function retire_unprofitable!(investor::Investor,
     risk_preference = get_risk_preference(investor)
     projects = get_projects(investor)
         for i in 1:length(projects)
-        take_retirement_decision(projects[i],
-                                 i,
-                                 projects,
-                                 scenario_data,
-                                 market_prices,
-                                 carbon_tax_data,
-                                 risk_preference,
-                                 sys,
-                                 simulation_dir,
-                                 iteration_year,
-                                 yearly_horizon,
-                                 simulation_years,
-                                 get_rep_hour_weight(investor),
-                                 capacity_forward_years,
-                                 solver)
+            take_retirement_decision(projects[i],
+                                    i,
+                                    projects,
+                                    scenario_data,
+                                    market_prices,
+                                    carbon_tax_data,
+                                    risk_preference,
+                                    sys_UC,
+                                    sys_ED,
+                                    simulation_dir,
+                                    iteration_year,
+                                    yearly_horizon,
+                                    simulation_years,
+                                    get_rep_hour_weight(investor),
+                                    capacity_forward_years,
+                                    get_retirement_lookback(investor),
+                                    solver)
 
         end
     return

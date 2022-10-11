@@ -5,6 +5,7 @@ function calculate_cost(product::T,
                         marginal_cost::Float64,
                         carbon_tax::Float64,
                         emission_intensity::Float64,
+                        inertia_constant::Float64,
                         Q::JuMP.VariableRef) where T <: OperatingProduct
     return marginal_cost * Q
 end
@@ -16,31 +17,64 @@ function calculate_cost(product::Energy,
                         marginal_cost::Float64,
                         carbon_tax::Float64,
                         emission_intensity::Float64,
+                        inertia_constant::Float64,
                         Q::JuMP.VariableRef)
     return (marginal_cost + (carbon_tax * emission_intensity)) * Q
+end
+
+function calculate_cost(product::Inertia,
+                        marginal_cost::Float64,
+                        carbon_tax::Float64,
+                        emission_intensity::Float64,
+                        inertia_constant::Float64,
+                        Q::JuMP.VariableRef)
+    return marginal_cost * Q * inertia_constant
 end
 
 """
 This function returns the product of market price and quantity provided.
 """
-function calculate_revenue(price::Float64, Q::JuMP.VariableRef)
+function calculate_revenue(product::T, price::Float64, inertia_constant::Float64, Q::JuMP.VariableRef) where T <: OperatingProduct
     return price * Q
+end
+
+"""
+This function returns the product of market price, quantity and inertia constant for Inertia constant.
+"""
+function calculate_revenue(product::Inertia, price::Float64, inertia_constant::Float64, Q::JuMP.VariableRef)
+    return price * Q * inertia_constant
 end
 
 """
 This function returns the product of marginal cost and quantity provided.
 """
-function calculate_cost(marginal_cost::Float64, Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef})
+function calculate_cost(product::T, marginal_cost::Float64, inertia_constant::Float64, Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef}) where T <: OperatingProduct
     return marginal_cost * Q
+end
+
+"""
+This function returns the product of marginal cost, quantity and inertia constant.
+"""
+function calculate_cost(product::Inertia, marginal_cost::Float64, inertia_constant::Float64, Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef})
+    return marginal_cost * Q * inertia_constant
 end
 
 """
 This function returns the product of market price and quantity provided.
 """
-function calculate_revenue(price::Float64, Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef})
+function calculate_revenue(product::T,
+                           price::Float64,
+                           inertia_constant::Float64,
+                           Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef}) where T <: OperatingProduct
     return price * Q
 end
 
+function calculate_revenue(product::Inertia,
+                           price::Float64,
+                           inertia_constant::Float64,
+                           Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef})
+    return price * Q * inertia_constant
+end
 
 """
 This function does nothing if the product is not either energy, reserve up or reserve down.
@@ -48,7 +82,8 @@ This function does nothing if the product is not either energy, reserve up or re
 function add_to_generationlimits!(min_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  max_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  Q::JuMP.VariableRef,
-                                 product::T) where T <: Product
+                                 product::T,
+                                 synchronous_inertia::Bool) where T <: Product
 return
 end
 
@@ -60,7 +95,8 @@ Returns nothing.
 function add_to_generationlimits!(min_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  max_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  Q::JuMP.VariableRef,
-                                 product::OperatingReserve{ReserveUpEMIS})
+                                 product::OperatingReserve{ReserveUpEMIS},
+                                 synchronous_inertia::Bool)
     JuMP.add_to_expression!(max_gen, Q)
     return
 end
@@ -73,7 +109,8 @@ Returns nothing.
 function add_to_generationlimits!(min_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  max_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  Q::JuMP.VariableRef,
-                                 product::OperatingReserve{ReserveDownEMIS})
+                                 product::OperatingReserve{ReserveDownEMIS},
+                                 synchronous_inertia::Bool)
     JuMP.add_to_expression!(min_gen, -Q)
     return
 end
@@ -86,12 +123,28 @@ Returns nothing.
 function add_to_generationlimits!(min_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  max_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                  Q::JuMP.VariableRef,
-                                 product::Energy)
+                                 product::Energy,
+                                 synchronous_inertia::Bool)
     JuMP.add_to_expression!(max_gen, Q)
     JuMP.add_to_expression!(min_gen, Q)
     return
 end
 
+"""
+This function adds to the maximum generation expressions if the
+product is Inertia and unit doesn't provide synchronous inertia.
+Returns nothing.
+"""
+function add_to_generationlimits!(min_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
+                                 max_gen::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
+                                 Q::JuMP.VariableRef,
+                                 product::Inertia,
+                                 synchronous_inertia::Bool)
+    if !synchronous_inertia
+        JuMP.add_to_expression!(max_gen, Q)
+    end
+    return
+end
 """
 This function calculates operating market profits for a generator
 based on expected market prices stored in the investor struct.
@@ -130,6 +183,9 @@ function calculate_operating_profit(gen::P,
 
     max_perc = Dict(zip(get_name.(products), get_maxperc.(products, scenario_name, end_year, num_hours)))
 
+    inertia_constant = get_inertia_constant(gen)
+    synchronous_inertia = get_synchronous_inertia(gen)
+
     total_utilization = get_scenario_total_utilization(get_finance_data(gen))[scenario_name]
 
     m = JuMP.Model(solver)
@@ -153,18 +209,28 @@ function calculate_operating_profit(gen::P,
             for (i, product) in enumerate(products)
 
                 hourly_profit = rep_hour_weight[h] *
-                         (calculate_revenue(market_prices[get_name(product)][y, h], Q[get_name(product), y, h]) -
-                          calculate_cost(product, get_marginal_cost(product), carbon_tax[y], emission_intensity, Q[get_name(product), y, h]))
+                         (calculate_revenue(product,market_prices[get_name(product)][y, h], inertia_constant, Q[get_name(product), y, h]) -
+                          calculate_cost(product, get_marginal_cost(product), carbon_tax[y], emission_intensity, inertia_constant, Q[get_name(product), y, h]))
 
                 JuMP.add_to_expression!(profit[i, y], hourly_profit)
 
                 add_to_generationlimits!(min_gen[y, h],
                                         max_gen[y, h],
                                         Q[get_name(product), y, h],
-                                        product)
+                                        product,
+                                        synchronous_inertia)
+
                 JuMP.@constraint(m, Q[get_name(product), y, h] <=
                                 max_perc[get_name(product)][y, h] * get_maxcap(gen))
+
             end
+
+            JuMP.@constraint(m, Q[:Energy, y, h] == max_perc[:Energy][y, h] * get_maxcap(gen))
+
+            if in(:Inertia, products) && synchronous_inertia
+                JuMP.@constraint(m, Q[:Inertia, y, h] == Q[:Energy, y, h])
+            end
+
             JuMP.@constraint(m, min_gen[y,h] >= get_mincap(gen) * 0)
             JuMP.@constraint(m, max_gen[y,h] <= get_maxcap(gen) * total_utilization[y, h])
         end
@@ -193,8 +259,8 @@ function storage_product_constraints(product::T,
                                     Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
-                                    p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_r::JuMP.VariableRef,
+                                    p_inertia::JuMP.VariableRef
                                     ) where T <: OperatingProduct
     return
 end
@@ -206,8 +272,8 @@ function storage_product_constraints(product::Energy,
                                     Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
-                                    p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_r::JuMP.VariableRef,
+                                    p_inertia::JuMP.VariableRef
                                     )
     JuMP.add_to_expression!(Q, p_out - p_in)
     return
@@ -216,14 +282,14 @@ end
 """
 This function calculates the net reserve up provided by the storage device.
 """
-function storage_product_constraints(product::ReserveUpEMIS,
+function storage_product_constraints(product::OperatingReserve{ReserveUpEMIS},
                                     Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
-                                    p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_r::JuMP.VariableRef,
+                                    p_inertia::JuMP.VariableRef
                                     )
-        JuMP.add_to_expression!(Q, p_ru)
+        JuMP.add_to_expression!(Q, p_r)
 
     return
 end
@@ -231,14 +297,28 @@ end
 """
 This function calculates the net reserve down provided by the storage device.
 """
-function storage_product_constraints(product::ReserveDownEMIS,
+function storage_product_constraints(product::OperatingReserve{ReserveDownEMIS},
                                     Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
                                     p_out::JuMP.VariableRef,
                                     p_in::JuMP.VariableRef,
-                                    p_ru::JuMP.VariableRef,
-                                    p_rd::JuMP.VariableRef
+                                    p_r::JuMP.VariableRef,
+                                    p_inertia::JuMP.VariableRef
                                     )
-    JuMP.add_to_expression!(Q, p_rd)
+    JuMP.add_to_expression!(Q, p_r)
+    return
+end
+
+"""
+This function calculates the inertia provided by the storage device.
+"""
+function storage_product_constraints(product::Inertia,
+                                    Q::JuMP.GenericAffExpr{Float64, JuMP.VariableRef},
+                                    p_out::JuMP.VariableRef,
+                                    p_in::JuMP.VariableRef,
+                                    p_r::JuMP.VariableRef,
+                                    p_inertia::JuMP.VariableRef
+                                    )
+    JuMP.add_to_expression!(Q, p_inertia)
     return
 end
 
@@ -296,6 +376,10 @@ function calculate_operating_profit(storage::P,
     efficiency_out = efficiency[:out]                               # discharging efficiency
 
     initstorage = get_soc(tech)
+
+    inertia_constant = get_inertia_constant(storage)
+    synchronous_inertia = get_synchronous_inertia(storage)
+
     m = JuMP.Model(solver)
 
     JuMP.@variable(m, p_e[p in start_year:end_year, t in 1:num_hours] >= 0) # Unit energy production [MW]
@@ -304,11 +388,16 @@ function calculate_operating_profit(storage::P,
     JuMP.@variable(m, p_ru[rp in get_name.(reserve_up_products), p in start_year:end_year, t in 1:num_hours] >= 0) # Unit energy production [MW]
     JuMP.@variable(m, p_rd[rp in get_name.(reserve_down_products), p in start_year:end_year, t in 1:num_hours] >= 0) # Storage charging [MW]
 
+    JuMP.@variable(m, p_inertia[p in start_year:end_year, t in 1:num_hours] >= 0) # Unit Inertia Provision [MW-s]
+
     JuMP.@variable(m, p_in_ru[rp in get_name.(reserve_up_products), p in start_year:end_year, t in 1:num_hours] >= 0) # reserve up provided by storage charging [MW]
     JuMP.@variable(m, p_in_rd[rp in get_name.(reserve_down_products), p in start_year:end_year, t in 1:num_hours] >= 0) # reserve down provided by storage charging [MW]
 
     JuMP.@variable(m, p_out_ru[rp in get_name.(reserve_up_products), p in start_year:end_year, t in 1:num_hours] >= 0) # reserve up provided by storage discharging [MW]
     JuMP.@variable(m, p_out_rd[rp in get_name.(reserve_down_products), p in start_year:end_year, t in 1:num_hours] >= 0) # reserve down provided by storage discharging [MW]
+
+    JuMP.@variable(m, p_out_inertia[p in start_year:end_year, t in 1:num_hours] >= 0) # inertia provided by storage discharging [MW-s]
+    JuMP.@variable(m, p_in_inertia[p in start_year:end_year, t in 1:num_hours] >= 0) # inertia provided by storage charging [MW-s]
 
     JuMP.@variable(m, temp == 0)
 
@@ -327,14 +416,23 @@ function calculate_operating_profit(storage::P,
 
             for (i, product) in enumerate(products)
 
-                if product in reserve_up_products || product in reserve_down_products
+                if product in reserve_up_products
 
                     storage_product_constraints(product,
                                                 Q[get_name(product), p, t],
                                                 p_e[p, t],
                                                 p_in[p, t],
                                                 p_ru[get_name(product), p, t],
-                                                p_rd[get_name(product), p, t])
+                                                p_inertia[p, t])
+
+                elseif product in reserve_down_products
+
+                    storage_product_constraints(product,
+                                                Q[get_name(product), p, t],
+                                                p_e[p, t],
+                                                p_in[p, t],
+                                                p_rd[get_name(product), p, t],
+                                                p_inertia[p, t])
 
                 else
                     storage_product_constraints(product,
@@ -342,14 +440,11 @@ function calculate_operating_profit(storage::P,
                                                 p_e[p, t],
                                                 p_in[p, t],
                                                 p_e[p, t],
-                                                p_e[p, t])
+                                                p_inertia[p, t])
                 end
 
                 hourly_profit = rep_hour_weight[t] *
-                                     (calculate_revenue(market_prices[get_name(product)][p, t],
-                                                   Q[get_name(product), p, t]) -
-                                      calculate_cost(get_marginal_cost(product),
-                                               Q[get_name(product), p, t]))
+                                     (calculate_revenue(product, market_prices[get_name(product)][p, t], inertia_constant, Q[get_name(product), p, t]))
 
                             JuMP.add_to_expression!(profit[i, p], hourly_profit)
                 #=
@@ -365,12 +460,12 @@ function calculate_operating_profit(storage::P,
             end
 
             # Storage technical constraints
-            JuMP.@constraint(m, p_e[p, t] <= capacity_factors[p, t] * max_gen) # Capacity factor constraint
+            #JuMP.@constraint(m, p_e[p, t] <= capacity_factors[p, t] * max_gen) # Capacity factor constraint
 
             JuMP.@constraint(m, p_e[p,t] - sum(p_out_rd[rp, p, t]  for rp in get_name.(reserve_down_products)) >= min_gen * 0) # Minimum output dispatch
-            JuMP.@constraint(m, p_e[p,t] + sum(p_out_ru[rp, p, t]  for rp in get_name.(reserve_up_products)) <= max_gen * total_utilization[p, t]) # Maximum output dispatch
+            JuMP.@constraint(m, p_e[p,t] + sum(p_out_ru[rp, p, t]  for rp in get_name.(reserve_up_products)) + p_out_inertia[p, t] == max_gen * total_utilization[p, t]) # Maximum output dispatch
 
-            JuMP.@constraint(m, p_in[p,t] - sum(p_in_ru[rp, p, t]  for rp in get_name.(reserve_up_products)) >=  min_input * 0) # Minimum input dispatch
+            JuMP.@constraint(m, p_in[p,t] - sum(p_in_ru[rp, p, t]  for rp in get_name.(reserve_up_products)) - p_in_inertia[p, t] >=  min_input * 0) # Minimum input dispatch
             JuMP.@constraint(m, p_in[p,t] + sum(p_in_rd[rp, p, t]  for rp in get_name.(reserve_down_products)) <= max_input) # Maximum input dispatch
 
             for rp in get_name.(reserve_up_products)
@@ -381,7 +476,9 @@ function calculate_operating_profit(storage::P,
                 JuMP.@constraint(m, p_rd[rp, p, t] <= p_out_rd[rp, p, t] + p_in_rd[rp, p, t]) # Total storage reserve down
             end
 
-            JuMP.@constraint(m, storage_level[p, t] >= min_storage) # Minimum storage level
+            JuMP.@constraint(m, p_inertia[p, t] <= p_out_inertia[p, t] + p_in_inertia[p, t])
+
+            JuMP.@constraint(m, storage_level[p, t] >= min_storage * 0) # Minimum storage level
             JuMP.@constraint(m, storage_level[p, t] <= max_storage) # Maximum storage level
 
         end
@@ -395,10 +492,14 @@ function calculate_operating_profit(storage::P,
                    AxisArrays.Axis{:prod}(get_name.(products)),
                    AxisArrays.Axis{:year}(start_year:end_year))
 
-    energy_production = AxisArrays.AxisArray([sum(value(Q[:Energy, p, t]) * rep_hour_weight[t] for t in 1:num_hours) for p in start_year:end_year],
+
+    energy_consumption = AxisArrays.AxisArray(zeros(end_year - start_year + 1), AxisArrays.Axis{:year}(start_year:end_year))
+
+    energy_consumption = AxisArrays.AxisArray([sum(value(p_in[y, h]) * rep_hour_weight[h] for h in 1:num_hours) for y in start_year:end_year],
                         AxisArrays.Axis{:year}(start_year:end_year))
 
-    return profit_array, energy_production
+
+    return profit_array, energy_consumption
 
 end
 

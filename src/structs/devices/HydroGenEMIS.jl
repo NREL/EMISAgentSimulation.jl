@@ -17,6 +17,7 @@ struct HydroTech <: Tech
     bus::Int64
     zone::String
     FOR::Float64
+    MTTR::Int64
 end
 
 get_type(tech::HydroTech) = tech.type
@@ -27,6 +28,7 @@ get_operation_cost(tech::HydroTech) = tech.operation_cost
 get_bus(tech::HydroTech) = tech.bus
 get_zone(tech::HydroTech) = tech.zone
 get_FOR(tech::HydroTech) = tech.FOR
+get_MTTR(tech::HydroTech) = tech.MTTR
 
 """
 This struct contains all the data for a hydropower generator.

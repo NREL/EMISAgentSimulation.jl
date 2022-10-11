@@ -23,6 +23,7 @@ struct ThermalTech <: Tech
     bus::Int64
     zone::String
     FOR::Float64
+    MTTR::Int64
 end
 
 get_type(tech::ThermalTech) = tech.type
@@ -35,6 +36,7 @@ get_fuel_cost(tech::ThermalTech) = tech.fuel_cost
 get_bus(tech::ThermalTech) = tech.bus
 get_zone(tech::ThermalTech) = tech.zone
 get_FOR(tech::ThermalTech) = tech.FOR
+get_MTTR(tech::ThermalTech) = tech.MTTR
 get_heat_rate_curve(tech::ThermalTech) = tech.heat_rate_curve
 
 """

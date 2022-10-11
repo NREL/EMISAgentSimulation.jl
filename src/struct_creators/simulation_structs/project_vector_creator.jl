@@ -65,7 +65,7 @@ function create_project_existing(projectdata::DataFrames.DataFrame,
                                            scenario_names,
                                            false)
 
-        println("Created project $(get_name(project_existing[i])) for $(investor_name)")
+        @info "Created project $(get_name(project_existing[i])) for $(investor_name)"
     end
 
     return project_existing
@@ -100,7 +100,7 @@ function create_project_options(projectdata::DataFrames.DataFrame,
                                          scenario_names,
                                          true)
 
-        println("Created project $(get_name(project_option[i])) for $(investor_name)")
+        @info "Created project $(get_name(project_option[i])) for $(investor_name)"
     end
         return project_option
 end
