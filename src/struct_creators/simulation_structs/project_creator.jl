@@ -76,10 +76,14 @@ to the "DAY_AHEAD_availability.csv" file stored in
 simulation_dir/timeseries_data_files/Availability
 """
 function add_investor_project_availability!(simulation_dir::String,
-                                              projects::Vector{Project})
+                                              projects::Vector{Project},
+                                              sys_UC::Union{Nothing, PSY.System})
     system_availability_data = DataFrames.DataFrame(CSV.File(joinpath(simulation_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv")))
+    system_availability_data_rt = DataFrames.DataFrame(CSV.File(joinpath(simulation_dir, "timeseries_data_files", "Availability", "REAL_TIME_availability.csv")))
+    gennames = names(system_availability_data)[5:length(names(system_availability_data))] #################
 
     for project in projects
+        # println("this is $(get_name(project))")
         project_name = get_name(project)
         tech = get_tech(project)
         type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
@@ -87,22 +91,34 @@ function add_investor_project_availability!(simulation_dir::String,
         if (!in(project_name, names(system_availability_data)) && !in(type_zone_id, names(system_availability_data)))
             if typeof(project) == ThermalGenEMIS{Existing} || typeof(project) == BatteryEMIS{Existing}
                 system_availability_data[:, project_name] = ones(DataFrames.nrow(system_availability_data))
+                system_availability_data_rt[:, project_name] = ones(DataFrames.nrow(system_availability_data_rt))
             elseif typeof(project) == RenewableGenEMIS{Existing}
                 error("Timeseries for existing renewable generator not provided")
             elseif typeof(project) == ThermalGenEMIS{Option} || typeof(project) == BatteryEMIS{Option}
                 system_availability_data[:, type_zone_id] = ones(DataFrames.nrow(system_availability_data))
+                system_availability_data_rt[:, type_zone_id] = ones(DataFrames.nrow(system_availability_data_rt))
             elseif typeof(project) == RenewableGenEMIS{Option}
                 availability = zeros(DataFrames.nrow(system_availability_data))
+                availability_rt = zeros(DataFrames.nrow(system_availability_data_rt))
                 bus = get_bus(tech)
                 if get_type(tech) == "WT"
-                    gens_in_zone = filter(g -> (first("$(bus)", 1) == first(g, 1)) && (occursin("wind", lowercase(g)) || occursin("wt", lowercase(g))),
-                                                    names(system_availability_data))
+                    # gens_in_zone = filter(g -> (first("$(bus)", 1) == first(g, 1)) && (occursin("wind", lowercase(g)) || occursin("wt", lowercase(g))),
+                    #                                 names(system_availability_data))
+                    gens_in_zone = filter(g -> (first("$(bus)", 1) == first(string(PSY.get_number(PSY.get_bus(PSY.get_component(PSY.StaticInjection, sys_UC,g)))), 1)) &&
+                                                occursin("WT", string(PSY.get_prime_mover(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
+                                                    gennames)
                 elseif get_type(tech) == "PVe"
-                    gens_in_zone = filter(g -> (first("$(bus)", 1)== first(g, 1)) && occursin("pv", lowercase(g)),
-                                                    names(system_availability_data))
+                    # gens_in_zone = filter(g -> (first("$(bus)", 1)== first(g, 1)) && occursin("pv", lowercase(g)),
+                    #                                 names(system_availability_data))
+                    gens_in_zone = filter(g -> (first("$(bus)", 1) == first(string(PSY.get_number(PSY.get_bus(PSY.get_component(PSY.StaticInjection, sys_UC,g)))), 1)) &&
+                                                occursin("PVe", string(PSY.get_prime_mover(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
+                                                    gennames)
                 elseif get_type(tech) == "HY"
-                    gens_in_zone = filter(g -> (first("$(bus)", 1) == first(g, 1)) && occursin("hy", lowercase(g)),
-                                                    names(system_availability_data))
+                    # gens_in_zone = filter(g -> (first("$(bus)", 1) == first(g, 1)) && occursin("hy", lowercase(g)),
+                    #                                 names(system_availability_data))
+                    gens_in_zone = filter(g -> (first("$(bus)", 1) == first(string(PSY.get_number(PSY.get_bus(PSY.get_component(PSY.StaticInjection, sys_UC,g)))), 1)) &&
+                                                occursin("HY", string(PSY.get_prime_mover(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
+                                                    gennames)
                 end
 
                 if length(gens_in_zone) < 1
@@ -110,14 +126,17 @@ function add_investor_project_availability!(simulation_dir::String,
                 else
                     for g in gens_in_zone
                         availability += system_availability_data[:, g]
+                        availability_rt += system_availability_data_rt[:, g]
                     end
                     system_availability_data[:, type_zone_id] = availability / length(gens_in_zone)
+                    system_availability_data_rt[:, type_zone_id] = availability_rt / length(gens_in_zone)
                 end
             end
         end
     end
 
     write_data(joinpath(simulation_dir, "timeseries_data_files", "Availability"), "DAY_AHEAD_availability.csv", system_availability_data)
+    write_data(joinpath(simulation_dir, "timeseries_data_files", "Availability"), "REAL_TIME_availability.csv", system_availability_data_rt)
 
     return
 end
@@ -172,9 +191,9 @@ function create_operation_cost(projectdata::DataFrames.DataFrameRow, size::Float
             var_cost[1][1] -
             (var_cost[2][1] / (var_cost[2][2] - var_cost[1][2]) * var_cost[1][2]),
         )
-        var_cost[1] = (var_cost[1][1] - fixed, var_cost[1][2] * size / sys_base_power)
+        var_cost[1] = (var_cost[1][1] - fixed, var_cost[1][2] * size)
         for i in 2:length(var_cost)
-            var_cost[i] = (var_cost[i - 1][1] + var_cost[i][1], var_cost[i][2] * size / sys_base_power)
+            var_cost[i] = (var_cost[i - 1][1] + var_cost[i][1], var_cost[i][2] * size)
         end
     elseif length(var_cost) == 1
         # if there is only one point, use it to determine the constant $/MW cost
@@ -188,7 +207,7 @@ function create_operation_cost(projectdata::DataFrames.DataFrameRow, size::Float
     start_up_cost = fuel_cost * projectdata["Start Heat Cold MBTU"] * 1000.0
     shut_down_cost = 0.0
 
-    if occursin("CC", projectdata["Unit Type"]) || occursin("CT", projectdata["Unit Type"]) || occursin("ST", projectdata["Unit Type"]) || occursin("NUCLEAR", projectdata["Unit Type"])
+    if occursin("CC", projectdata["Unit Type"]) || occursin("CT", projectdata["Unit Type"]) || occursin("GT", projectdata["Unit Type"]) || occursin("ST", projectdata["Unit Type"]) || occursin("NUCLEAR", projectdata["Unit Type"])
         operation_cost = PSY.ThreePartCost(var_cost, fixed, start_up_cost, shut_down_cost)
     else
         operation_cost = PSY.TwoPartCost(var_cost, fixed)
@@ -222,7 +241,7 @@ function create_investment_data(size::Float64,
 
     capex_data = read_data(joinpath(investor_dir, "project_capex.csv"))
 
-    category = projectdata["Category"]
+    category = String(projectdata["Category"])
     capex_row = findfirst(x-> x == category, capex_data[:, "Category"])
 
     if lag_bool
@@ -230,6 +249,7 @@ function create_investment_data(size::Float64,
         age = 0
         remaining_lifetime = projectdata["Lifetime"]
         project_capex = [capex_data[capex_row, "$(start_year + y - 1)"] for y in 1:max_horizon]
+        preference_multiplier = projectdata["Preference Multiplier"] * ones(max_horizon)
     else
         online_year = projectdata["Online Year"]
         age = start_year - online_year
@@ -240,6 +260,7 @@ function create_investment_data(size::Float64,
             project_capex[y] = capex_data[capex_row, "pre $(start_year)"]
         end
 
+        preference_multiplier = ones(max_horizon)
     end
 
     investment_cost, discount_rate = calculate_capcost_and_wacc(project_capex, category, investor_dir, online_year)
@@ -280,6 +301,7 @@ function create_investment_data(size::Float64,
 
     finance_data = Finance(investment_cost,
                            effective_investment_cost,
+                           preference_multiplier,
                            projectdata["Lagtime"],
                            remaining_lifetime,
                            capex_years,
@@ -326,6 +348,7 @@ function create_tech_type(name::String,
     zone = projectdata["Zone"]
     bus = projectdata["Bus ID"]
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     if !isnothing(sys_UC)
         sys_base_power = PSY.get_base_power(sys_UC)
@@ -336,7 +359,7 @@ function create_tech_type(name::String,
         up_down_time = nothing
     end
 
-    if type == "ST" || type == "CT" || type == "CC" || type == "NU_ST"
+    if type == "ST" || type == "CT" || type == "CC" || type == "NU_ST" || type == "GT" || type == "RE_CT"
 
         output_point_fields = String[]
         heat_rate_fields = String[]
@@ -399,7 +422,8 @@ function create_tech_type(name::String,
                        heat_rate,
                        bus,
                        zone,
-                       FOR)
+                       FOR,
+                       MTTR)
 
         return  ThermalGenEMIS{BuildPhase}(name,
                                  tech,
@@ -416,7 +440,8 @@ function create_tech_type(name::String,
                         operation_cost,
                         bus,
                         zone,
-                        FOR)
+                        FOR,
+                        MTTR)
 
         return  RenewableGenEMIS{BuildPhase}(name,
                                  tech,
@@ -435,7 +460,8 @@ function create_tech_type(name::String,
                        operation_cost,
                        bus,
                        zone,
-                       FOR)
+                       FOR,
+                       MTTR)
 
         return  HydroGenEMIS{BuildPhase}(name,
                                  tech,
@@ -457,7 +483,8 @@ function create_tech_type(name::String,
                         (in = parse(Float64, projectdata["Round Trip Efficiency pu"]), out = 1.0),
                         bus,
                         zone,
-                        FOR)
+                        FOR,
+                        MTTR)
         return BatteryEMIS{BuildPhase}(name,
                         tech,
                         decision_year,
@@ -508,6 +535,7 @@ function create_tech_type(name::String,
     end
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     output_point_fields = String[]
     heat_rate_fields = String[]
@@ -571,7 +599,8 @@ function create_tech_type(name::String,
                        heat_rate,
                        deepcopy(PSY.get_number(bus)),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
     return  ThermalGenEMIS{BuildPhase}(name,
                                  tech,
@@ -606,6 +635,7 @@ function create_tech_type(name::String,
     type = string(deepcopy(PSY.get_prime_mover(device)))
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     tech = RenewableTech(type,
                        (min = 0.0, max = size),
@@ -613,7 +643,8 @@ function create_tech_type(name::String,
                        deepcopy(PSY.get_operation_cost(device)),
                        deepcopy(PSY.get_number(bus)),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
     return  RenewableGenEMIS{BuildPhase}(name,
                                  tech,
@@ -655,6 +686,7 @@ function create_tech_type(name::String,
     end
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     tech = HydroTech("HY",
                        (min = min_cap, max = size),
@@ -663,7 +695,8 @@ function create_tech_type(name::String,
                        deepcopy(PSY.get_operation_cost(device)),
                        deepcopy( PSY.get_number(bus)),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
         return  HydroGenEMIS{BuildPhase}(name,
                                  tech,
@@ -701,17 +734,19 @@ function create_tech_type(name::String,
     storage_capacity = deepcopy(PSY.get_state_of_charge_limits(device))
 
     FOR = projectdata["FOR"]
+    MTTR = projectdata["MTTR Hr"]
 
     tech = BatteryTech(type,
-                       (min = input_active_power_limits[:min] * base_power, down = input_active_power_limits[:max] * base_power),
-                       (min = output_active_power_limits[:min] * base_power, down = output_active_power_limits[:max] * base_power),
+                       (min = input_active_power_limits[:min] * base_power, max = input_active_power_limits[:max] * base_power),
+                       (min = output_active_power_limits[:min] * base_power, max = output_active_power_limits[:max] * base_power),
                        (up = size, down = size),
-                       (min = storage_capacity[:min] * size * base_power, down = storage_capacity[:max] * size * base_power),
+                       (min = storage_capacity[:min] * base_power, max = storage_capacity[:max] * base_power), #originally has *size
                        PSY.get_initial_energy(device) * size * base_power,
                        PSY.get_efficiency(device),
                        PSY.get_number(bus),
                        projectdata["Zone"],
-                       FOR)
+                       FOR,
+                       MTTR)
 
     return  BatteryEMIS{BuildPhase}(name,
                                  tech,
@@ -734,10 +769,17 @@ function create_project(projectdata::DataFrames.DataFrameRow,
                           scenario_names::Vector{String},
                           lag_bool::Bool)
 
-    name = projectdata["GEN_UID"]
+    name = String(projectdata["GEN_UID"])
+
+    unit_type = String(projectdata["Unit Type"])
+    size_raw = projectdata["Size"]
+    if typeof(size_raw) !== Float64
+        size_raw = String(size_raw)
+    end
+
     size = Float64(size_in_MW(investor_dir,
-                     projectdata["Unit Type"],
-                     projectdata["Size"]))
+                     unit_type,
+                     size_raw))
 
     base_power = size
     carbon_tax = get_carbon_tax(simulation_data)

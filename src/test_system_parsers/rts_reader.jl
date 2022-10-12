@@ -63,11 +63,11 @@ function read_rts(data_dir::String,
 
     for y in 1:(start_year - base_year)
         for zone in zone_numbers
-            scaled_test_sys_load[:, "$(zone)"] =  scaled_test_sys_load[:, "$(zone)"] * (1 + annual_growth[y, Symbol("load_zone_$(zone)")])
-            scaled_test_sys_load_rt[:, "$(zone)"] =  scaled_test_sys_load_rt[:, "$(zone)"] * (1 + annual_growth[y, Symbol("load_zone_$(zone)")])
+            scaled_test_sys_load[:, "$(zone)"] =  scaled_test_sys_load[:, "$(zone)"] .* (1 + annual_growth["load_zone_$(zone)",y])
+            scaled_test_sys_load_rt[:, "$(zone)"] =  scaled_test_sys_load_rt[:, "$(zone)"] .* (1 + annual_growth["load_zone_$(zone)",y])
         end
         for product in reserve_products
-            scaled_test_system_reserves_data[product][:, product] = scaled_test_system_reserves_data[product][:, product] * (1 + average_annual_growth[y])
+            scaled_test_system_reserves_data[product][:, product] = scaled_test_system_reserves_data[product][:, product] * (1 + average_annual_growth[1][y])
 
         end
     end
@@ -141,7 +141,7 @@ function read_rts(data_dir::String,
         elseif existing_generator_data[i, "Unit Type"] == "RTPV"
             gen_availability_df[:, existing_generator_data[i, "GEN UID"]] = rtpv_timeseries_data[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
             gen_availability_df_rt[:, existing_generator_data[i, "GEN UID"]] = rtpv_timeseries_data_rt[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
-        elseif existing_generator_data[i, "Unit Type"] == "HYDRO"
+        elseif existing_generator_data[i, "Unit Type"] == "HYDRO" || existing_generator_data[i, "Unit Type"] == "ROR"
             gen_availability_df[:, existing_generator_data[i, "GEN UID"]] = hydro_timeseries_data[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
             gen_availability_df_rt[:, existing_generator_data[i, "GEN UID"]] = hydro_timeseries_data_rt[:, existing_generator_data[i, "GEN UID"]] / existing_generator_data[i, "PMax MW"]
         else
