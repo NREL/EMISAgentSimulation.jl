@@ -36,15 +36,18 @@ This function creates the capacity market demand curve for actual capacity marke
 """
 function create_capacity_demand_curve(input_file::String,
                                       system_peak_load::Float64,
+                                      irm_scalar::Float64,
+                                      delta_irm::Float64,
                                       capacity_mkt_bool::Bool)
 
    # Gather parameter data
    capacity_demand_params = read_data(input_file)[1, :]
-   fpr = capacity_demand_params["Forecast Pool Req"] #Forecast Pool Req
+   eford = capacity_demand_params["EFORd"] # Equivalent demand forced outage rate
+   base_irm = capacity_demand_params["IRM"] # Installed Reserve Margin
+   adjusted_irm = (base_irm + delta_irm) * irm_scalar
+   fpr = (1 + adjusted_irm) * (1 - eford) #Forecast Pool Req
    rel_req = system_peak_load * fpr * capacity_mkt_bool # Reliability Requirement
-   irm = capacity_demand_params["IRM"] # Installed Reserve Margin
    irm_perc_points = parse.(Float64, split(capacity_demand_params["IRM perc points"], ";")) #Installed Reserve Margin percentage points
-
    net_CONE = capacity_demand_params["Net CONE per day"] * 365 * capacity_mkt_bool # Net CONE
    net_CONE_perc_points = parse.(Float64, split(capacity_demand_params["Net CONE perc points"], ";")) #Net CONE percentage points
 
@@ -68,11 +71,12 @@ function create_capacity_demand_curve(input_file::String,
 
    # Demand curve points based on PJM capacity market
    for i in 1:(length(net_CONE_perc_points))
-      demand_curve_break_points[i + 1] = rel_req * ( 1 + irm + irm_perc_points[i]) / ( 1 + irm)
+      demand_curve_break_points[i + 1] = rel_req * ( 1 + adjusted_irm + irm_perc_points[i]) / ( 1 + adjusted_irm)
       demand_curve_price_points[i + 1] = max(net_CONE * net_CONE_perc_points[i], gross_CONE_points[i])
    end
 
    capacity_demand_curve = CapacityMarket(demand_curve_break_points, demand_curve_price_points)
+
    return capacity_demand_curve
 end
 
@@ -144,6 +148,7 @@ function capacity_market_clearing(demand_curve::CapacityMarket,
    #Capacity Market Clearing Price is the shadow variable of the capacity balance constraint
    cap_price = AxisArrays.AxisArray(reshape([JuMP.dual(mkt_clear)], 1,), [1])
    cap_accepted_bid = Dict(supply_curve[s][1] => value.(Q_supply[s]) / supply_curve[s][2]  for s in 1:n_supply_seg)
+   println(cap_price)
 #------------------------------------------------------------------------------------------------
    return cap_price, cap_accepted_bid
 

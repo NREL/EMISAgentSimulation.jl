@@ -11,16 +11,18 @@ mutable struct MarketPrices
     reserve_price::Union{Nothing, Dict{String, Dict{String, Array{Float64, 2}}}}
     capacity_price::Union{Nothing, Dict{String, AxisArrays.AxisArray{Float64, 1}}}
     rec_price::Union{Nothing, Dict{String, AxisArrays.AxisArray{Float64, 1}}}
+    inertia_price::Union{Nothing, Dict{String, AxisArrays.AxisArray{Float64, 2}}}
 end
 
 function MarketPrices()
-    return MarketPrices(nothing, nothing, nothing, nothing)
+    return MarketPrices(nothing, nothing, nothing, nothing, nothing)
 end
 
 get_energy_price(prices::MarketPrices) = prices.energy_price
 get_reserve_price(prices::MarketPrices) = prices.reserve_price
 get_capacity_price(prices::MarketPrices) = prices.capacity_price
 get_rec_price(prices::MarketPrices) = prices.rec_price
+get_inertia_price(prices::MarketPrices) = prices.inertia_price
 
 get_prices(prices::MarketPrices, prod::T) where T<: Product = nothing
 get_prices(prices::MarketPrices, prod::Energy) = get_energy_price(prices)
@@ -33,6 +35,8 @@ end
 
 get_prices(prices::MarketPrices, prod::Capacity) = get_capacity_price(prices)
 get_prices(prices::MarketPrices, prod::REC) = get_rec_price(prices)
+get_prices(prices::MarketPrices, prod::Inertia) = get_inertia_price(prices)
+
 
 function set_energy_price!(prices::MarketPrices, scenario_name::String, energy_price::AxisArrays.AxisArray{Float64, 3})
     if !isnothing(prices.energy_price)
@@ -45,8 +49,14 @@ end
 
 function set_reserve_price!(prices::MarketPrices, scenario_name::String, reserve_price::Dict{String, Array{Float64, 2}})
 
-    reserve_price_dict = Dict(product => Dict(scenario_name => reserve_price[product]) for product in keys(reserve_price))
-    prices.reserve_price = reserve_price_dict
+    if isnothing(prices.reserve_price)
+        reserve_price_dict = Dict(product => Dict(scenario_name => reserve_price[product]) for product in keys(reserve_price))
+        prices.reserve_price = reserve_price_dict
+    else
+        for product in keys(reserve_price)
+            prices.reserve_price[product][scenario_name] = reserve_price[product]
+        end
+    end
 
     return
 end
@@ -65,6 +75,15 @@ function set_rec_price!(prices::MarketPrices, scenario_name::String, rec_price::
         prices.rec_price[scenario_name] = rec_price
     else
         prices.rec_price = Dict(scenario_name => rec_price)
+    end
+    return
+end
+
+function set_inertia_price!(prices::MarketPrices, scenario_name::String, inertia_price::AxisArrays.AxisArray{Float64, 2})
+    if !isnothing(prices.inertia_price)
+        prices.inertia_price[scenario_name] = inertia_price
+    else
+        prices.inertia_price = Dict(scenario_name => inertia_price)
     end
     return
 end

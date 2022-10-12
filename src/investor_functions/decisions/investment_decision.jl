@@ -2,7 +2,7 @@
 This function is a wrapper for running expected utility and first year profit calculations
 for making investment decisions.
 """
-function calculate_expected_utility(project::P,
+function calculate_option_expected_utility(project::P,
                                scenario_data::Vector{Scenario},
                                market_prices::MarketPrices,
                                carbon_tax_data::Vector{Float64},
@@ -12,7 +12,8 @@ function calculate_expected_utility(project::P,
                                yearly_horizon::Int64,
                                queue_cost::Vector{Float64},
                                capacity_forward_years::Int64,
-                               solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{<: BuildPhase}, R <: RiskPreference}
+                               portfolio_preference_multipliers::Dict{Tuple{String, String}, Vector{Float64}},
+                               solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{Option}, R <: RiskPreference}
 
     finance_data = get_finance_data(project)
 
@@ -36,7 +37,12 @@ function calculate_expected_utility(project::P,
         end
 
         annual_profit = annual_revenue - get_fixed_OM_cost(finance_data)
-        project_utility = get_expected_utility(finance_data)[iteration_year]
+
+        tech_data = get_tech(project)
+        preference_multiplier = portfolio_preference_multipliers[(get_type(tech_data), get_zone(tech_data))][iteration_year]
+
+        project_utility = get_expected_utility(finance_data)[iteration_year] * preference_multiplier
+        set_preference_multiplier!(project, iteration_year, preference_multiplier)
 
         return annual_profit, project_utility
 
@@ -55,6 +61,7 @@ function add_profitable_option(projects::Vector{Project},
                                   carbon_tax_data::Vector{Float64},
                                   risk_preference::R,
                                   capital_cost_multiplier::Float64,
+                                  portfolio_preference_multipliers::Dict{Tuple{String, String}, Vector{Float64}},
                                   investor_name::String,
                                   iteration_year::Int64,
                                   yearly_horizon::Int64,
@@ -64,7 +71,7 @@ function add_profitable_option(projects::Vector{Project},
                                   solver::JuMP.MOI.OptimizerWithAttributes) where {R <: RiskPreference}
 
     if length(projects) >= 1
-        if  get_construction_year(projects[1]) <= simulation_years && get_construction_year(projects[1]) <= yearly_horizon
+        if  get_construction_year(projects[1]) <= simulation_years && (get_construction_year(projects[1]) <= iteration_year + yearly_horizon)
 
             total_counter = 1
             counter_by_zone = AxisArrays.AxisArray(ones(length(projects)), get_zone.(get_tech.(projects)))
@@ -75,7 +82,7 @@ function add_profitable_option(projects::Vector{Project},
 
             for project in projects
 
-                annual_profit, project_utility = calculate_expected_utility(project,
+                annual_profit, project_utility = calculate_option_expected_utility(project,
                                                                     scenario_data,
                                                                     market_prices,
                                                                     carbon_tax_data,
@@ -85,6 +92,7 @@ function add_profitable_option(projects::Vector{Project},
                                                                     yearly_horizon,
                                                                     queue_cost,
                                                                     capacity_forward_years,
+                                                                    portfolio_preference_multipliers,
                                                                     solver)
 
                 if project_utility >= 0 && annual_profit >= -1 && counter_by_zone[get_zone(get_tech(project))] <= max_new_options[get_name(project)]
@@ -108,7 +116,7 @@ function add_profitable_option(projects::Vector{Project},
                 end
 
                 for (idx, option) in enumerate(profitable_type_options)
-                    annual_profit, project_utility = calculate_expected_utility(option,
+                    annual_profit, project_utility = calculate_option_expected_utility(option,
                                                                         scenario_data,
                                                                         market_prices,
                                                                         carbon_tax_data,
@@ -118,6 +126,7 @@ function add_profitable_option(projects::Vector{Project},
                                                                         yearly_horizon,
                                                                         queue_cost,
                                                                         capacity_forward_years,
+                                                                        portfolio_preference_multipliers,
                                                                         solver)
                     if project_utility < 0 || annual_profit < -1 || counter_by_zone[get_zone(get_tech(option))] > max_new_options[get_name(option)]
                         deleteat!(profitable_type_options, idx)
@@ -175,6 +184,7 @@ function make_investments!(investor::Investor,
                                                     carbon_tax_data,
                                                     risk_preference,
                                                     get_cap_cost_multiplier(investor),
+                                                    get_portfolio_preference_multipliers(investor),
                                                     get_name(investor),
                                                     iteration_year,
                                                     yearly_horizon,
@@ -190,4 +200,56 @@ function make_investments!(investor::Investor,
         end
 
     return
+end
+
+function update_portfolio_preference_multipliers!(investor::Investor, iteration_year::Int64)
+    existing_projects = get_existing(investor)
+    preference_multipliers = get_portfolio_preference_multipliers(investor)
+    scenario_data = get_scenario_data(get_forecast(investor))
+    lookback = 3
+    range = get_preference_multiplier_range(investor)
+
+    for key in keys(preference_multipliers)
+
+        tech = key[1]
+        zone = key[2]
+
+        all_target_projects = filter(p -> ((get_type(get_tech(p)) == tech) &&  (get_zone(get_tech(p)) == zone)), existing_projects)
+
+        if !isempty(all_target_projects)
+            latest_year = minimum(p -> get_construction_year(p), all_target_projects)
+            latest_target_projects = filter!(p -> get_construction_year(p) == latest_year, all_target_projects)
+
+            #calculating realized to expected ratio. selecting minimum of available values.
+            preference_ratio = minimum([calculate_realized_to_expected_ratio(p, scenario_data, iteration_year) for p in latest_target_projects])
+
+            #scaling according to investor's multiplier range
+            scale = 1.0 - range[:min]
+            preference_multiplier = min(max(range[:min] + scale * preference_ratio, range[:min]), range[:max])
+            past_multipliers = preference_multipliers[key][max(1, (iteration_year - lookback)):max(1, (iteration_year - 1))]
+            #currently multiplying past multipliers with each other. could also consider average or other operations.
+            adjusted_multiplier =  min(max(prod(past_multipliers) * preference_multiplier, range[:min]), range[:max])
+
+            set_preference_multiplier!(investor, tech, zone, iteration_year, adjusted_multiplier)
+        end
+    end
+end
+
+function calculate_realized_to_expected_ratio(project::Project, scenario_data::Vector{Scenario}, iteration_year::Int64)
+    finance_data = get_finance_data(project)
+    expected_revenue = 0.0
+        for scenario in scenario_data
+            expected_revenue += get_probability(scenario) *
+                             sum(get_scenario_profit(finance_data)[get_name(scenario)][iteration_year][:, iteration_year])
+        end
+
+    realized_revenue = sum(get_realized_profit(finance_data)[:, iteration_year])
+
+    if iszero(expected_revenue)
+        ratio = 1.0
+    else
+        ratio = realized_revenue/expected_revenue
+    end
+
+    return ratio
 end

@@ -9,7 +9,7 @@ function gather_data(case::CaseDefinition)
     n_rep_days = get_num_rep_days(case)
 
     annual_growth_data = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
-    annual_growth = AxisArrays.AxisArray(collect(transpose(convert(Matrix, annual_growth_data[:, 2:end]))),
+    annual_growth = AxisArrays.AxisArray(collect(transpose(Matrix(annual_growth_data[:, 2:end]))),
                               names(annual_growth_data)[2:end],
                               1:DataFrames.nrow(annual_growth_data))
 
@@ -28,8 +28,7 @@ function gather_data(case::CaseDefinition)
         zonal_lines = [ZonalLine("line_1", zones[1], zones[1], 0.0)]
     end
 
-    markets_df = read_data(joinpath(data_dir, "markets_data", "markets.csv"))
-    markets_dict = Dict(Symbol(names(markets_df)[i]) => markets_df[1, i] for i in 1:length(names(markets_df)))
+    markets_dict = get_markets(case)
 
     if get_siip_market_clearing(case)
         base_power = 100.0
@@ -39,7 +38,7 @@ function gather_data(case::CaseDefinition)
         sys_ED = nothing
     end
 
-    simulation_years = get_simulation_years(case)
+    simulation_years = get_total_horizon(case)
 
     carbon_tax = zeros(simulation_years)
 
@@ -50,9 +49,31 @@ function gather_data(case::CaseDefinition)
         end
     end
 
+    rec_requirement = zeros(simulation_years)
+    initial_rec_requirement = 0.0
+    if markets_dict[:REC]
+        rec_data = read_data(joinpath(data_dir, "markets_data", "REC_$(get_rps_target(case))_RPS.csv"))
+        initial_rec_requirement = rec_data.rec_req[1]
+        rec_increment = rec_data.annual_increment[1]
+        rec_requirement = [initial_rec_requirement + y * rec_increment for y in 1:simulation_years]
+    end
+
     queue_cost_df = read_data(joinpath(data_dir, "queue_cost_data.csv"))
 
     deratingdata = read_data(joinpath(data_dir, "markets_data", "derating_dict.csv"))
+
+    ra_target_file = joinpath(data_dir, "markets_data", "resource_adequacy_targets.csv")
+    ra_targets = Dict{String, Float64}()
+    ra_metrics = Dict{String, Float64}()
+
+
+    if isfile(ra_target_file)
+        for row in eachrow(read_data(ra_target_file))
+            ra_targets[row["Metric"]] = row["Target"]
+        end
+    end
+
+    resource_adequacy = ResourceAdequacy(ra_targets, zeros(simulation_years), [ra_metrics for i in 1:simulation_years])
 
     simulation_data = AgentSimulationData(case,
                                         sys_UC,
@@ -65,18 +86,33 @@ function gather_data(case::CaseDefinition)
                                         system_peak_load,
                                         markets_dict,
                                         carbon_tax,
+                                        rec_requirement,
                                         queue_cost_df,
                                         deratingdata,
-                                        annual_growth)
+                                        annual_growth,
+                                        resource_adequacy)
 
     investors = create_investors(simulation_data)
     set_investors!(simulation_data, investors)
 
-    #construct_ordc(data_dir, investors, 0, representative_days)
-    add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC")
-    add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED")
+    convert_thermal_clean_energy!(sys_UC)
+    convert_thermal_clean_energy!(sys_ED)
 
-    transform_psy_timeseries!(sys_UC, sys_ED, get_da_resolution(case), get_rt_resolution(case))
+    convert_thermal_fast_start!(sys_UC)
+    convert_thermal_fast_start!(sys_ED)
+
+    construct_ordc(deepcopy(sys_UC), data_dir, investors, 0, representative_days, get_ordc_curved(case), get_ordc_unavailability_method(case), get_reserve_penalty(case))
+    add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
+    add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
+
+    if markets_dict[:Inertia]
+        add_psy_inertia!(data_dir, sys_UC, get_reserve_penalty(case), system_peak_load)
+        add_psy_inertia!(data_dir, sys_ED, get_reserve_penalty(case), system_peak_load)
+    end
+
+    add_psy_clean_energy_constraint!(sys_UC, initial_rec_requirement)
+
+    transform_psy_timeseries!(sys_UC, sys_ED, get_da_resolution(case), get_rt_resolution(case), 36, 2)
 
     # Adding representative days availability data to investor folders
     system_availability_data = DataFrames.DataFrame(CSV.File(joinpath(data_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv")))
@@ -87,7 +123,7 @@ function gather_data(case::CaseDefinition)
         write_data(joinpath(dir, "timeseries_data_files", "Availability"), "DAY_AHEAD_availability.csv", rep_projects_availability)
     end
 
-    update_simulation_derating_data!(simulation_data)
+    update_simulation_derating_data!(simulation_data, get_derating_scale(case))
 
     return simulation_data
 end
@@ -143,9 +179,11 @@ function create_agent_simulation(case::CaseDefinition)
                             get_peak_load(simulation_data),
                             get_markets(simulation_data),
                             get_carbon_tax(simulation_data),
+                            get_rec_requirement(simulation_data),
                             get_investors(simulation_data),
                             get_derating_data(simulation_data),
-                            get_annual_growth(simulation_data))
+                            get_annual_growth(simulation_data),
+                            get_resource_adequacy(simulation_data))
 
     return simulation
 end

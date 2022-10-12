@@ -1,4 +1,13 @@
 
+function add_inertia_constant!(device::PSY.Device, product::T) where T <: Product
+    return
+end
+
+function add_inertia_constant!(device::PSY.Device, product::Inertia)
+    device.ext["inertia"] = get_h_constant(product)
+    return
+end
+
 """
 This function creates a PowerSystems ThermalStandard unit.
 """
@@ -16,6 +25,11 @@ function create_PSY_generator(gen::ThermalGenEMIS{<: BuildPhase}, sys::PSY.Syste
         end
     end
 
+    type = deepcopy(get_type(tech))
+    if type == "RE_CT"
+        type = "CT"
+    end
+
     PSY_gen =  PSY.ThermalStandard(
         get_name(gen), # name
         true,   # available
@@ -30,9 +44,15 @@ function create_PSY_generator(gen::ThermalGenEMIS{<: BuildPhase}, sys::PSY.Syste
         get_operation_cost(tech), # operation cost
         base_power, # base power
         get_time_limits(tech), # up and down time limits
-        PSY.PrimeMovers.Symbol(get_type(tech)), # primemover
-        PSY.ThermalFuels.Symbol(get_fuel(tech)), # fuel type
+        PSY.PrimeMovers(findfirst(x -> Symbol(x) == Symbol(type), collect(instances(PSY.PrimeMovers)))), # primemover
+        PSY.ThermalFuels(findfirst(x -> Symbol(x) == Symbol(get_fuel(tech)), collect(instances(PSY.ThermalFuels)))), # fuel type
     )
+    for product in get_products(gen)
+        add_inertia_constant!(PSY_gen, product)
+    end
+
+    add_outage_info!(PSY_gen, tech)
+
     return PSY_gen
 end
 
@@ -71,6 +91,12 @@ function create_PSY_generator(gen::RenewableGenEMIS{<: BuildPhase}, sys::PSY.Sys
         get_operation_cost(tech),
         base_power, # base power
     )
+    for product in get_products(gen)
+        add_inertia_constant!(PSY_gen, product)
+    end
+
+    add_outage_info!(PSY_gen, tech)
+
     return PSY_gen
 end
 
@@ -94,9 +120,9 @@ function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
         get_name(gen),  # name
         true,           # available
         project_bus[1], # bus
-        PSY.PrimeMovers.Symbol(get_type(tech)), # primemover
-        get_soc(tech) / (get_maxcap(gen) * base_power), #initial state of charge
-        (min = get_storage_capacity(tech)[:min] / (get_maxcap(gen) * base_power), max = get_storage_capacity(tech)[:max] / (get_maxcap(gen) * base_power)), # state of charge limits
+        PSY.PrimeMovers.BA, # primemover
+        get_soc(tech) / (base_power), #initial state of charge
+        (min = get_storage_capacity(tech)[:min] / base_power, max = get_storage_capacity(tech)[:max] / base_power), # state of charge limits
         get_maxcap(gen) / base_power, # rating
         get_maxcap(gen) / base_power, # active power
         (min = get_input_active_power_limits(tech)[:min] / base_power, max = get_input_active_power_limits(tech)[:max] / base_power), # input active power limits
@@ -105,6 +131,13 @@ function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
         1.0,             # reactive power
         nothing,      # reactive power limits
         base_power, # base power
+        nothing,    #operation_cost
     )
+    for product in get_products(gen)
+        add_inertia_constant!(PSY_gen, product)
+    end
+
+    add_outage_info!(PSY_gen, tech)
+
     return PSY_gen
 end

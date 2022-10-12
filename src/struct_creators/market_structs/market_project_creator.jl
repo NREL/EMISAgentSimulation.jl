@@ -160,10 +160,10 @@ end
 This function returns the project's REC energy output to be passed the REC market market clearing module.
 Returns 0 if there is no REC market participation.
 """
-function get_project_rec_output(project::P) where P <: Project{<: BuildPhase}
+function get_project_expected_rec_output(project::P) where P <: Project{<: BuildPhase}
     rec_output = 0.
     for product in get_products(project)
-        rec_output_temp = get_rec_certificates(product)
+        rec_output_temp = get_expected_rec_certificates(product)
         if !isnothing(rec_output_temp)
             rec_output = rec_output_temp
         end
@@ -206,6 +206,39 @@ function get_emission_intensity(project::Project)
     return intensity
 end
 
+function get_inertia_constant(project::Project)
+    constant = 0.0
+    for product in get_products(project)
+        temp = get_h_constant(product)
+        if !(isnothing(temp))
+            constant += temp
+        end
+    end
+    return constant
+end
+
+function get_synchronous_inertia(project::Project)
+    synchronous_inertia = true
+    for product in get_products(project)
+        temp = get_synchronous(product)
+        if !(isnothing(temp))
+            synchronous_inertia = temp
+        end
+    end
+    return synchronous_inertia
+end
+
+function get_rec_correction_factor(project::Project, iteration_year::Int64)
+    value = 1.0
+    for product in get_products(project)
+        temp = get_rec_correction_factor(product, iteration_year)
+        if !(isnothing(temp))
+            value = temp
+        end
+    end
+    return value
+end
+
 """
 This function creates the MarketProject struct to be passed to CEM price projection and endogeneous Economic Dispatch models.
 """
@@ -242,6 +275,9 @@ function populate_market_project(project::P,
         project_carbon_emissions = calculate_carbon_emissions(project_carbon_emissions, product)
     end
 
+    inertia_constant = get_inertia_constant(project)
+    synchronous_inertia = get_synchronous_inertia(project)
+
     market_project = MarketProject(
         get_name(project),                                                                       # name
         project_type,                                                                            # is project of storage type
@@ -277,6 +313,9 @@ function populate_market_project(project::P,
         remaining_life_time,                                                                      # remaining life_time
         in(:Capacity, get_name.(get_products(project))),                                         # eligible for capacity markets
         in(:REC, get_name.(get_products(project))),                                              # eligible for rps compliance
+        get_rec_correction_factor(project, iteration_year),                                      # rec correction factor
+        inertia_constant,                                                                        # inertia H-constant,
+        synchronous_inertia,                                                                     # whether inertia is synchronous
         get_zone(get_tech(project)),                                                             # project zone
         [get_ownedby(finance_data)])                                                             # owned by
 

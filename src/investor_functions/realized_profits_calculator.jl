@@ -6,12 +6,14 @@ function calculate_realized_operating_profit(prices::AxisArrays.AxisArray{Float6
                                             output::Array{Float64, 2},
                                             realized_hour_weight::Vector{Float64})
 
-    profit = sum(realized_hour_weight[i] *
-                ((prices[1, i] - marginal_cost) * output[1, i])
+    replace!(prices, NaN => 0.0)
+    replace!(output, NaN => 0.0)
+
+    profit = sum(((prices[1, i] - marginal_cost) * output[1, i])
                  for i in 1:size(output, 2))
 
-    return profit
 
+    return profit
 end
 
 """
@@ -25,8 +27,11 @@ function calculate_realized_operating_profit(prices::AxisArrays.AxisArray{Float6
                                             realized_hour_weight::Vector{Float64},
                                             resolution::Int64)
 
-    profit = sum(realized_hour_weight[i] *
-                ((prices[1, i] - marginal_cost[i]) * output[1, i] - carbon_emissions[i] * carbon_tax)
+    replace!(prices, NaN => 0.0)
+    replace!(output, NaN => 0.0)
+    replace!(marginal_cost, NaN => 0.0)
+
+    profit = sum((max(0.0, (prices[1, i] - marginal_cost[i]) * output[1, i] - carbon_emissions[i] * carbon_tax))
                  for i in 1:size(output, 2))
 
 
@@ -42,8 +47,11 @@ function calculate_realized_operating_profit(prices::Array{Float64, 2},
                                             output::Array{Float64, 2},
                                             realized_hour_weight::Vector{Float64})
 
-    profit = sum(realized_hour_weight[i] *
-                ((prices[1, i] - marginal_cost) * output[1, i])
+
+    replace!(prices, NaN => 0.0)
+    replace!(output, NaN => 0.0)
+
+    profit = sum((max(0.0, (prices[1, i] - marginal_cost) * output[1, i]))
                  for i in 1:size(output, 2))
     return profit
 
@@ -108,6 +116,7 @@ function calculate_realized_profit(project::Project,
                                    market_prices::MarketPrices,
                                    capacity_factors::Dict{String, Array{Float64, 2}},
                                    reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                   inertia_perc::Dict{String, Array{Float64, 2}},
                                    capacity_accepted_bids::Dict{String, Float64},
                                    rec_accepted_bids::Dict{String, Float64},
                                    realized_hour_weight::Vector{Float64},
@@ -129,6 +138,7 @@ function calculate_realized_profit(project::Project,
                                    market_prices::MarketPrices,
                                    capacity_factors::Dict{String, Array{Float64, 2}},
                                    reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                   inertia_perc::Dict{String, Array{Float64, 2}},
                                    capacity_accepted_bids::Dict{String, Float64},
                                    rec_accepted_bids::Dict{String, Float64},
                                    realized_hour_weight::Vector{Float64},
@@ -160,6 +170,9 @@ function calculate_realized_profit(project::Project,
                                                 realized_hour_weight,
                                                 rt_resolution)
 
+        for product in get_products(project)
+            set_total_emission!(product, carbon_emissions)
+        end
         return profit, update_year
     else
         return nothing, update_year
@@ -174,6 +187,7 @@ function calculate_realized_profit(project::Project,
                                   market_prices::MarketPrices,
                                   capacity_factors::Dict{String, Array{Float64, 2}},
                                   reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                  inertia_perc::Dict{String, Array{Float64, 2}},
                                   capacity_accepted_bids::Dict{String, Float64},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Vector{Float64},
@@ -217,6 +231,7 @@ function calculate_realized_profit(project::Project,
                                   market_prices::MarketPrices,
                                   capacity_factors::Dict{String, Array{Float64, 2}},
                                   reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                  inertia_perc::Dict{String, Array{Float64, 2}},
                                   capacity_accepted_bids::Dict{String, Float64},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Vector{Float64},
@@ -251,6 +266,7 @@ function calculate_realized_profit(project::Project,
                                   market_prices::MarketPrices,
                                   capacity_factors::Dict{String, Array{Float64, 2}},
                                   reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                  inertia_perc::Dict{String, Array{Float64, 2}},
                                   capacity_accepted_bids::Dict{String, Float64},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Vector{Float64},
@@ -268,6 +284,50 @@ function calculate_realized_profit(project::Project,
                 rec_accepted_bids[project_name]
 
     return profit, update_year
+    else
+        return nothing, update_year
+    end
+end
+
+"""
+This function calculates the realized REC market profits.
+"""
+function calculate_realized_profit(project::Project,
+                                  product::Inertia,
+                                  market_prices::MarketPrices,
+                                  capacity_factors::Dict{String, Array{Float64, 2}},
+                                  reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                  inertia_perc::Dict{String, Array{Float64, 2}},
+                                  capacity_accepted_bids::Dict{String, Float64},
+                                  rec_accepted_bids::Dict{String, Float64},
+                                  realized_hour_weight::Vector{Float64},
+                                  iteration_year::Int64,
+                                  capacity_forward_years::Int64,
+                                  carbon_tax::Float64,
+                                  da_resolution::Int64,
+                                  rt_resolution::Int64,
+                                  rt_products::Vector{String})
+
+    project_name = get_name(project)
+    size = get_maxcap(project)
+
+    if get_name(product) in rt_products
+        scale = rt_resolution / 60
+    else
+        scale = da_resolution / 60
+    end
+
+    update_year = iteration_year
+    if in(project_name, keys(inertia_perc))
+        output = size * inertia_perc[project_name]
+
+        profit = calculate_realized_operating_profit(get_prices(market_prices, product)["realized"],
+                                                get_marginal_cost(product) * scale,
+                                                output,
+                                                realized_hour_weight)
+
+
+        return profit, update_year
     else
         return nothing, update_year
     end

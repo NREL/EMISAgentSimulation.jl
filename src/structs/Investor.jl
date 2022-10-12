@@ -11,6 +11,7 @@ This struct contains all the data for an investor.
     cap_cost_multiplier: Capital cost multiplier.
     max_annual_projects: Maximum number of projects.
     risk_preference: Whether investor is Risk Neutral or Risk Averse.
+    retirement_lookback: Number of past years' data taken into account for making retirement decision
 """
 mutable struct Investor
     name::String
@@ -22,8 +23,11 @@ mutable struct Investor
     rep_hour_weight::Vector{Float64}
     forecast::F where F <: Forecast
     cap_cost_multiplier::Float64
+    preference_multiplier_range::NamedTuple{(:min, :max),Tuple{Float64,Float64}}
+    portfolio_preference_multipliers::Dict{Tuple{String, String}, Vector{Float64}}
     max_annual_projects::Int64
     risk_preference::T where T <: RiskPreference
+    retirement_lookback::Int64
 end
 
 get_name(investor::Investor) = investor.name
@@ -37,6 +41,10 @@ get_forecast(investor::Investor) = investor.forecast
 get_cap_cost_multiplier(investor::Investor) = investor.cap_cost_multiplier
 get_max_annual_projects(investor::Investor) = investor.max_annual_projects
 get_risk_preference(investor::Investor) = investor.risk_preference
+get_retirement_lookback(investor::Investor) = investor.retirement_lookback
+get_preference_multiplier_range(investor::Investor) = investor.preference_multiplier_range
+get_portfolio_preference_multipliers(investor::Investor) = investor.portfolio_preference_multipliers
+
 
 # Get projects based on their buildphases
 function get_existing(investor::Investor)
@@ -97,4 +105,12 @@ end
 function set_market_prices!(investor::Investor,
                            market_prices::MarketPrices)
     investor.market_prices = market_prices
+end
+
+function get_preference_multiplier(investor::Investor, tech::String, zone::String)
+    return investor.portfolio_preference_multipliers[(tech, zone)]
+end
+
+function set_preference_multiplier!(investor::Investor, tech::String, zone::String, iteration_year::Int64, value::Float64)
+    investor.portfolio_preference_multipliers[(tech, zone)][iteration_year] = value
 end
