@@ -87,40 +87,81 @@ end
 
 
 """
-This function constructs the generator unavailability distribution based on Forced Outage Rates.
+This function constructs the generator unavailability distribution based on Forced Outage Rates using colvolution.
 """
-function construct_gen_unavail_distribution(simulation_dir::String,
+function construct_conv_unavailabilities(simulation_dir::String,
                                             generators::Vector{Project},
-                                            zonal::Bool)
+                                            zonal::Bool,
+                                            ordc_unavailability_method::String)
 
-    load_n_vg_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
-    zones = chop.(filter(n -> occursin("load", n), names(load_n_vg_df)), head = 5, tail = 0)
+    if ordc_unavailability_method == "Convolution"
+        load_n_vg_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
+        zones = chop.(filter(n -> occursin("load", n), names(load_n_vg_df)), head = 5, tail = 0)
 
-    if zonal
-        unavail_mean = Dict{String, Float64}()
-        unavail_std = Dict{String, Float64}()
-        for zone in zones
-            gens = filter(p -> get_zone(get_tech(p)) == zone, generators)
-            capacity_vector = round.(Int, get_maxcap.(gens)) #PRAS needs integer capacities
-            FOR_vector = get_FOR.(get_tech.(gens))
+        if zonal
+            unavail_mean = Dict{String, Float64}()
+            unavail_std = Dict{String, Float64}()
+            for zone in zones
+                gens = filter(p -> get_zone(get_tech(p)) == zone, generators)
+                capacity_vector = round.(Int, get_maxcap.(gens)) #PRAS needs integer capacities
+                FOR_vector = get_FOR.(get_tech.(gens))
 
-            distribution = PRAS.ResourceAdequacy.spconv(capacity_vector, FOR_vector)
+                distribution = PRAS.ResourceAdequacy.spconv(capacity_vector, FOR_vector)
 
-            unavail_mean[zone] = Distributions.mean(distribution)
-            unavail_std[zone] = sqrt(Distributions.var(distribution))
+                unavail_mean[zone] = Distributions.mean(distribution)
+                unavail_std[zone] = sqrt(Distributions.var(distribution))
+            end
+        else
+            capacity_vector = round.(Int, get_maxcap.(generators)) #PRAS needs integer capacities
+            FOR_vector = get_FOR.(get_tech.(generators))
+
+            distribution = spconv(capacity_vector, FOR_vector)
+
+            unavail_mean = Distributions.mean(distribution)
+            unavail_std = sqrt(Distributions.var(distribution))
         end
     else
-        capacity_vector = round.(Int, get_maxcap.(generators)) #PRAS needs integer capacities
-        FOR_vector = get_FOR.(get_tech.(generators))
-
-        distribution = spconv(capacity_vector, FOR_vector)
-
-        unavail_mean = Distributions.mean(distribution)
-        unavail_std = sqrt(Distributions.var(distribution))
+        unavail_mean = nothing
+        unavail_std = nothing
     end
 
     return unavail_mean, unavail_std
 end
+
+"""
+This function constructs the generator unavailability distribution using PRAS unavailibility timeseries.
+"""
+function construct_gen_unavail_distribution(simulation_dir::String,
+                                            smc_unavailability_timeseries::Array{Float64, 2},
+                                            conv_unavailability_mean::Nothing,
+                                            conv_unavailability_std::Nothing,
+                                            months::Vector{Int64},
+                                            hours::Vector{Int64})
+
+    gen_unavail_df = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))[:, 1:4]
+    @assert DataFrames.nrow(gen_unavail_df) == size(smc_unavailability_timeseries, 2)
+    for i in 1:size(smc_unavailability_timeseries, 1)
+        gen_unavail_df[!, "$(i)"] = smc_unavailability_timeseries[1, :]
+    end
+    filter!(row -> in(row["Month"], months) && in(row["Period"], hours), gen_unavail_df)
+
+    unavail_mean = Statistics.mean(Matrix(gen_unavail_df[:, 5:end]))
+    unavail_std = Statistics.std(Matrix(gen_unavail_df[:, 5:end]))
+    return unavail_mean, unavail_std
+end
+
+function construct_gen_unavail_distribution(simulation_dir::String,
+                                            smc_unavailability_timeseries::Nothing,
+                                            conv_unavailability_mean::Float64,
+                                            conv_unavailability_std::Float64,
+                                            months::Vector{Int64},
+                                            hours::Vector{Int64})
+
+    unavail_mean = conv_unavailability_mean
+    unavail_std = conv_unavailability_std
+    return unavail_mean, unavail_std
+end
+
 
 function calculate_min_reserve_req(simulation_dir::String,
                                    generators::Vector{Project},

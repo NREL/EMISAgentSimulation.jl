@@ -17,7 +17,8 @@ function specify_pruned_units()
                                          "101_CT_1", "101_CT_2", "102_CT_1", "102_CT_2",
                                          "201_CT_1", "201_CT_2", "202_CT_1", "202_CT_2",
                                          "301_CT_1", "301_CT_2", "302_CT_1", "302_CT_2",
-                                         "207_CT_1", "307_CT_1", "101_STEAM_4"]
+                                         "207_CT_1", "307_CT_1", "101_STEAM_4",
+                                         "123_STEAM_3", "223_STEAM_1", "223_STEAM_3"]
     pruned_unit[PSY.RenewableFix] = ["308_RTPV_1", "313_RTPV_1", "313_RTPV_2", "313_RTPV_3", "313_RTPV_4", "313_RTPV_5", "313_RTPV_6", "313_RTPV_7",
                                         "313_RTPV_8", "313_RTPV_9", "313_RTPV_10", "313_RTPV_11", "313_RTPV_12", "320_RTPV_1", "320_RTPV_2", "320_RTPV_3",
                                         "313_RTPV_13", "320_RTPV_4", "320_RTPV_5", "118_RTPV_1", "118_RTPV_2", "118_RTPV_3", "118_RTPV_4", "118_RTPV_5",
@@ -71,10 +72,18 @@ function create_rts_sys(rts_dir::String,
     end
 
     pruned_unit = specify_pruned_units()
-    device_list = Dict{Type{<:PSY.Component}, Array{AbstractString}}()
     prune_system_devices!(sys_UC, pruned_unit)
     prune_system_devices!(sys_ED, pruned_unit)
 
     return sys_UC, sys_ED
 end
 
+function remove_vre_gens!(sys::PSY.System)
+    for gen in get_all_techs(sys)
+        if typeof(gen) == PSY.RenewableDispatch
+            println(PSY.get_name(gen))
+            println(PSY.get_ext(gen))
+            PSY.remove_component!(sys, gen)
+        end
+    end
+end

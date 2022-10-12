@@ -145,7 +145,7 @@ function update_project_npv!(project::P,
                             queue_cost,
                             update_years[:start_year])
 
-        if -1 <= scenario_npv / get_maxcap(project) < 0   # Converting values from very small negative values to 0 to avoid rounding off issues
+        if -5 <= scenario_npv / get_maxcap(project) < 0   # Converting values from very small negative values to 0 to avoid rounding off issues
             scenario_npv = 0.0
         end
         set_scenario_npv!(finance_data, scenario_name, iteration_year, scenario_npv)

@@ -12,6 +12,7 @@ This struct contains all the data for the simulation to be run.
     peak_load: Annual system-wide peak load for capacity market clearing.
     markets: Boolean for selecting which markets are modeled.
     carbon_tax: Vector of annual carbon taxes
+    rec_requirement: Vector of annual REC requirement
     investors: Vectors of all investors created in the simulation.
     derating_data: Derating data foe each technology type.
     annual_growth: Annual growth rate data of different parameters.
@@ -30,9 +31,11 @@ mutable struct AgentSimulation
     peak_load::Float64
     markets::Dict{Symbol, Bool}
     carbon_tax::Vector{Float64}
+    rec_requirement::Vector{Float64}
     investors::Vector{Investor}
     derating_data::DataFrames.DataFrame
     annual_growth::AxisArrays.AxisArray{Float64, 2}
+    resource_adequacy::ResourceAdequacy
 end
 
 get_case(sim::AgentSimulation) = sim.case
@@ -47,9 +50,12 @@ get_hour_weight(sim::AgentSimulation) = sim.hour_weight
 get_peak_load(sim::AgentSimulation) = sim.peak_load
 get_markets(sim::AgentSimulation) = sim.markets
 get_carbon_tax(sim::AgentSimulation) = sim.carbon_tax
+get_rec_requirement(sim::AgentSimulation) = sim.rec_requirement
 get_investors(sim::AgentSimulation) = sim.investors
 get_derating_data(sim::AgentSimulation) = sim.derating_data
 get_annual_growth(sim::AgentSimulation) = sim.annual_growth
+get_resource_adequacy(sim::AgentSimulation) = sim.resource_adequacy
+
 
 function set_iteration_year!(simulation::AgentSimulation, iteration_year::Int64)
     simulation.iteration_year = iteration_year
@@ -76,10 +82,12 @@ mutable struct AgentSimulationData
     peak_load::Float64
     markets::Dict{Symbol, Bool}
     carbon_tax::Vector{Float64}
+    rec_requirement::Vector{Float64}
     investors::Union{Nothing, Vector{Investor}}
     queue_cost_data::DataFrames.DataFrame
     derating_data::DataFrames.DataFrame
     annual_growth::AxisArrays.AxisArray{Float64, 2}
+    resource_adequacy::ResourceAdequacy
 end
 
 function AgentSimulationData(case::CaseDefinition,
@@ -93,9 +101,11 @@ function AgentSimulationData(case::CaseDefinition,
                         peak_load::Float64,
                         markets::Dict{Symbol, Bool},
                         carbon_tax::Vector{Float64},
+                        rec_requirement::Vector{Float64},
                         queue_cost_data::DataFrames.DataFrame,
                         derating_data::DataFrames.DataFrame,
-                        annual_growth::AxisArrays.AxisArray{Float64, 2})
+                        annual_growth::AxisArrays.AxisArray{Float64, 2},
+                        resource_adequacy::ResourceAdequacy)
     return AgentSimulationData(case,
                           1,
                           system_UC,
@@ -108,10 +118,12 @@ function AgentSimulationData(case::CaseDefinition,
                           peak_load,
                           markets,
                           carbon_tax,
+                          rec_requirement,
                           nothing,
                           queue_cost_data,
                           derating_data,
-                          annual_growth)
+                          annual_growth,
+                          resource_adequacy)
 end
 
 get_case(sim::AgentSimulationData) = sim.case
@@ -126,10 +138,12 @@ get_rep_hour_weight(sim::AgentSimulationData) = sim.rep_hour_weight
 get_peak_load(sim::AgentSimulationData) = sim.peak_load
 get_markets(sim::AgentSimulationData) = sim.markets
 get_carbon_tax(sim::AgentSimulationData) = sim.carbon_tax
+get_rec_requirement(sim::AgentSimulationData) = sim.rec_requirement
 get_investors(sim::AgentSimulationData) = sim.investors
 get_queue_cost_data(sim::AgentSimulationData) = sim.queue_cost_data
 get_derating_data(sim::AgentSimulationData) = sim.derating_data
 get_annual_growth(sim::AgentSimulationData) = sim.annual_growth
+get_resource_adequacy(sim::AgentSimulationData) = sim.resource_adequacy
 
 function set_investors!(simulation_data::AgentSimulationData,
                         investors::Vector{Investor})

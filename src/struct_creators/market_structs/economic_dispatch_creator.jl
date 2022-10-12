@@ -10,6 +10,8 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
                                           iteration_year::Int64)
 
     simulation_dir = get_data_dir(get_case(simulation))
+    delta_irm = get_delta_irm(get_resource_adequacy(simulation), iteration_year)
+    irm_scalar = get_irm_scalar(get_case(simulation))
     load_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Load", "load_$(iteration_year - 1).csv"))
     num_hours = DataFrames.nrow(load_data)
     zones = get_zones(simulation)
@@ -109,7 +111,7 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
         # Create market products data for the horizon
         for p in 1:num_invperiods
             system_peak_load = (1 + average_capacity_growth) ^ (p) * peak_load
-            capacity_markets[p] = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, capacity_market_bool)
+            capacity_markets[p] = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, irms_scalar, delta_irm, capacity_market_bool)
 
             energy_markets[p] = EnergyMarket(AxisArrays.AxisArray(zonal_load .* ((1 .+ energy_annual_increment) .^ p), zones, (1:num_hours)),
                                         price_cap_energy)
