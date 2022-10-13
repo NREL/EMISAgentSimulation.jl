@@ -125,10 +125,10 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         #Find which markets to simulate.
         markets = union(hcat(get_markets.(get_investors(simulation))...))
 
-        for d in get_components(ThermalCleanEnergy,sys_UC)
+        for d in PSY.get_components(PSYE.ThermalCleanEnergy,sys_UC)
             if "CleanEnergyConstraint" ∉ PSY.get_name.(d.services)
                 println("$(PSY.get_name(d))")
-                EAS.add_clean_energy_contribution!(sys_UC, d)
+                add_clean_energy_contribution!(sys_UC, d)
             end
         end
 
