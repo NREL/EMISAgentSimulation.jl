@@ -688,7 +688,7 @@ function create_simulation( sys_UC::PSY.System,
 
     sim = PSI.Simulation(
                     name = "emis_$(case_name)",
-                    steps = 3,
+                    steps = 360,
                     problems = problems,
                     sequence = sequence,
                     simulation_folder = ".",

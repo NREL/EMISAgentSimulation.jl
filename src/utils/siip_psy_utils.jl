@@ -493,7 +493,10 @@ end
 function convert_thermal_clean_energy!(system::PSY.System)
     for gen in PSY.get_components(PSY.ThermalStandard, system)
         name = PSY.get_name(gen)
-        if occursin("NUC", name) || occursin("RECT", name)
+        if occursin("RECT", name) #occursin("NUC", name) || occursin("RECT", name)
+            convert_to_thermal_clean_energy!(gen, system)
+        end
+        if occursin("NUCLEAR", string(PSY.get_fuel(gen))) && occursin("ST", string(PSY.get_prime_mover(gen)))
             convert_to_thermal_clean_energy!(gen, system)
         end
     end

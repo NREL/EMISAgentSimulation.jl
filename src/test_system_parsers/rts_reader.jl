@@ -156,7 +156,7 @@ function read_rts(data_dir::String,
     write_data(joinpath(data_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data.csv", net_load_df)
     write_data(joinpath(data_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data_rt.csv", net_load_df_rt)
 
-    representative_days = find_representative_days(data_dir, base_dir, n_rep_days)
+    representative_days = find_representative_days(data_dir, test_system_dir, base_dir, n_rep_days)
     rep_load_data = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), scaled_test_sys_load)
 
     rep_hour_weight = zeros(DataFrames.nrow(rep_load_data))
