@@ -72,11 +72,11 @@ function add_clean_energy_contribution!(sys_UC::PSY.System,
 end
 
 function add_clean_energy_contribution!(sys::PSY.System,
-                                        device::T) where T <:Union{PSYE.ThermalCleanEnergy, PSY.RenewableDispatch, PSY.HydroEnergyReservoir, PSY.HydroDispatch}
+                                        device::T) where T <:Union{PSY.ThermalStandard, PSY.RenewableDispatch, PSY.HydroEnergyReservoir, PSY.HydroDispatch}
 
     services = get_system_services(sys)
     for service in services
-        if PSY.get_name(service) == "CleanEnergyConstraint"
+        if PSY.get_name(service) == "Clean_Energy"
             PSY.add_service!(device, service, sys)
         end
     end
@@ -259,7 +259,7 @@ function update_PSY_timeseries!(sys::PSY.System,
             end
 
             PSY.add_time_series!(sys, service, forecast)
-        elseif typeof(service) == PSYE.CleanEnergyReserve{PowerSystems.ReserveSymmetric}
+        elseif service_name == "Clean_Energy"
             clean_energy_requirement = total_active_power * rec_requirement * 1.0
             println(rec_requirement)
             println(clean_energy_requirement)
@@ -328,6 +328,7 @@ end
 
 function add_psy_inertia!(simulation_dir::String,
                           sys::PSY.System,
+                          type::String,
                           reserve_penalty::String,
                           system_peak_load::Float64)
 
@@ -337,7 +338,7 @@ function add_psy_inertia!(simulation_dir::String,
 
     ####### Adding Inertia reserve
 
-    inertia_reserve = PSYE.InertiaReserve{PSY.ReserveSymmetric}(
+    inertia_reserve = PSY.VariableReserve{PSY.ReserveUp}(
         "Inertia",
         true,
         3600,
@@ -345,7 +346,6 @@ function add_psy_inertia!(simulation_dir::String,
     )
     contri_devices =
         vcat(collect(PSY.get_components(PSY.ThermalStandard, sys)),
-        collect(PSY.get_components(PSYE.ThermalCleanEnergy, sys)),
         collect(PSY.get_components(ThermalFastStartSIIP, sys)),
         collect(PSY.get_components(PSY.RenewableDispatch, sys)),
         collect(PSY.get_components(PSY.HydroDispatch, sys)),
@@ -360,7 +360,13 @@ function add_psy_inertia!(simulation_dir::String,
     #                 first(PSY.get_components(PSY.ElectricLoad, sys)),
     #                 "max_active_power"
     #                 )))
-    time_stamps = StepRange(Dates.DateTime("2018-01-01T00:00:00"), Dates.Hour(1), Dates.DateTime("2019-01-01T11:00:00"));
+    if type == "UC"
+        time_stamps = StepRange(Dates.DateTime("2018-01-01T00:00:00"), Dates.Hour(1), Dates.DateTime("2019-01-01T11:00:00"));
+    elseif type == "ED"
+        time_stamps = StepRange(Dates.DateTime("2018-01-01T00:00:00"), Dates.Hour(1), Dates.DateTime("2019-01-01T00:00:00"));
+    else
+        error("Type should be UC or ED")
+    end
 
     ts_data = ones(length(time_stamps))
     ts = TimeSeries.TimeArray(time_stamps, ts_data);
@@ -414,25 +420,25 @@ function add_psy_clean_energy_constraint!(sys::PSY.System,
 
     clean_energy_ts_data = clean_energy_ts_data / total_active_power
 
-    clean_energy_constraint = PSYE.CleanEnergyReserve{PSY.ReserveSymmetric}(
-                                                    "CleanEnergyConstraint",
-                                                    true,
-                                                    3600.0,
-                                                    total_active_power * requirement)
-
+    clean_energy_reserve = PSY.VariableReserve{PSY.ReserveUp}(
+        "Clean_Energy",
+        true,
+        3600,
+        total_active_power * requirement,
+    )
     contri_devices =
-        vcat(collect(PSY.get_components(PSYE.ThermalCleanEnergy, sys)),
+        vcat(collect(PSY.get_components(PSY.ThermalStandard, sys, x -> (occursin("NUC", PSY.get_name(x)) || occursin("RECT", PSY.get_name(x))))),
         collect(PSY.get_components(PSY.RenewableDispatch, sys)),
         collect(PSY.get_components(PSY.HydroDispatch, sys)),
-        collect(PSY.get_components(PSY.HydroEnergyReservoir, sys))
-        );
+        collect(PSY.get_components(PSY.HydroEnergyReservoir, sys)),
+    );
 
-    PSY.add_service!(sys, clean_energy_constraint, contri_devices)
+    PSY.add_service!(sys, clean_energy_reserve, contri_devices)
 
     ts_data = TimeSeries.TimeArray(time_stamps, clean_energy_ts_data)
-
     forecast = PSY.SingleTimeSeries("requirement", ts_data)
-    PSY.add_time_series!(sys, clean_energy_constraint, forecast)
+    PSY.add_time_series!(sys, clean_energy_reserve, forecast)
+
 end
 
 function calculate_total_load(sys::PSY.System, time_resolution::Int64)
@@ -461,43 +467,6 @@ function calculate_total_load(sys::PSY.System, time_resolution::Int64)
     return total_load
 end
 
-function convert_to_thermal_clean_energy!(d::PSY.ThermalStandard, system::PSY.System)
-    new = PSYE.ThermalCleanEnergy(;
-        name = d.name,
-        available = d.available,
-        status = d.status,
-        bus = d.bus,
-        active_power = d.active_power,
-        reactive_power = d.reactive_power,
-        rating = d.rating,
-        active_power_limits = d.active_power_limits,
-        reactive_power_limits = d.reactive_power_limits,
-        ramp_limits = d.ramp_limits,
-        operation_cost = d.operation_cost,
-        base_power = d.base_power,
-        time_limits = d.time_limits,
-        prime_mover = d.prime_mover,
-        fuel = d.fuel,
-        ext = d.ext
-    )
-
-    PSY.add_component!(system, new)
-    for service in PSY.get_services(d)
-        PSY.add_service!(new, service, system)
-    end
-
-    PSY.remove_component!(system, d)
-    return
-end
-
-function convert_thermal_clean_energy!(system::PSY.System)
-    for gen in PSY.get_components(PSY.ThermalStandard, system)
-        name = PSY.get_name(gen)
-        if occursin("NUC", name) || occursin("RECT", name)
-            convert_to_thermal_clean_energy!(gen, system)
-        end
-    end
-end
 
 function convert_to_thermal_fast_start!(d::PSY.ThermalStandard, system::PSY.System)
     new = ThermalFastStartSIIP(;

@@ -286,16 +286,16 @@ import LinearAlgebra
 import PooledArrays
 import PowerSystems
 import PowerSimulations
-using PowerSystemExtensions
-using PowerSimulationExtensions
+using EMISExtensions
 using PRAS
 import InfrastructureSystems
+import ReliablePowerSimulations
 
 const PSY = PowerSystems
 const PSI = PowerSimulations
-const PSIE = PowerSimulationExtensions
-const PSYE = PowerSystemExtensions
+const EMISEx = EMISExtensions
 const IS = InfrastructureSystems
+const RPSI = ReliablePowerSimulations
 
 import Random
 import UUIDs
