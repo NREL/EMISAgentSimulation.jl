@@ -24,7 +24,8 @@ function calculate_RA_metrics(sys::PSY.System)
     total_load = calculate_total_load(sys, 60)
 
     ra_metrics = Dict{String, Float64}()
-    shortfall, = @time PRAS.assess(pras_system,  PRAS.SequentialMonteCarlo(samples = 100),  PRAS.Shortfall())
+    seed = 3
+    shortfall, = @time PRAS.assess(pras_system,  PRAS.SequentialMonteCarlo(samples = 100, seed=seed),  PRAS.Shortfall())
     @info "Finished PRAS simulation... "
     eue_overall = PRAS.EUE(shortfall)
     lole_overall = PRAS.LOLE(shortfall)
@@ -196,9 +197,9 @@ function update_delta_irm!(initial_system::PSY.System,
         all_capacity_market_projects = get_all_techs(capacity_market_system)
         removeable_projects = PSY.Generator[]
 
-        CT_generators = sort!(filter(project -> occursin("CT", PSY.get_name(project)), all_capacity_market_projects), by = x -> get_device_size(x))
+        CT_generators = sort!(filter(project -> occursin("CT", string(PSY.get_prime_mover(project))), all_capacity_market_projects), by = x -> get_device_size(x))
         append!(removeable_projects, CT_generators)
-        CC_generators = sort!(filter(project -> occursin("CC", PSY.get_name(project)), all_capacity_market_projects), by = x -> get_device_size(x))
+        CC_generators = sort!(filter(project -> occursin("CC", string(PSY.get_prime_mover(project))), all_capacity_market_projects), by = x -> get_device_size(x))
         append!(removeable_projects, CC_generators)
 
         @time begin

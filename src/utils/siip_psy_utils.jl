@@ -467,6 +467,46 @@ function calculate_total_load(sys::PSY.System, time_resolution::Int64)
     return total_load
 end
 
+function convert_to_thermal_clean_energy!(d::PSY.ThermalStandard, system::PSY.System)
+    new = PSYE.ThermalCleanEnergy(;
+        name = d.name,
+        available = d.available,
+        status = d.status,
+        bus = d.bus,
+        active_power = d.active_power,
+        reactive_power = d.reactive_power,
+        rating = d.rating,
+        active_power_limits = d.active_power_limits,
+        reactive_power_limits = d.reactive_power_limits,
+        ramp_limits = d.ramp_limits,
+        operation_cost = d.operation_cost,
+        base_power = d.base_power,
+        time_limits = d.time_limits,
+        prime_mover = d.prime_mover,
+        fuel = d.fuel,
+        ext = d.ext
+    )
+
+    PSY.add_component!(system, new)
+    for service in PSY.get_services(d)
+        PSY.add_service!(new, service, system)
+    end
+
+    PSY.remove_component!(system, d)
+    return
+end
+
+function convert_thermal_clean_energy!(system::PSY.System)
+    for gen in PSY.get_components(PSY.ThermalStandard, system)
+        name = PSY.get_name(gen)
+        if occursin("RECT", name) #occursin("NUC", name) || occursin("RECT", name)
+            convert_to_thermal_clean_energy!(gen, system)
+        end
+        if occursin("NUCLEAR", string(PSY.get_fuel(gen))) && occursin("ST", string(PSY.get_prime_mover(gen)))
+            convert_to_thermal_clean_energy!(gen, system)
+        end
+    end
+end
 
 function convert_to_thermal_fast_start!(d::PSY.ThermalStandard, system::PSY.System)
     new = ThermalFastStartSIIP(;

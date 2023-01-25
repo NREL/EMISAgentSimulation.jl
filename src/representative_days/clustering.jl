@@ -55,6 +55,7 @@ function cluster(period_labels::AbstractVector,
 end
 
 function find_representative_days(simulation_dir::String,
+                                  test_system_dir::String,
                                   base_dir::String,
                                   n_clusters::Int64)
 
@@ -71,10 +72,11 @@ function find_representative_days(simulation_dir::String,
         wind = zeros(length(load))
         pv = zeros(length(load))
 
+        existing_generator_data = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "SourceData", "gen.csv")))
         for i in names(net_load_data)
-            if occursin("WIND", i) || occursin("WT", i)
+            if occursin("WIND", filter( row -> row."GEN UID" in [i], existing_generator_data)."Unit Type"[1]) #occursin("WIND", i) || occursin("WT", i)
                 wind += net_load_data[:, i]
-            elseif occursin("PV", i) || occursin("PVe", i)
+            elseif occursin("PV", filter( row -> row."GEN UID" in [i], existing_generator_data)."Unit Type"[1])#occursin("PV", i) || occursin("PVe", i)
                 pv += net_load_data[:, i]
             end
         end

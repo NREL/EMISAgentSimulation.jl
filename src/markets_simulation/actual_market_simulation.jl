@@ -68,24 +68,31 @@ function create_realized_marketdata(simulation::AgentSimulation,
     total_production = 0.0
     total_cec_production = 0.0
     day = 0
-    # for time in 1:288:(288 * 360)
-    #     day += 1
-    #     daily_total_production = 0.0
-    #     daily_cec_production = 0.0
-    #     for gen in get_all_techs(sys_ED)
-    #         name = PSY.get_name(gen)
-    #         if !(occursin("BA", name))
-    #             energy_production = sum(capacity_factors[name][time:time + 287]) * get_device_size(gen)
-    #             total_production += energy_production
-    #             daily_total_production += energy_production
-    #             if occursin("WT", name) || occursin("WIND", name) || occursin("PV", name) || occursin("HY", name) || occursin("NU", name) || occursin("RE", name)
-    #                 total_cec_production += energy_production
-    #                 daily_cec_production += energy_production
-    #             end
-    #         end
-    #     end
-    #     #println("Clean energy contribution for day $(day) is $(round(daily_cec_production * 100.0 / daily_total_production, digits = 2)) percent")
-    # end
+    get_rt_resolution(get_case(simulation))
+    for time in 1:Int(24*60/get_rt_resolution(get_case(simulation))):(Int(24*60/get_rt_resolution(get_case(simulation))) * 360)
+        day += 1
+        daily_total_production = 0.0
+        daily_cec_production = 0.0
+        for gen in get_all_techs(sys_ED)
+            name = PSY.get_name(gen)
+            if !(occursin("BA", string(PSY.get_prime_mover(gen)))) #!(occursin("BA", name))
+                energy_production = sum(capacity_factors[name][time:time + Int(24*60/get_rt_resolution(get_case(simulation)))-1]) * get_device_size(gen)
+                total_production += energy_production
+                daily_total_production += energy_production
+                if occursin("WT", string(PSY.get_prime_mover(gen))) || occursin("PVe", string(PSY.get_prime_mover(gen))) || occursin("HY", string(PSY.get_prime_mover(gen))) #occursin("WT", name) || occursin("WIND", name) || occursin("PV", name) || occursin("HY", name) || occursin("NU", name) || occursin("RE", name)
+                    total_cec_production += energy_production
+                    daily_cec_production += energy_production
+                end
+                if occursin("ST", string(PSY.get_prime_mover(gen)))
+                    if occursin("NUCLEAR", string(PSY.get_fuel(gen))) 
+                        total_cec_production += energy_production
+                        daily_cec_production += energy_production
+                    end
+                end
+            end
+        end
+        #println("Clean energy contribution for day $(day) is $(round(daily_cec_production * 100.0 / daily_total_production, digits = 2)) percent")
+    end
 
     println("Total Annual clean energy contribution is $(round(total_cec_production * 100.0 / total_production, digits = 2)) percent")
 

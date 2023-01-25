@@ -81,25 +81,24 @@ function add_profitable_option(projects::Vector{Project},
             queue_cost = get_queue_cost(get_finance_data(projects[1]))
 
             for project in projects
-
-                annual_profit, project_utility = calculate_option_expected_utility(project,
-                                                                    scenario_data,
-                                                                    market_prices,
-                                                                    carbon_tax_data,
-                                                                    risk_preference,
-                                                                    rep_hour_weight,
-                                                                    iteration_year,
-                                                                    yearly_horizon,
-                                                                    queue_cost,
-                                                                    capacity_forward_years,
-                                                                    portfolio_preference_multipliers,
-                                                                    solver)
-
-                if project_utility >= 0 && annual_profit >= -1 && counter_by_zone[get_zone(get_tech(project))] <= max_new_options[get_name(project)]
-                    new_option = deepcopy(project)
-                    push!(profitable_type_options, new_option)
+                if counter_by_zone[get_zone(get_tech(project))] <= max_new_options[get_name(project)]
+                    annual_profit, project_utility = calculate_option_expected_utility(project,
+                                                    scenario_data,
+                                                    market_prices,
+                                                    carbon_tax_data,
+                                                    risk_preference,
+                                                    rep_hour_weight,
+                                                    iteration_year,
+                                                    yearly_horizon,
+                                                    queue_cost,
+                                                    capacity_forward_years,
+                                                    portfolio_preference_multipliers,
+                                                    solver)
+                    if project_utility >= 0 
+                        new_option = deepcopy(project)
+                        push!(profitable_type_options, new_option)
+                    end
                 end
-
             end
 
             while length(profitable_type_options) > 0

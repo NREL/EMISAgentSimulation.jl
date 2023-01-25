@@ -751,8 +751,8 @@ function create_simulation( sys_UC::PSY.System,
 
     sim = PSI.Simulation(
                     name = "emis_$(case_name)",
-                    steps = 2,
-                    models = models,
+                    steps = 360,
+                    problems = problems,
                     sequence = sequence,
                     simulation_folder = ".",
                     # initial_time = Dates.DateTime("2018-02-28T00:00:00")
