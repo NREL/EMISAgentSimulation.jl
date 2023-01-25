@@ -95,8 +95,8 @@ function gather_data(case::CaseDefinition)
     investors = create_investors(simulation_data)
     set_investors!(simulation_data, investors)
 
-    convert_thermal_clean_energy!(sys_UC)
-    convert_thermal_clean_energy!(sys_ED)
+    # convert_thermal_clean_energy!(sys_UC)
+    # convert_thermal_clean_energy!(sys_ED)
 
     convert_thermal_fast_start!(sys_UC)
     convert_thermal_fast_start!(sys_ED)
@@ -106,8 +106,8 @@ function gather_data(case::CaseDefinition)
     add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
 
     if markets_dict[:Inertia]
-        add_psy_inertia!(data_dir, sys_UC, get_reserve_penalty(case), system_peak_load)
-        add_psy_inertia!(data_dir, sys_ED, get_reserve_penalty(case), system_peak_load)
+        add_psy_inertia!(data_dir, sys_UC, "UC", get_reserve_penalty(case), system_peak_load)
+        add_psy_inertia!(data_dir, sys_ED, "ED", get_reserve_penalty(case), system_peak_load)
     end
 
     add_psy_clean_energy_constraint!(sys_UC, initial_rec_requirement)

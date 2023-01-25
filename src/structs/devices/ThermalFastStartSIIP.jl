@@ -123,17 +123,17 @@ PSY.get_status(value::ThermalFastStartSIIP) = value.status
 """Get [`ThermalFastStartSIIP`](@ref) `bus`."""
 PSY.get_bus(value::ThermalFastStartSIIP) = value.bus
 """Get [`ThermalFastStartSIIP`](@ref) `active_power`."""
-PSY.get_active_power(value::ThermalFastStartSIIP) = get_value(value, value.active_power)
+PSY.get_active_power(value::ThermalFastStartSIIP) = PSY.get_value(value, value.active_power)
 """Get [`ThermalFastStartSIIP`](@ref) `reactive_power`."""
-PSY.get_reactive_power(value::ThermalFastStartSIIP) = get_value(value, value.reactive_power)
+PSY.get_reactive_power(value::ThermalFastStartSIIP) = PSY.get_value(value, value.reactive_power)
 """Get [`ThermalFastStartSIIP`](@ref) `rating`."""
-PSY.get_rating(value::ThermalFastStartSIIP) = get_value(value, value.rating)
+PSY.get_rating(value::ThermalFastStartSIIP) = PSY.get_value(value, value.rating)
 """Get [`ThermalFastStartSIIP`](@ref) `active_power_limits`."""
-PSY.get_active_power_limits(value::ThermalFastStartSIIP) = get_value(value, value.active_power_limits)
+PSY.get_active_power_limits(value::ThermalFastStartSIIP) = PSY.get_value(value, value.active_power_limits)
 """Get [`ThermalFastStartSIIP`](@ref) `reactive_power_limits`."""
-PSY.get_reactive_power_limits(value::ThermalFastStartSIIP) = get_value(value, value.reactive_power_limits)
+PSY.get_reactive_power_limits(value::ThermalFastStartSIIP) = PSY.get_value(value, value.reactive_power_limits)
 """Get [`ThermalFastStartSIIP`](@ref) `ramp_limits`."""
-PSY.get_ramp_limits(value::ThermalFastStartSIIP) = get_value(value, value.ramp_limits)
+PSY.get_ramp_limits(value::ThermalFastStartSIIP) = PSY.get_value(value, value.ramp_limits)
 """Get [`ThermalFastStartSIIP`](@ref) `operation_cost`."""
 PSY.get_operation_cost(value::ThermalFastStartSIIP) = value.operation_cost
 """Get [`ThermalFastStartSIIP`](@ref) `base_power`."""

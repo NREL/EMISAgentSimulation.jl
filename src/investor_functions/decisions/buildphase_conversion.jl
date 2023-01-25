@@ -135,16 +135,16 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
         add_device_forecast!(simulation_dir, sys_UC, sys_ED, PSY_project_UC, PSY_project_ED, availability_raw, availability_raw_rt, da_resolution, rt_resolution)
 
-        if type == "NU_ST" || type == "RE_CT"
-            convert_to_thermal_clean_energy!(PSY_project_UC, sys_UC)
-            convert_to_thermal_clean_energy!(PSY_project_ED, sys_ED)
+        if type == "NU_ST" || type == "RE_CT" || typeof(PSY_project_UC) == PSY.RenewableDispatch || typeof(PSY_project_UC) == PSY.HydroEnergyReservoir || typeof(PSY_project_UC) == PSY.HydroDispatch
+            # convert_to_thermal_clean_energy!(PSY_project_UC, sys_UC)
+            # convert_to_thermal_clean_energy!(PSY_project_ED, sys_ED)
+            add_clean_energy_contribution!(sys_UC, PSY_project_UC)
         elseif type == "CT"
             convert_to_thermal_fast_start!(PSY_project_UC, sys_UC)
             convert_to_thermal_fast_start!(PSY_project_ED, sys_ED)
         end
 
 
-        add_clean_energy_contribution!(sys_UC, PSY_project_UC)
      end
      println("FINISHED CONSTRUCTING: $(get_name(project))")
 

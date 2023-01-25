@@ -195,19 +195,33 @@ function process_ordc_data_for_siip(raw_data::Union{Vector{String}, PooledArrays
 
     product_da_ts = Vector{Vector{Tuple{Float64, Float64}}}(undef, T)
 
+    # for t = 1:T
+    #     tuples = split.(chop.(split(chop(raw_data[t], head = 1, tail = 2), "), "), head = 1, tail = 0), ", ")
+    #     product_da_ts[t] = [(parse.(Float64, tuple)[2], parse.(Float64, tuple)[1]) for tuple in tuples]
+    #     l = length(product_da_ts[t])
+    #     if l > 2
+    #         for s in 3:2:(l * 2) - 2
+    #             temp_1 = copy(product_da_ts[t][1:(s-1)])
+    #             temp_2 = copy(product_da_ts[t][s:end])
+    #             push!(temp_1, (product_da_ts[t][s][1], product_da_ts[t][s-1][2]))
+    #             new = vcat(temp_1, temp_2)
+    #             product_da_ts[t] = copy(new)
+    #         end
+    #      end
+    # end
+
+    # reconstruct the ORDC curve to be (total $, total quantity) pair
     for t = 1:T
-        tuples = split.(chop.(split(chop(raw_data[t], head = 1, tail = 2), "), "), head = 1, tail = 0), ", ")
+        tuples = split.(chop.(split(chop(raw_data[t], head = 1, tail = 2), "), "), head = 1, tail = 0), ", ")[2:end]
         product_da_ts[t] = [(parse.(Float64, tuple)[2], parse.(Float64, tuple)[1]) for tuple in tuples]
         l = length(product_da_ts[t])
-        if l > 2
-            for s in 3:2:(l * 2) - 2
-                temp_1 = copy(product_da_ts[t][1:(s-1)])
-                temp_2 = copy(product_da_ts[t][s:end])
-                push!(temp_1, (product_da_ts[t][s][1], product_da_ts[t][s-1][2]))
-                new = vcat(temp_1, temp_2)
-                product_da_ts[t] = copy(new)
+        for i in 1:l
+            if i == 1
+                product_da_ts[t][i] = (product_da_ts[t][i][1] * product_da_ts[t][i][2], product_da_ts[t][i][2])
+            else
+                product_da_ts[t][i] = (product_da_ts[t][i-1][1] + product_da_ts[t][i][1] * (product_da_ts[t][i][2] - product_da_ts[t][i-1][2]), product_da_ts[t][i][2])
             end
-         end
+        end
     end
 
     return product_da_ts
@@ -245,7 +259,7 @@ function add_psy_ordc!(simulation_dir::String,
 
             ####### Adding ORDC reserve
             reserve = PSY.ReserveDemandCurve{PSY.ReserveUp}(
-                nothing,
+                nothing,    #InfrastructureSystems.TimeSeriesKey
                 product,
                 true,
                 product_data[1, "timescale (min)"] * 60,
@@ -253,9 +267,9 @@ function add_psy_ordc!(simulation_dir::String,
 
                 PSY.add_service!(sys, reserve, PSY.get_components(PSY.ThermalStandard, sys))
 
-                for component in PSY.get_components(PSYE.ThermalCleanEnergy, sys)
-                    PSY.add_service!(component, reserve, sys)
-                end
+                # for component in PSY.get_components(PSYE.ThermalCleanEnergy, sys)
+                #     PSY.add_service!(component, reserve, sys)
+                # end
 
                 for component in PSY.get_components(ThermalFastStartSIIP, sys)
                     PSY.add_service!(component, reserve, sys)
@@ -301,6 +315,8 @@ function add_psy_ordc!(simulation_dir::String,
                 end
                 forecast = PSY.SingleTimeSeries("variable_cost", TimeSeries.TimeArray(time_stamps, product_data_ts))
                 PSY.add_time_series!(sys, reserve, forecast)
+                key = IS.TimeSeriesKey(forecast)
+                PSY.set_variable!(reserve, key)
         end
     end
 
