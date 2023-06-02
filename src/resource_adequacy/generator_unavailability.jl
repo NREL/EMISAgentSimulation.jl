@@ -7,7 +7,7 @@ function construct_smc_unavailabilities(sys::PSY.System, ordc_unavailability_met
                                        period_of_interest = system_period_of_interest,
                                        outage_flag = true);
 
-        nsamples = 100
+        nsamples = 5000
         timeseries = unavailabilities(pras_system, nsamples)
     else
         timeseries = nothing
@@ -24,8 +24,9 @@ function unavailabilities(
                 StorageAvailability(), GeneratorStorageAvailability(),
                 StorageEnergySamples(), GeneratorStorageEnergySamples())
 
+    seed = 3
     gen_av, stor_av, genstor_av, stor_soc, genstor_soc =
-        PRAS.assess(sys, SequentialMonteCarlo(samples=nsamples), resultspecs...)
+        PRAS.assess(sys, SequentialMonteCarlo(samples=nsamples, seed = seed), resultspecs...)
 
     result = Matrix{Float64}(undef, nsamples, N)
 

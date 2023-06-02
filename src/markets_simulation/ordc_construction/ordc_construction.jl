@@ -47,6 +47,7 @@ function construct_ordc(sys::PSY.System,
         timeblock_hours = Dict{String, Vector{Int64}}()
 
         for season in seasons
+            season = String(season)
             months = split(season, "-")
             start_month = month_lookup(months[1])
             end_month = month_lookup(months[2])
@@ -100,7 +101,7 @@ function construct_ordc(sys::PSY.System,
 
                     for zone in zones
                         aggregate_distribution_mean = error_mean[zone] + unavail_mean[zone]
-                        aggregate_distribution_std = sqrt(error_var[zone] + unavail_std[zone]^2)
+                        aggregate_distribution_std = sqrt(error_var[zone]^2 + unavail_std[zone]^2)
                         aggregate_distribution[zone] = Distributions.Normal(aggregate_distribution_mean, aggregate_distribution_std)
 
                         three_std = aggregate_distribution_mean + 3 * aggregate_distribution_std
@@ -138,7 +139,7 @@ function construct_ordc(sys::PSY.System,
 
                 else
                     aggregate_distribution_mean = error_mean + unavail_mean
-                    aggregate_distribution_std = sqrt(error_var + unavail_std^2)
+                    aggregate_distribution_std = sqrt(error_var^2 + unavail_std^2)
 
                     aggregate_distribution = Distributions.Normal(aggregate_distribution_mean, aggregate_distribution_std)
 

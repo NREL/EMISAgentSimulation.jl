@@ -247,6 +247,7 @@ function update_rec_correction_factors!(active_projects::Vector{Project},
 
         for product in get_products(project)
             set_rec_correction_factor!(product, iteration_year + 1, (correction_factor + previous_correction_factor) / 2)
+            # set_rec_correction_factor!(product, iteration_year + 1, 1.0)
         end
 
     end

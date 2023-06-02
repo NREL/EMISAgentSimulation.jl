@@ -55,7 +55,8 @@ function gather_data(case::CaseDefinition)
         rec_data = read_data(joinpath(data_dir, "markets_data", "REC_$(get_rps_target(case))_RPS.csv"))
         initial_rec_requirement = rec_data.rec_req[1]
         rec_increment = rec_data.annual_increment[1]
-        rec_requirement = [initial_rec_requirement + y * rec_increment for y in 1:simulation_years]
+        rec_requirement = [min(initial_rec_requirement + y * rec_increment, 1.0) for y in 1:simulation_years]
+        # rec_requirement = [0.99 * 2 for y in 1:simulation_years]
     end
 
     queue_cost_df = read_data(joinpath(data_dir, "queue_cost_data.csv"))

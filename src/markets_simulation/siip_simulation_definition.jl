@@ -432,9 +432,9 @@ function create_ed_template(inertia_product)
 
     if !(isempty(inertia_product))
         template = PSI.OperationsProblemTemplate(PSI.PM.NFAPowerModel)
-        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalDispatch)
-        PSI.set_device_model!(template, PSYE.ThermalCleanEnergy, PSI.ThermalDispatch)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalDispatch)
+        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalRampLimited)
+        PSI.set_device_model!(template, PSYE.ThermalCleanEnergy, PSI.ThermalRampLimited)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalRampLimited)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSIE.RenewableFullDispatchInertia)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -449,12 +449,12 @@ function create_ed_template(inertia_product)
         PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveDown}, PSI.RampReserve))
         PSI.set_service_model!(template, PSI.ServiceModel(PSY.ReserveDemandCurve{PSY.ReserveUp}, PSIE.QuadraticCostRampReserve))
         PSI.set_service_model!(template, PSI.ServiceModel(PSYE.InertiaReserve{PSY.ReserveSymmetric}, PSIE.VariableInertiaReserve))
-
+        PSI.set_service_model!(template, PSI.ServiceModel(PSYE.CleanEnergyReserve{PSY.ReserveSymmetric},PSIE.EnergyRequirementReserve))
     else
         template = PSI.OperationsProblemTemplate(PSI.PM.NFAPowerModel)
-        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalDispatch)
-        PSI.set_device_model!(template, PSYE.ThermalCleanEnergy, PSI.ThermalDispatch)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalDispatch)
+        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalRampLimited)
+        PSI.set_device_model!(template, PSYE.ThermalCleanEnergy, PSI.ThermalRampLimited)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalRampLimited)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -469,6 +469,7 @@ function create_ed_template(inertia_product)
         PSI.set_service_model!(template, PSI.ServiceModel(PSY.VariableReserve{PSY.ReserveDown}, PSI.RampReserve))
         PSI.set_service_model!(template, PSI.ServiceModel(PSY.ReserveDemandCurve{PSY.ReserveUp}, PSIE.QuadraticCostRampReserve))
         PSI.set_service_model!(template, PSI.ServiceModel(PSYE.InertiaReserve{PSY.ReserveSymmetric}, PSIE.VariableInertiaReserve))
+        PSI.set_service_model!(template, PSI.ServiceModel(PSYE.CleanEnergyReserve{PSY.ReserveSymmetric},PSIE.EnergyRequirementReserve))
     end
 
     return template
@@ -574,7 +575,8 @@ function create_simulation( sys_UC::PSY.System,
                             da_resolution::Int64,
                             rt_resolution::Int64,
                             case_name::String,
-                            solver::JuMP.MOI.OptimizerWithAttributes;
+                            solver::JuMP.MOI.OptimizerWithAttributes,
+                            current_siip_sim;
                             kwargs...)
 
     inertia_product = collect(PSY.get_components_by_name(PSY.Service, sys_ED, "Inertia"))
@@ -688,18 +690,30 @@ function create_simulation( sys_UC::PSY.System,
 
     sim = PSI.Simulation(
                     name = "emis_$(case_name)",
-                    steps = 360,
+                    steps = 365, # 360
                     problems = problems,
                     sequence = sequence,
                     simulation_folder = ".",
                     )
 
-    build_out = PSI.build!(sim; serialize = false)
+    build_out = PSI.build!(sim; serialize = true)
 
     adjust_reserve_voll!(sys_UC, uc_problem, simulation_dir, reserve_penalty, zones, default_balance_slack_cost, default_service_slack_cost, energy_voll_cost)
     adjust_reserve_voll!(sys_ED, ed_problem, simulation_dir, reserve_penalty, zones, default_balance_slack_cost, default_service_slack_cost, energy_voll_cost)
 
-    execute_out = PSI.execute!(sim; enable_progress_bar = true)
+    # PSY.to_json(sys_UC, "./system_UC.json", force=true)
+    # PSY.to_json(sys_ED, "./system_ED.json", force=true)
+    # push!(current_siip_sim, sim)
+
+    execute_out = PSI.execute!(sim; enable_progress_bar = false)
+
+    # # debug ED fail
+    # if execute_out != PowerSimulations.RunStatusModule.RunStatus.SUCCESSFUL
+    #     global failed_status = execute_out
+    #     global failed_sim = sim
+    #     global failed_sys_UC = sys_UC
+    #     global failed_sys_ED = sys_ED
+    # end
 
     sim_results = PSI.SimulationResults(sim);
 

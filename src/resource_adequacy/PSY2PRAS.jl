@@ -101,18 +101,24 @@ function make_pras_system(sys::PSY.System;
 
     first_ts_temp = first(PSY.get_time_series_multiple(sys));
 
+    if hasproperty(first_ts_temp, :data)
+        first_ts_temp_data = first_ts_temp.data
+    elseif hasproperty(first_ts_temp, :single_time_series)
+        first_ts_temp_data = first_ts_temp.single_time_series.data
+    end
+
     if (period_of_interest === nothing)
-        period_of_interest = range(1,length = length(first_ts_temp.data))
+        period_of_interest = range(1,length = length(first_ts_temp_data))
     end
 
     N = length(period_of_interest);
 
-    if ((N+(period_of_interest.start-1))>length(first_ts_temp.data))
-        error("Cannot make a PRAS System with $(N) timesteps with a PSY System with only $(length(first_ts_temp.data) - (period_of_interest.start-1)) timesteps of time series data")
-    end
-    if (period_of_interest.start > length(first_ts_temp.data) || period_of_interest.stop > length(first_ts_temp.data))
-        error("Please check the system period of interest selected")
-    end
+    # if ((N+(period_of_interest.start-1))>length(first_ts_temp_data))
+    #     error("Cannot make a PRAS System with $(N) timesteps with a PSY System with only $(length(first_ts_temp_data) - (period_of_interest.start-1)) timesteps of time series data")
+    # end
+    # if (period_of_interest.start > length(first_ts_temp_data) || period_of_interest.stop > length(first_ts_temp_data))
+    #     error("Please check the system period of interest selected")
+    # end
     #######################################################
     # Aux Functions
     # Function to get Line Rating

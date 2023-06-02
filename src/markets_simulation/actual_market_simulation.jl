@@ -15,7 +15,8 @@ function create_realized_marketdata(simulation::AgentSimulation,
                                     iteration_year::Int64,
                                     simulation_years::Int64,
                                     solver::JuMP.MOI.OptimizerWithAttributes,
-                                    results_dir::String)
+                                    results_dir::String,
+                                    current_siip_sim)
 
     num_invperiods = 1
 
@@ -62,13 +63,13 @@ function create_realized_marketdata(simulation::AgentSimulation,
     shut_down_costs,
     energy_voll,
     reserve_voll,
-    inertia_voll = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, reserve_penalty, rec_perc_requirement, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver)
+    inertia_voll = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, reserve_penalty, rec_perc_requirement, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver, current_siip_sim)
 
     println("Clean energy requirement for this year is $(get_rec_requirement(simulation)[iteration_year] * 100) percent")
     total_production = 0.0
     total_cec_production = 0.0
     day = 0
-    for time in 1:288:(288 * 360)
+    for time in 1:288:(288 * 365) #360
         day += 1
         daily_total_production = 0.0
         daily_cec_production = 0.0
@@ -185,27 +186,33 @@ function create_realized_marketdata(simulation::AgentSimulation,
     clean_energy_percentage = min(1.0, (total_clean_production / total_demand))
     #println(clean_energy_percentage)
 
+    rec_energy_requirment = 0.0
+
     if in(:REC, market_names)
         if length(rec_supply_curve) >= 1
 
             rec_energy_requirment =  total_demand * min(rec_req + (rec_annual_increment * iteration_year), 1)
 
             sort!(rec_supply_curve, by = x -> x[3])      # Sort REC supply curve by REC bid
-            if iteration_year <= rec_non_binding_years
 
-                rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
-                #println(rec_energy_requirment)
-                rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
-            else
-                total = 0
-                for i in rec_supply_curve
-                    total += i[2]
-                end
-                #println(total)
-                rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
-                #println(rec_energy_requirment)
-                rec_price, rec_accepted_bids = rec_market_clearing_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
-            end
+            rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+            rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+
+            # if iteration_year <= rec_non_binding_years
+
+            #     rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+            #     #println(rec_energy_requirment)
+            #     rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+            # else
+            #     total = 0
+            #     for i in rec_supply_curve
+            #         total += i[2]
+            #     end
+            #     #println(total)
+            #     rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+            #     #println(rec_energy_requirment)
+            #     rec_price, rec_accepted_bids = rec_market_clearing_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+            # end
 
             set_rec_price!(market_prices, "realized", rec_price)
         end
@@ -230,7 +237,10 @@ function create_realized_marketdata(simulation::AgentSimulation,
                      "shut_down_costs", shut_down_costs,
                      "energy_voll", energy_voll,
                      "reserve_voll", reserve_voll,
-                     "inertia_voll", inertia_voll
+                     "inertia_voll", inertia_voll,
+                     "rec_supply_curve", rec_supply_curve,
+                     "rec_energy_requirment", rec_energy_requirment,
+                     "cet_achieved_ratio", cet_achieved_ratio
         )
 
     ################ Update realized load growth and peak load #########################################

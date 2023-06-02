@@ -1,5 +1,5 @@
 
-function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int64)
+function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int64, current_siip_sim)
     total_horizon = get_total_horizon(get_case(simulation))
     rolling_horizon = get_rolling_horizon(get_case(simulation))
 
@@ -125,6 +125,13 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         #Find which markets to simulate.
         markets = union(hcat(get_markets.(get_investors(simulation))...))
 
+        for d in PSY.get_components(PSYE.ThermalCleanEnergy, sys_UC)
+            if "CleanEnergyConstraint" ∉ PSY.get_name.(d.services)
+                println("$(PSY.get_name(d))")
+                add_clean_energy_contribution!(sys_UC, d)
+            end
+        end
+
         #Create realzed market prices for existing projects.
         realized_market_prices,
         realized_capacity_factors,
@@ -146,7 +153,8 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                             iteration_year,
                             simulation_years,
                             get_solver(get_case(simulation)),
-                            get_results_dir(simulation))
+                            get_results_dir(simulation),
+                            current_siip_sim)
 
 
         existing_project_types = unique(get_type.(get_tech.(all_existing_projects)))
@@ -161,6 +169,11 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
             if get_markets(simulation)[:CarbonTax]
                 max_carbon_tax_increment = get_max_carbon_tax_increase(get_case(simulation))
+                # if cet_achieved_ratio <= 0.99
+                #     delta_carbon_tax = max_carbon_tax_increment
+                # else
+                #     delta_carbon_tax = 0.0
+                # end
                 if cet_achieved_ratio == 0.0
                     delta_carbon_tax = max_carbon_tax_increment
                 else
@@ -168,6 +181,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                 end
                 new_carbon_tax = max((get_carbon_tax(simulation)[iteration_year] + delta_carbon_tax), get_carbon_tax(simulation)[iteration_year + 1])
                 simulation.carbon_tax[iteration_year + 1] = new_carbon_tax
+                # simulation.carbon_tax[iteration_year + 1] = 150.0
             end
         end
 
