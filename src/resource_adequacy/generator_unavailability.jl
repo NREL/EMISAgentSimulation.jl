@@ -1,12 +1,12 @@
 function construct_smc_unavailabilities(sys::PSY.System, ordc_unavailability_method::String)
     if ordc_unavailability_method == "SMC"
-        system_period_of_interest = range(1, length = 8784);
+        system_period_of_interest = range(1, length = 8760);
         pras_system = make_pras_system(sys,
                                        system_model = "Single-Node",
                                        aggregation = "Area",
                                        period_of_interest = system_period_of_interest,
-                                       outage_flag = true);
-
+                                       outage_flag = false);
+                                       
         nsamples = 100
         timeseries = unavailabilities(pras_system, nsamples)
     else

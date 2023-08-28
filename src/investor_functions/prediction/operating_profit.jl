@@ -240,6 +240,14 @@ function calculate_operating_profit(gen::P,
 
     JuMP.optimize!(m)
 
+    if Int(JuMP.termination_status(m)) != 1
+        println(JuMP.termination_status(m))
+        println(get_name(gen))
+        f = open("failed_operating_profit_jump_model.txt","w"); print(f, m); close(f)
+        JuMP.compute_conflict!(m)
+        println(get_maxcap(gen))
+    end
+
     profit_array = AxisArrays.AxisArray(value.(profit),
                    AxisArrays.Axis{:prod}(get_name.(products)),
                    AxisArrays.Axis{:year}(start_year:end_year))
@@ -487,6 +495,13 @@ function calculate_operating_profit(storage::P,
     JuMP.@objective(m, Max, sum(profit))
 
     JuMP.optimize!(m)
+
+    if Int(JuMP.termination_status(m)) != 1
+        println(JuMP.termination_status(m))
+        println(get_name(storage))
+        f = open("failed_operating_profit_jump_model.txt","w"); print(f, m); close(f)
+        JuMP.compute_conflict!(m)
+    end
 
     profit_array = AxisArrays.AxisArray(value.(profit),
                    AxisArrays.Axis{:prod}(get_name.(products)),

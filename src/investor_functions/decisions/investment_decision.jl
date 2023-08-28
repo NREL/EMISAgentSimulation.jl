@@ -81,25 +81,31 @@ function add_profitable_option(projects::Vector{Project},
             queue_cost = get_queue_cost(get_finance_data(projects[1]))
 
             for project in projects
+                if counter_by_zone[get_zone(get_tech(project))] <= max_new_options[get_name(project)]
+                    annual_profit, project_utility = calculate_option_expected_utility(project,
+                                                    scenario_data,
+                                                    market_prices,
+                                                    carbon_tax_data,
+                                                    risk_preference,
+                                                    rep_hour_weight,
+                                                    iteration_year,
+                                                    yearly_horizon,
+                                                    queue_cost,
+                                                    capacity_forward_years,
+                                                    portfolio_preference_multipliers,
+                                                    solver)
 
-                annual_profit, project_utility = calculate_option_expected_utility(project,
-                                                                    scenario_data,
-                                                                    market_prices,
-                                                                    carbon_tax_data,
-                                                                    risk_preference,
-                                                                    rep_hour_weight,
-                                                                    iteration_year,
-                                                                    yearly_horizon,
-                                                                    queue_cost,
-                                                                    capacity_forward_years,
-                                                                    portfolio_preference_multipliers,
-                                                                    solver)
+                    println(get_name(project))
+                    println(annual_profit)
+                    println(project_utility)
+                    println(counter_by_zone[get_zone(get_tech(project))])
+                    println(max_new_options[get_name(project)])
 
-                if project_utility >= 0 && annual_profit >= -1 && counter_by_zone[get_zone(get_tech(project))] <= max_new_options[get_name(project)]
-                    new_option = deepcopy(project)
-                    push!(profitable_type_options, new_option)
+                    if project_utility >= 0 
+                        new_option = deepcopy(project)
+                        push!(profitable_type_options, new_option)
+                    end                
                 end
-
             end
 
             while length(profitable_type_options) > 0
@@ -128,6 +134,13 @@ function add_profitable_option(projects::Vector{Project},
                                                                         capacity_forward_years,
                                                                         portfolio_preference_multipliers,
                                                                         solver)
+                                                                    
+                    println(get_name(option))
+                    println(annual_profit)
+                    println(project_utility)
+                    println(counter_by_zone[get_zone(get_tech(option))])
+                    println(max_new_options[get_name(option)])
+
                     if project_utility < 0 || annual_profit < -1 || counter_by_zone[get_zone(get_tech(option))] > max_new_options[get_name(option)]
                         deleteat!(profitable_type_options, idx)
                     end
@@ -148,13 +161,14 @@ where N is the maximum number of new projects an investor can invest in within a
 Returns nothing.
 """
 function make_investments!(investor::Investor,
-                           max_new_options::Dict{String, Int64},
-                           iteration_year::Int64,
-                           yearly_horizon::Int64,
-                           simulation_years::Int64,
-                           capacity_forward_years::Int64,
-                           solver::JuMP.MOI.OptimizerWithAttributes)
-
+                            max_new_options::Dict{String, Int64},
+                            max_new_options_by_type::Dict{String, Float64},
+                            iteration_year::Int64,
+                            yearly_horizon::Int64,
+                            simulation_years::Int64,
+                            capacity_forward_years::Int64,
+                            solver::JuMP.MOI.OptimizerWithAttributes)
+    
     scenario_data = get_scenario_data(get_forecast(investor))
     market_prices = get_market_prices(investor)
     carbon_tax_data = get_carbon_tax(investor)
@@ -194,9 +208,27 @@ function make_investments!(investor::Investor,
                                                     solver)
     end
 
-        sort!(profitable_options, by = x -> -get_expected_utility(get_finance_data(x))[iteration_year])  # sort in descending order of project utility
-        for i in 1:min(length(profitable_options), get_max_annual_projects(investor))
-            push!(projects, convert(Project{Queue}, profitable_options[i]))
+    sort!(profitable_options, by = x -> -get_expected_utility(get_finance_data(x))[iteration_year])  # sort in descending order of project utility
+    profitable_options_updated = []
+
+        for type in types
+            counter = 0
+            for option in profitable_options
+                if get_type(get_tech(option)) == type
+                    counter += 1
+                    if counter <= max_new_options_by_type[type]
+                        push!(profitable_options_updated, option)
+                    end
+                end
+            end
+        end
+    
+
+
+    counter = 0.0
+        for i in 1:min(length(profitable_options_updated), get_max_annual_projects(investor))
+            counter+=1
+            push!(projects, convert(Project{Queue}, profitable_options_updated[i]))
         end
 
     return

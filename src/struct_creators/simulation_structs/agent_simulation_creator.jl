@@ -8,18 +8,42 @@ function gather_data(case::CaseDefinition)
     start_year = get_start_year(case)
     n_rep_days = get_num_rep_days(case)
 
-    annual_growth_data = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
-    annual_growth = AxisArrays.AxisArray(collect(transpose(Matrix(annual_growth_data[:, 2:end]))),
-                              names(annual_growth_data)[2:end],
-                              1:DataFrames.nrow(annual_growth_data))
+    annual_growth_df = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
+
+    test_system_load_da = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Load", "DAY_AHEAD_regional_Load.csv")))
+    test_system_load_rt = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Load", "REAL_TIME_regional_Load.csv")))
+
+    base_year = test_system_load_da[1, "Year"]
+
+    @assert base_year <= start_year
+
+    annual_growth_df_past = filter(row -> row.year < start_year && row.year >= base_year, annual_growth_df)
+    annual_growth_df_simulation = filter(row -> row.year >= start_year, annual_growth_df)
+
+    annual_growth_past = AxisArrays.AxisArray(collect(transpose(Matrix(annual_growth_df_past[:, 2:end]))),
+                              names(annual_growth_df_past)[2:end],
+                              1:DataFrames.nrow(annual_growth_df_past))
+
+    annual_growth_simulation = AxisArrays.AxisArray(collect(transpose(Matrix(annual_growth_df_simulation[:, 2:end]))),
+                              names(annual_growth_df_simulation)[2:end],
+                              1:DataFrames.nrow(annual_growth_df_simulation))
 
     zones,
     representative_days,
     rep_hour_weight,
     system_peak_load,
     test_sys_hour_weight,
-    zonal_lines = read_test_system(data_dir, test_system_dir, get_base_dir(case), annual_growth, start_year, n_rep_days)
-
+    zonal_lines = read_test_system(
+        data_dir,
+        test_system_dir,
+        get_base_dir(case),
+        test_system_load_da,
+        test_system_load_rt,
+        base_year,
+        annual_growth_past,
+        start_year,
+        n_rep_days)
+  
     if isnothing(zones)
         zones = ["zone_1"]
     end
@@ -29,13 +53,19 @@ function gather_data(case::CaseDefinition)
     end
 
     markets_dict = get_markets(case)
-
+    
     if get_siip_market_clearing(case)
         base_power = 100.0
         sys_UC, sys_ED = create_rts_sys(test_system_dir, base_power, data_dir, get_da_resolution(case), get_rt_resolution(case))
     else
         sys_UC = nothing
         sys_ED = nothing
+    end
+
+    #updating past growth rate in PSY Systems
+    for y in 1:size(annual_growth_past)[2]
+        apply_PSY_past_load_growth!(sys_UC, annual_growth_past[:, y], data_dir)
+        apply_PSY_past_load_growth!(sys_ED, annual_growth_past[:, y], data_dir)
     end
 
     simulation_years = get_total_horizon(case)
@@ -89,7 +119,7 @@ function gather_data(case::CaseDefinition)
                                         rec_requirement,
                                         queue_cost_df,
                                         deratingdata,
-                                        annual_growth,
+                                        annual_growth_simulation,
                                         resource_adequacy)
 
     investors = create_investors(simulation_data)
@@ -142,7 +172,7 @@ function make_case_data_dir(case::CaseDefinition)
 
     case_dir = get_data_dir(case)
     dir_exists(case_dir)
-    cp(sys_data_dir, case_dir, force = true)
+    cp(sys_data_dir, case_dir, force=true, follow_symlinks=true)
 
     return
 end

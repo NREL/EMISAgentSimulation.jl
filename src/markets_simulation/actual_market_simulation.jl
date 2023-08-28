@@ -15,7 +15,8 @@ function create_realized_marketdata(simulation::AgentSimulation,
                                     iteration_year::Int64,
                                     simulation_years::Int64,
                                     solver::JuMP.MOI.OptimizerWithAttributes,
-                                    results_dir::String)
+                                    results_dir::String,
+                                    current_siip_sim)
 
     num_invperiods = 1
 
@@ -62,30 +63,37 @@ function create_realized_marketdata(simulation::AgentSimulation,
     shut_down_costs,
     energy_voll,
     reserve_voll,
-    inertia_voll = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, reserve_penalty, rec_perc_requirement, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver)
+    inertia_voll = energy_mkt_clearing(sys_UC, sys_ED, system, simulation_dir, load_growth, reserve_penalty, rec_perc_requirement, zones, num_days, iteration_year, get_da_resolution(get_case(simulation)), get_rt_resolution(get_case(simulation)), get_name(get_case(simulation)), solver, get_base_dir(get_case(simulation)),simulation,current_siip_sim)
 
     println("Clean energy requirement for this year is $(get_rec_requirement(simulation)[iteration_year] * 100) percent")
     total_production = 0.0
     total_cec_production = 0.0
     day = 0
-    # for time in 1:288:(288 * 360)
-    #     day += 1
-    #     daily_total_production = 0.0
-    #     daily_cec_production = 0.0
-    #     for gen in get_all_techs(sys_ED)
-    #         name = PSY.get_name(gen)
-    #         if !(occursin("BA", name))
-    #             energy_production = sum(capacity_factors[name][time:time + 287]) * get_device_size(gen)
-    #             total_production += energy_production
-    #             daily_total_production += energy_production
-    #             if occursin("WT", name) || occursin("WIND", name) || occursin("PV", name) || occursin("HY", name) || occursin("NU", name) || occursin("RE", name)
-    #                 total_cec_production += energy_production
-    #                 daily_cec_production += energy_production
-    #             end
-    #         end
-    #     end
-    #     #println("Clean energy contribution for day $(day) is $(round(daily_cec_production * 100.0 / daily_total_production, digits = 2)) percent")
-    # end
+    get_rt_resolution(get_case(simulation))
+    for time in 1:Int(24*60/get_rt_resolution(get_case(simulation))):(Int(24*60/get_rt_resolution(get_case(simulation))) * 365)
+        day += 1
+        daily_total_production = 0.0
+        daily_cec_production = 0.0
+        for gen in get_all_techs(sys_ED)
+            name = PSY.get_name(gen)
+            if !(occursin("BA", string(PSY.get_prime_mover(gen)))) #!(occursin("BA", name))
+                energy_production = sum(capacity_factors[name][time:time + Int(24*60/get_rt_resolution(get_case(simulation)))-1]) * get_device_size(gen)
+                total_production += energy_production
+                daily_total_production += energy_production
+                if occursin("WT", string(PSY.get_prime_mover(gen))) || occursin("PVe", string(PSY.get_prime_mover(gen))) || occursin("HY", string(PSY.get_prime_mover(gen))) #occursin("WT", name) || occursin("WIND", name) || occursin("PV", name) || occursin("HY", name) || occursin("NU", name) || occursin("RE", name)
+                    total_cec_production += energy_production
+                    daily_cec_production += energy_production
+                end
+                if occursin("ST", string(PSY.get_prime_mover(gen)))
+                    if occursin("NUCLEAR", string(PSY.get_fuel(gen))) 
+                        total_cec_production += energy_production
+                        daily_cec_production += energy_production
+                    end
+                end
+            end
+        end
+        #println("Clean energy contribution for day $(day) is $(round(daily_cec_production * 100.0 / daily_total_production, digits = 2)) percent")
+    end
 
     println("Total Annual clean energy contribution is $(round(total_cec_production * 100.0 / total_production, digits = 2)) percent")
 
@@ -191,21 +199,25 @@ function create_realized_marketdata(simulation::AgentSimulation,
             rec_energy_requirment =  total_demand * min(rec_req + (rec_annual_increment * iteration_year), 1)
 
             sort!(rec_supply_curve, by = x -> x[3])      # Sort REC supply curve by REC bid
-            if iteration_year <= rec_non_binding_years
 
-                rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
-                #println(rec_energy_requirment)
-                rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
-            else
-                total = 0
-                for i in rec_supply_curve
-                    total += i[2]
-                end
-                #println(total)
-                rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
-                #println(rec_energy_requirment)
-                rec_price, rec_accepted_bids = rec_market_clearing_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
-            end
+            rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+            rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+
+            # if iteration_year <= rec_non_binding_years
+
+            #     rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+            #     #println(rec_energy_requirment)
+            #     rec_price, rec_accepted_bids = rec_market_clearing_non_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+            # else
+            #     total = 0
+            #     for i in rec_supply_curve
+            #         total += i[2]
+            #     end
+            #     #println(total)
+            #     rec_energy_requirment = min(total_clean_production, rec_energy_requirment)
+            #     #println(rec_energy_requirment)
+            #     rec_price, rec_accepted_bids = rec_market_clearing_binding(rec_energy_requirment, pricecap_rec, rec_supply_curve, solver)
+            # end
 
             set_rec_price!(market_prices, "realized", rec_price)
         end
@@ -230,7 +242,10 @@ function create_realized_marketdata(simulation::AgentSimulation,
                      "shut_down_costs", shut_down_costs,
                      "energy_voll", energy_voll,
                      "reserve_voll", reserve_voll,
-                     "inertia_voll", inertia_voll
+                     "inertia_voll", inertia_voll,
+                     "rec_supply_curve", rec_supply_curve,
+                     "rec_energy_requirment", rec_energy_requirment,
+                     "cet_achieved_ratio", cet_achieved_ratio
         )
 
     ################ Update realized load growth and peak load #########################################
@@ -238,6 +253,8 @@ function create_realized_marketdata(simulation::AgentSimulation,
     load_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Load", "load_$(iteration_year - 1).csv"))
     rep_load_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Load", "rep_load_$(iteration_year - 1).csv"))
     load_n_vg_data = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
+    load_n_vg_data_rt = read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data_rt.csv"))
+
 
     for (idx, z) in enumerate(zones)
 
@@ -248,6 +265,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
         #rep_load_data[:, "Year"] = fill(rep_load_data[1, "Year"] + 1, DataFrames.nrow(rep_load_data))
 
         load_n_vg_data[:, Symbol("load_zone_$(idx)")] = load_n_vg_data[:, Symbol("load_zone_$(idx)")] * (1 + load_growth[idx])
+        load_n_vg_data_rt[:, Symbol("load_zone_$(idx)")] = load_n_vg_data_rt[:, Symbol("load_zone_$(idx)")] * (1 + load_growth[idx])
         #load_n_vg_data[:, "Year"] = fill(load_n_vg_data[1, "Year"] + 1, DataFrames.nrow(load_n_vg_data))
     end
 
@@ -255,6 +273,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
     CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Load", "load_$(iteration_year).csv"), load_data)
     CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Load", "rep_load_$(iteration_year).csv"), rep_load_data)
     CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"), load_n_vg_data)
+    CSV.write(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data_rt.csv"), load_n_vg_data_rt)
 
     reserve_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"all_products"], "; ")
     ordc_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")

@@ -107,7 +107,7 @@ function calculate_derating_data(simulation_dir::String,
 
     batt_powers = repeat(peak_reductions, num_hours)
 
-    poss_charges = min(batt_powers .* eff_charge, (max_demands - net_load_df[:,"net_load"]) .* eff_charge)
+    poss_charges = min.(batt_powers .* eff_charge, (max_demands - net_load_df[:,"net_load"]) .* eff_charge)
 
     necessary_discharges = (max_demands - net_load_df[:,"net_load"])
 

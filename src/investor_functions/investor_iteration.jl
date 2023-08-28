@@ -24,6 +24,7 @@ function run_investor_iteration(investor::Investor,
 
     option_projects = get_options(investor)
     max_new_options = Dict(get_name(project) => 0 for project in option_projects)
+    max_new_options_by_type = Dict(t => 0.0 for t in unique(get_type.(get_tech.(option_projects))))
 
     scenarios = get_scenario_data(get_forecast(investor))
 
@@ -60,6 +61,7 @@ function run_investor_iteration(investor::Investor,
         end
 
          max_new_options = update_max_new_options!(max_new_options, expected_data["new_options"], option_projects)
+         max_new_options_by_type = update_max_new_options_by_type!(max_new_options_by_type, expected_data["new_options_by_type"])
     end
 
     set_market_prices!(investor, market_prices)
@@ -76,6 +78,7 @@ function run_investor_iteration(investor::Investor,
 
     make_investments!(investor,
                       max_new_options,
+                      max_new_options_by_type,
                       iteration_year,
                       yearly_horizon,
                       simulation_years,

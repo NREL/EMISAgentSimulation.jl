@@ -49,6 +49,10 @@ This function removes the PSY System timeseries data for Existing RenewableGen p
         load_n_vg_df =  read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data.csv"))
         DataFrames.select!(load_n_vg_df, DataFrames.Not(get_name(project)))
         write_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data.csv", load_n_vg_df)
+
+        load_n_vg_df_rt =  read_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data", "load_n_vg_data_rt.csv"))
+        DataFrames.select!(load_n_vg_df_rt, DataFrames.Not(get_name(project)))
+        write_data(joinpath(simulation_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data_rt.csv", load_n_vg_df_rt)
     return
  end
 

@@ -75,8 +75,8 @@ function create_rts_sys(rts_dir::String,
     # prune_system_devices!(sys_UC, pruned_unit)
     # prune_system_devices!(sys_ED, pruned_unit)
 
-    sys_UC = PSY.System(joinpath(rts_dir,"DA_sys_EMIS_v0811_sampleoutage.json"), time_series_directory = "/tmp/scratch");
-    sys_ED = PSY.System(joinpath(rts_dir,"RT_sys_EMIS_v0811_sampleoutage.json"), time_series_directory = "/tmp/scratch");
+    sys_UC = PSY.System(joinpath(rts_dir,"DA_sys_EMIS_w2011_2hrRT_with_outage.json"), time_series_directory = "/tmp/scratch");
+    sys_ED = PSY.System(joinpath(rts_dir,"RT_sys_EMIS_w2011_2hrRT_with_outage.json"), time_series_directory = "/tmp/scratch");
 
     removegen_name = ["AUSTIN_1","AUSTIN_2"]
     for sys in [sys_UC, sys_ED]

@@ -92,19 +92,24 @@ function construct_ordc(sys::PSY.System,
                 hours = timeblock_hours[hours_key]
                 rt_periods = find_rt_periods(hours, num_rt_intervals)
 
-                error_mean, error_var = construct_net_load_forecast_error_distribution(simulation_dir, renewable_generators, months, hours, zonal)
+                error_mean, error_var,meanload = construct_net_load_forecast_error_distribution(simulation_dir, renewable_generators, months, hours, zonal)
+                println("$(product), $(months_key): error_mean is $(error_mean) & error_var is $(error_var) & meanload is $(meanload)")
                 unavail_mean, unavail_std = construct_gen_unavail_distribution(simulation_dir, smc_unavailability_timeseries, conv_unavail_mean, conv_unavail_std, months, hours)
+                println("$(product), $(months_key): unavail_mean is $(unavail_mean) & unavail_std is $(unavail_std)")
 
                 if zonal
                     aggregate_distribution = Dict{String, Distributions.Normal}()
 
                     for zone in zones
                         aggregate_distribution_mean = error_mean[zone] + unavail_mean[zone]
-                        aggregate_distribution_std = sqrt(error_var[zone] + unavail_std[zone]^2)
+                        aggregate_distribution_std = sqrt(error_var[zone]^2 + unavail_std[zone]^2)
                         aggregate_distribution[zone] = Distributions.Normal(aggregate_distribution_mean, aggregate_distribution_std)
 
                         three_std = aggregate_distribution_mean + 3 * aggregate_distribution_std
                         maximum_error = round(ceil(three_std/step_size))*step_size ## Round to the next step_size
+                        if maximum_error < min(aggregate_distribution_std, 0.1*meanload)
+                            maximum_error = min(aggregate_distribution_std, 0.1*meanload) #this step is used when the mean net load error+3std is negative; then we use a small positive number to represent the x-interval (above MRR)
+                        end
 
                         initial_points = [(0.0, Float64(penalty)), (MRR[zone], Float64(penalty))]
 
@@ -138,12 +143,16 @@ function construct_ordc(sys::PSY.System,
 
                 else
                     aggregate_distribution_mean = error_mean + unavail_mean
-                    aggregate_distribution_std = sqrt(error_var + unavail_std^2)
+                    aggregate_distribution_std = sqrt(error_var^2 + unavail_std^2)
 
                     aggregate_distribution = Distributions.Normal(aggregate_distribution_mean, aggregate_distribution_std)
 
                     three_std = aggregate_distribution_mean + 3*aggregate_distribution_std
                     maximum_error = round(ceil(three_std/step_size))*step_size ## Round to the next step_size MW
+                    if maximum_error < min(aggregate_distribution_std, 0.1*meanload)
+                        maximum_error = min(aggregate_distribution_std, 0.1*meanload) #this step is used when the mean net load error+3std is negative; then we use a small positive number to represent the x-interval (above MRR)
+                    end
+                    println("$(product), $(months_key): maximum_error is $(maximum_error)")
 
                     initial_points = [(0.0, Float64(penalty)), (MRR, Float64(penalty))]
 

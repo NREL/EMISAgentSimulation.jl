@@ -1,5 +1,5 @@
 
-function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int64)
+function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int64, current_siip_sim)
     total_horizon = get_total_horizon(get_case(simulation))
     rolling_horizon = get_rolling_horizon(get_case(simulation))
 
@@ -59,7 +59,8 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                         iteration_year,
                         get_annual_growth(simulation)[:, iteration_year],
                         get_data_dir(get_case(simulation)),
-                        get_da_resolution(get_case(simulation)))
+                        get_da_resolution(get_case(simulation)),
+                        simulation)
 
 
         create_investor_predictions(investors,
@@ -153,7 +154,8 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                             iteration_year,
                             simulation_years,
                             get_solver(get_case(simulation)),
-                            get_results_dir(simulation))
+                            get_results_dir(simulation),
+                            current_siip_sim)
 
 
         existing_project_types = unique(get_type.(get_tech.(all_existing_projects)))
@@ -220,11 +222,13 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         end
 
-        ra_metrics = calculate_RA_metrics(deepcopy(sys_ED))
+        ra_metrics, shortfall = calculate_RA_metrics(deepcopy(sys_ED),true,get_results_dir(simulation),iteration_year)
         println(ra_metrics)
         set_metrics!(get_resource_adequacy(simulation), iteration_year, ra_metrics)
 
         println("COMPLETED YEAR $(iteration_year)")
+        FileIO.save(joinpath(get_results_dir(simulation), "simulation_data_year$(iteration_year).jld2"), "simulation_data", simulation)
+        FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
     end
 
     final_portfolio = vcat(get_existing.(get_investors(simulation))...)

@@ -6,25 +6,25 @@ compatible with AgentSimulation
 function read_rts(data_dir::String,
                   test_system_dir::String,
                   base_dir::String,
-                  annual_growth::AxisArrays.AxisArray{Float64, 2},
+                  test_system_load_da::DataFrames.DataFrame,
+                  test_system_load_rt::DataFrames.DataFrame,
+                  base_year::Int64,
+                  annual_growth_past::AxisArrays.AxisArray{Float64, 2},
                   start_year::Int64,
                   n_rep_days::Int64)
 
-    test_system_load = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Load", "DAY_AHEAD_regional_Load.csv")))
-    test_system_load_rt = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Load", "REAL_TIME_regional_Load.csv")))
+    @assert (start_year - base_year) == size(annual_growth_past)[2]
+    
+    average_annual_growth_past = [Statistics.mean(annual_growth_past[y, :] for y in 1:size(annual_growth_past)[1])]
 
-    base_year = test_system_load[1, "Year"]
-
-    average_annual_growth = [Statistics.mean(annual_growth[y, :] for y in 1:size(annual_growth)[1])]
-
-    test_sys_num_hours = DataFrames.nrow(test_system_load)
+    test_sys_num_hours = DataFrames.nrow(test_system_load_da)
     if test_sys_num_hours >= 8760
         test_sys_hour_weight = ones(test_sys_num_hours)
     else
         test_sys_hour_weight = ones(test_sys_num_hours) * 8760 / test_sys_num_hours
     end
 
-    zone_numbers = names(test_system_load)[5:end]
+    zone_numbers = names(test_system_load_da)[5:end]
     zones = ["zone_$(i)" for i in zone_numbers]
 
     reserve_params_df = read_data(joinpath(test_system_dir, "RTS_Data", "SourceData", "reserves.csv"))
@@ -33,10 +33,10 @@ function read_rts(data_dir::String,
 
     test_system_reserves_data = Dict{String, DataFrames.DataFrame}()
 
-    data_rows = DataFrames.nrow(test_system_load)
+    data_rows = DataFrames.nrow(test_system_load_da)
 
     for product in reserve_products
-        test_system_reserves_data[product] = test_system_load[:, 1:4]
+        test_system_reserves_data[product] = test_system_load_da[:, 1:4]
         test_system_reserves_data[product][:, product] = zeros(data_rows)
         data = DataFrames.DataFrame(CSV.File(joinpath(test_system_dir, "RTS_Data", "timeseries_data_files", "Reserves", "DAY_AHEAD_regional_$(product).csv")))
         for d in 1:Int(data_rows/24)
@@ -46,7 +46,7 @@ function read_rts(data_dir::String,
         end
     end
 
-    scaled_test_sys_load = deepcopy(test_system_load)
+    scaled_test_sys_load = deepcopy(test_system_load_da)
     scaled_test_sys_load_rt = deepcopy(test_system_load_rt)
     scaled_test_system_reserves_data = deepcopy(test_system_reserves_data)
 
@@ -63,11 +63,11 @@ function read_rts(data_dir::String,
 
     for y in 1:(start_year - base_year)
         for zone in zone_numbers
-            scaled_test_sys_load[:, "$(zone)"] =  scaled_test_sys_load[:, "$(zone)"] .* (1 + annual_growth["load_zone_$(zone)",y])
-            scaled_test_sys_load_rt[:, "$(zone)"] =  scaled_test_sys_load_rt[:, "$(zone)"] .* (1 + annual_growth["load_zone_$(zone)",y])
+            scaled_test_sys_load[:, "$(zone)"] =  scaled_test_sys_load[:, "$(zone)"] .* (1 + annual_growth_past["load_zone_$(zone)",y])
+            scaled_test_sys_load_rt[:, "$(zone)"] =  scaled_test_sys_load_rt[:, "$(zone)"] .* (1 + annual_growth_past["load_zone_$(zone)",y])
         end
         for product in reserve_products
-            scaled_test_system_reserves_data[product][:, product] = scaled_test_system_reserves_data[product][:, product] * (1 + average_annual_growth[1][y])
+            scaled_test_system_reserves_data[product][:, product] = scaled_test_system_reserves_data[product][:, product] * (1 + average_annual_growth_past[1][y])
 
         end
     end
@@ -156,7 +156,7 @@ function read_rts(data_dir::String,
     write_data(joinpath(data_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data.csv", net_load_df)
     write_data(joinpath(data_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data_rt.csv", net_load_df_rt)
 
-    representative_days = find_representative_days(data_dir, base_dir, n_rep_days)
+    representative_days = find_representative_days(data_dir, test_system_dir, base_dir, n_rep_days)
     rep_load_data = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), scaled_test_sys_load)
 
     rep_hour_weight = zeros(DataFrames.nrow(rep_load_data))

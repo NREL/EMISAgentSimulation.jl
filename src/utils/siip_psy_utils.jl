@@ -275,6 +275,100 @@ function update_PSY_timeseries!(sys::PSY.System,
 end
 
 """
+This function updates thermal generator outagestimeseries each year.
+"""
+function update_PSY_outage_timeseries!(sys_UC::PSY.System,
+                                        sys_ED::PSY.System,
+                                        resultsfolder::String,
+                                        base_dir::String,
+                                        iteration_year::Int64)
+
+    if iteration_year ==1
+        outagefolder = joinpath(resultsfolder,"GeneratorOutage")
+        dir_exists(outagefolder)
+        cp(joinpath(base_dir,"GeneratorOutage"), outagefolder, force = true)
+    end
+    # to update outage profile at the beginning of each iteration year
+    outage_csv_location=joinpath(resultsfolder,"GeneratorOutage") #get_base_dir(case)
+
+    # Remove existing outage time series for thermal generators
+    for sys in [sys_UC,sys_ED]
+        for d in PSY.get_components(ThermalGen,sys)  #including ThermalStandard & ThermalFastStartSIIP
+            if ("outage" in get_time_series_names(Deterministic, d))
+                PSY.remove_time_series!(sys, Deterministic, d, "outage")
+            end
+        end
+    end
+
+    # Updating outage time series for thermal generators from last year's PRAS samples
+    outagescenario =1
+    sys_UC,sys_ED = add_csv_time_series!(sys_UC,sys_ED,outage_csv_location,add_scenario = outagescenario, iteration_year=iteration_year); # align outage structure to be the same as PRAS-ED (same value persist 36 times)
+
+    # Check to see if all ThermalStandard has time series data
+    # For generators that don't have time series, add artifical outage time series
+    file_location = joinpath(outage_csv_location,"1/Generator_year$(iteration_year).csv")
+    df_outage_profile = DataFrames.DataFrame(CSV.File(file_location));
+    for d in PSY.get_components(ThermalGen,sys_UC)
+        if ~("outage" in get_time_series_names(Deterministic, d))
+            @info "Adding outage time series to new generators..."
+            first_ts_temp_DA = first(PSY.get_time_series_multiple(sys_UC));
+            len_ts_data_DA = length(first_ts_temp_DA.data);
+            days_of_interest = range(1,length = len_ts_data_DA)
+            num_days = length(days_of_interest);
+            period_of_interest = range(days_of_interest.start==1 ? 1 : (24*days_of_interest.start)+1,length=num_days*24)
+            N = length(period_of_interest);
+            start_datetime_DA = PSY.IS.get_initial_timestamp(first_ts_temp_DA);
+            sys_DA_res_in_hour = PSY.get_time_series_resolution(sys_UC)
+            start_datetime_DA = start_datetime_DA + Dates.Hour((period_of_interest.start-1)*sys_DA_res_in_hour);
+            finish_datetime_DA = start_datetime_DA +  Dates.Hour((N-1)*sys_DA_res_in_hour);
+            all_timestamps = StepRange(start_datetime_DA, sys_DA_res_in_hour, finish_datetime_DA);
+            allnames = PSY.get_name.(PSY.get_components(ThermalFastStartSIIP,sys_UC,x -> get_prime_mover(x) in [PrimeMovers.CT, PrimeMovers.GT] && PSY.get_fuel(x) in [ThermalFuels.NATURAL_GAS]))
+            allnames = allnames[findall(x->x in names(df_outage_profile), allnames)]
+            asset_name = allnames[rand(1:length(allnames))]
+            @info "Use $(asset_name) time series for $(PSY.get_name(d))..."
+
+            DA_data = Dict()
+            RT_data = Dict()
+
+            for (idx,timestamp) in enumerate(all_timestamps) #
+                if (rem(idx,24) == 1)
+                    if (df_outage_profile[idx,asset_name] ==0)
+                        push!(DA_data,timestamp => zeros(36))
+                    else
+                        push!(DA_data,timestamp => ones(36))
+                    end
+                end
+
+                if (df_outage_profile[idx,asset_name] ==0)
+                    # If PRAS actual status is actually 0, just use 0 for RT, ReliablePSY can handle this transition
+                    push!(RT_data,timestamp => zeros(2))
+                else
+                    # If PRAS actual status is actually 1 and DA says 1, use 1 for RT, if DA says 0, use O because ReliablePSY currently can't handle this
+                    if (rem(idx,24) == 0)
+                        offset = 24
+                    else
+                        offset = rem(idx,24)
+                    end
+
+                    if (df_outage_profile[(idx-offset+1),asset_name] ==1) # If PRAS Actual == 1 and DA ==1
+                        push!(RT_data,timestamp => ones(2))
+                    else
+                        push!(RT_data,timestamp => ones(2)) # # If PRAS Actual == 1 and DA ==0 - Special case
+                    end
+                end
+            end
+
+            DA_availability_forecast = PSY.Deterministic("outage", DA_data,sys_DA_res_in_hour)
+            RT_availability_forecast = PSY.Deterministic("outage", RT_data,sys_DA_res_in_hour)
+
+            # Adding TimeSeries Data to PSY System
+            PSY.add_time_series!(sys_UC,PSY.get_component(PSY.Generator,sys_UC, PSY.get_name(d)), DA_availability_forecast)
+            PSY.add_time_series!(sys_ED,PSY.get_component(PSY.Generator,sys_ED, PSY.get_name(d)), RT_availability_forecast)
+        end
+    end
+end
+
+"""
 This function finds the buses located in each zone.
 """
 function find_zonal_bus(zone::String, sys::PSY.System)
@@ -493,6 +587,11 @@ function convert_to_thermal_fast_start!(d::PSY.ThermalStandard, system::PSY.Syst
         PSY.add_service!(new, service, system)
     end
 
+    if ("outage" in get_time_series_names(Deterministic, d))
+        newts =PSY.get_time_series(PSY.Deterministic, d, "outage")
+        PSY.add_time_series!(system,new, newts)
+    end
+
     PSY.remove_component!(system, d)
     return
 end
@@ -502,11 +601,42 @@ function convert_thermal_fast_start!(system::PSY.System)
         prime_mover = PSY.get_prime_mover(gen)
         fuel = PSY.get_fuel(gen)
 
-        target_prime_mover = PSY.PrimeMovers.CT
+        target_prime_mover = [PSY.PrimeMovers.CT,PSY.PrimeMovers.GT]
         target_fuel = PSY.ThermalFuels.NATURAL_GAS
 
-        if prime_mover == target_prime_mover && fuel == target_fuel
+        if prime_mover in target_prime_mover && fuel == target_fuel
             convert_to_thermal_fast_start!(gen, system)
         end
+
     end
+end
+
+function apply_PSY_past_load_growth!(sys::PSY.System,
+                               load_growth::AxisArrays.AxisArray{Float64, 1},
+                               simulation_dir::String)
+
+    # update load timeseries.
+    nodal_loads = PSY.get_components(PSY.PowerLoad, sys)
+
+    for load in nodal_loads
+        zone = "load_zone_$(PSY.get_name(PSY.get_area(PSY.get_bus(load))))"
+        scaled_active_power = deepcopy(PSY.get_max_active_power(load)) * (1 + load_growth[zone])
+        PSY.set_max_active_power!(load, scaled_active_power)
+    end
+
+    average_load_growth = Statistics.mean(load_growth)
+
+    # update service requirement timeseries.
+    services = get_system_services(sys)
+    ordc_products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")
+    for service in services
+        service_name = PSY.get_name(service)
+        if !(service_name in ordc_products || service_name == "Clean_Energy")
+            scaled_requirement = deepcopy(PSY.get_requirement(service)) * (1 + average_load_growth)
+            PSY.set_requirement!(service, scaled_requirement)
+        end
+
+    end
+
+    return
 end

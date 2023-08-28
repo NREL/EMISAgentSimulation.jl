@@ -139,6 +139,10 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
             # convert_to_thermal_clean_energy!(PSY_project_UC, sys_UC)
             # convert_to_thermal_clean_energy!(PSY_project_ED, sys_ED)
             add_clean_energy_contribution!(sys_UC, PSY_project_UC)
+            if type == "RE_CT"
+                convert_to_thermal_fast_start!(PSY_project_UC, sys_UC)
+                convert_to_thermal_fast_start!(PSY_project_ED, sys_ED)
+            end
         elseif type == "CT"
             convert_to_thermal_fast_start!(PSY_project_UC, sys_UC)
             convert_to_thermal_fast_start!(PSY_project_ED, sys_ED)

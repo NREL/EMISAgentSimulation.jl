@@ -4,7 +4,10 @@ This function reads the test system time series and returns representative hour 
 function read_test_system(data_dir::String,
                           test_system_dir::String,
                           base_dir::String,
-                          annual_growth::AxisArrays.AxisArray{Float64, 2},
+                          test_system_load_da::DataFrames.DataFrame,
+                          test_system_load_rt::DataFrames.DataFrame,
+                          base_year::Int64,
+                          annual_growth_past::AxisArrays.AxisArray{Float64, 2},
                           start_year::Int64,
                           n_rep_days::Int64)
 
@@ -25,7 +28,10 @@ function read_test_system(data_dir::String,
         zonal_lines = read_rts(data_dir,
                                test_system_dir,
                                base_dir,
-                               annual_growth,
+                               test_system_load_da,
+                               test_system_load_rt,
+                               base_year,
+                               annual_growth_past,
                                start_year,
                                n_rep_days)
     end

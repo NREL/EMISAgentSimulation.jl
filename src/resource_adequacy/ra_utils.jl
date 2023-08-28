@@ -11,30 +11,48 @@ function add_outage_info!(
 end
 
 
-function calculate_RA_metrics(sys::PSY.System)
+function calculate_RA_metrics(sys::PSY.System,
+                              exportoutage::Bool,
+                              base_dir::String,
+                              iteration_year::Int64)
 
     system_period_of_interest = range(1, length = 8760);
-
+    correlated_outage_csv_location = "/lustre/eaglefs/projects/gmlcmarkets/Phase2_EMIS_Analysis/Correlated Outages/ThermalFOR_2011.csv"
     pras_system = make_pras_system(sys,
-                                   system_model = "Single-Node",
-                                   aggregation = "Area",
-                                   period_of_interest = system_period_of_interest,
-                                   outage_flag = false);
+                                    system_model="Single-Node",
+                                    aggregation="Area",
+                                    period_of_interest = system_period_of_interest,
+                                    outage_flag=false,
+                                    lump_pv_wind_gens=false,
+                                    availability_flag=true,
+                                    outage_csv_location = correlated_outage_csv_location);
 
     total_load = calculate_total_load(sys, 60)
 
     ra_metrics = Dict{String, Float64}()
-    shortfall, = @time PRAS.assess(pras_system,  PRAS.SequentialMonteCarlo(samples = 100),  PRAS.Shortfall())
+    # seed = 3
+    shortfall, gens_avail= @time PRAS.assess(pras_system,  PRAS.SequentialMonteCarlo(samples = 5000),  PRAS.Shortfall(),  PRAS.GeneratorAvailability()) #PRAS.SequentialMonteCarlo(samples = 100, seed=seed)
     @info "Finished PRAS simulation... "
     eue_overall = PRAS.EUE(shortfall)
     lole_overall = PRAS.LOLE(shortfall)
+
+    if exportoutage == true
+        @info "Export outage profile from PRAS simulation... "
+        scenarionum = 1
+        df_outage = DataFrames.DataFrame()
+        for (j,asset_name) in enumerate(gens_avail.generators)
+            df_outage[!,asset_name] = Int.(gens_avail.available[j,:,scenarionum])
+        end
+        outage_csv_location=joinpath(base_dir,"GeneratorOutage") #get_base_dir(case)
+        CSV.write(joinpath(outage_csv_location,"1/Generator_year$(iteration_year+1).csv"), df_outage,writeheader = true)
+    end
 
     ra_metrics["LOLE"] = val(lole_overall)
     ra_metrics["NEUE"] = val(eue_overall) * 1e6 / total_load
 
     PSY.set_units_base_system!(sys, PSY.IS.UnitSystem. DEVICE_BASE)
 
-    return ra_metrics
+    return ra_metrics, shortfall
 
 end
 
@@ -58,15 +76,16 @@ function add_capacity_market_device_forecast!(sys_UC::PSY.System,
                                                 da_resolution::Int64) where D <: PSY.RenewableGen
 
     ######### Adding to UC##########
-    time_stamps = TS.timestamp(PSY.get_data(PSY.get_time_series(
-                                                    PSY.SingleTimeSeries,
-                                                    first(PSY.get_components(PSY.ElectricLoad, sys_UC)),
-                                                    "max_active_power"
-                                                    )))
+    # time_stamps = TS.timestamp(PSY.get_data(PSY.get_time_series(
+    #                                                 PSY.SingleTimeSeries,
+    #                                                 first(PSY.get_components(PSY.ElectricLoad, sys_UC)),
+    #                                                 "max_active_power"
+    #                                                 )))
+    time_stamps = StepRange(Dates.DateTime("2018-01-01T00:00:00"), Dates.Hour(1), Dates.DateTime("2018-12-31T23:00:00"));                                                
 
-    intervals = Int(24 * 60 / da_resolution)
+    intervals = Int(36 * 60 / da_resolution)
     append!(availability_raw, availability_raw[(length(availability_raw) - intervals + 1):end])
-    data = Dict(time_stamps[i] => availability_raw[i:(i + intervals - 1)] for i in 1:intervals:length(time_stamps))
+    data = Dict(time_stamps[i] => availability_raw[i:(i + intervals - 1)] for i in 1:Int(24 * 60 / da_resolution):8760)
     forecast = PSY.Deterministic("max_active_power", data, Dates.Minute(da_resolution))
     PSY.add_time_series!(sys_UC, device_UC, forecast)
 
@@ -133,7 +152,7 @@ function create_capacity_mkt_system(initial_system::PSY.System,
         end
     end
 
-    nodal_loads = PSY.get_components(PSY.ElectricLoad, capacity_market_system)
+    nodal_loads = PSY.get_components(PSY.PowerLoad, capacity_market_system)
 
     for load in nodal_loads
         zone = "zone_$(PSY.get_name(PSY.get_area(PSY.get_bus(load))))"
@@ -178,7 +197,8 @@ function update_delta_irm!(initial_system::PSY.System,
                             iteration_year::Int64,
                             load_growth::AxisArrays.AxisArray{Float64, 1},
                             simulation_dir::String,
-                            da_resolution::Int64)
+                            da_resolution::Int64,
+                            simulation::AgentSimulation)
 
     if !(static_capacity_market)
         forward_peak_load = peak_load * (1 + Statistics.mean(load_growth)) ^ (capacity_forward_years)
@@ -196,14 +216,14 @@ function update_delta_irm!(initial_system::PSY.System,
         all_capacity_market_projects = get_all_techs(capacity_market_system)
         removeable_projects = PSY.Generator[]
 
-        CT_generators = sort!(filter(project -> occursin("CT", PSY.get_name(project)), all_capacity_market_projects), by = x -> get_device_size(x))
+        CT_generators = sort!(filter(project -> occursin("CT", string(PSY.get_prime_mover(project))), all_capacity_market_projects), by = x -> get_device_size(x))
         append!(removeable_projects, CT_generators)
-        CC_generators = sort!(filter(project -> occursin("CC", PSY.get_name(project)), all_capacity_market_projects), by = x -> get_device_size(x))
+        CC_generators = sort!(filter(project -> occursin("CC", string(PSY.get_prime_mover(project))), all_capacity_market_projects), by = x -> get_device_size(x))
         append!(removeable_projects, CC_generators)
 
         @time begin
         if !isempty(ra_targets)
-            ra_metrics = calculate_RA_metrics(capacity_market_system)
+            ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
             println(ra_metrics)
             adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
 
@@ -218,7 +238,7 @@ function update_delta_irm!(initial_system::PSY.System,
                     set_name!(incremental_project, "addition_CT_project_$(count)")
                     total_added_capacity += get_maxcap(incremental_project)
                     add_capacity_market_project!(capacity_market_system, incremental_project, simulation_dir, da_resolution)
-                    ra_metrics = calculate_RA_metrics(capacity_market_system)
+                    ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
                     println(ra_metrics)
                     adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
                     count += 1
@@ -232,7 +252,7 @@ function update_delta_irm!(initial_system::PSY.System,
                         removed_capacity = get_device_size(removed_project) * PSY.get_base_power(removed_project)
                         total_removed_capacity += removed_capacity
                         PSY.remove_component!(capacity_market_system, removed_project)
-                        ra_metrics = calculate_RA_metrics(capacity_market_system)
+                        ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
                         println(ra_metrics)
                         adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
                         count += 1

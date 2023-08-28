@@ -149,10 +149,11 @@ This function returns realized capacity factors for ThermalStandard generators f
 """
 function get_realized_capacity_factors(device::PSY.ThermalStandard,
                                         results::Dict{String, DataFrames.DataFrame},
-                                        results_uc::Dict{String, DataFrames.DataFrame}
+                                        results_uc::Dict{String, DataFrames.DataFrame},
+                                        base_power::Float64
                                         )
     energy_production = results["ActivePowerVariable__ThermalStandard"][:, Symbol(get_name(device))]
-    capacity_factors = energy_production / get_device_size(device)
+    capacity_factors = (energy_production / base_power) / get_device_size(device)
     return capacity_factors
 end
 
@@ -165,10 +166,11 @@ This function returns realized capacity factors for ThermalFastStartSIIP generat
 """
 function get_realized_capacity_factors(device::ThermalFastStartSIIP,
                                         results::Dict{String, DataFrames.DataFrame},
-                                        results_uc::Dict{String, DataFrames.DataFrame}
+                                        results_uc::Dict{String, DataFrames.DataFrame},
+                                        base_power::Float64
                                         )
     energy_production = results["ActivePowerVariable__ThermalFastStartSIIP"][:, Symbol(get_name(device))]
-    capacity_factors = energy_production / get_device_size(device)
+    capacity_factors = (energy_production / base_power) / get_device_size(device)
     return capacity_factors
 end
 
@@ -177,10 +179,11 @@ This function returns realized capacity factors for Renewable generators from PS
 """
 function get_realized_capacity_factors(device::PSY.RenewableDispatch,
                                         results::Dict{String, DataFrames.DataFrame},
-                                        results_uc::Dict{String, DataFrames.DataFrame}
+                                        results_uc::Dict{String, DataFrames.DataFrame},
+                                        base_power::Float64
                                         )
     energy_production = results["ActivePowerVariable__RenewableDispatch"][:, Symbol(get_name(device))]
-    capacity_factors = energy_production / get_device_size(device)
+    capacity_factors = (energy_production / base_power) / get_device_size(device)
     return capacity_factors
 end
 
@@ -189,10 +192,11 @@ This function returns realized capacity factors for Hydropower generators from P
 """
 function get_realized_capacity_factors(device::PSY.HydroDispatch,
                                         results::Dict{String, DataFrames.DataFrame},
-                                        results_uc::Dict{String, DataFrames.DataFrame}
+                                        results_uc::Dict{String, DataFrames.DataFrame},
+                                        base_power::Float64
                                         )
     energy_production = results["ActivePowerVariable__HydroDispatch"][:, Symbol(get_name(device))]
-    capacity_factors = energy_production / get_device_size(device)
+    capacity_factors = (energy_production / base_power) / get_device_size(device)
     return capacity_factors
 end
 
@@ -201,10 +205,11 @@ This function returns realized capacity factors for Hydropower generators from P
 """
 function get_realized_capacity_factors(device::PSY.HydroEnergyReservoir,
                                         results::Dict{String, DataFrames.DataFrame},
-                                        results_uc::Dict{String, DataFrames.DataFrame}
+                                        results_uc::Dict{String, DataFrames.DataFrame},
+                                        base_power::Float64
                                         )
     energy_production = results["ActivePowerVariable__HydroEnergyReservoir"][:, Symbol(get_name(device))]
-    capacity_factors = energy_production / get_device_size(device)
+    capacity_factors = (energy_production / base_power) / get_device_size(device)
     return capacity_factors
 end
 
@@ -213,14 +218,15 @@ This function returns realized capacity factors for Hydropower generators from P
 """
 function get_realized_capacity_factors(device::PSY.GenericBattery,
                                         results::Dict{String, DataFrames.DataFrame},
-                                        results_uc::Dict{String, DataFrames.DataFrame}
+                                        results_uc::Dict{String, DataFrames.DataFrame},
+                                        base_power::Float64
                                         )
     energy_production = results["ActivePowerOutVariable__GenericBattery"][:, Symbol(get_name(device))] - results["ActivePowerInVariable__GenericBattery"][:, Symbol(get_name(device))]
-    capacity_factors = energy_production / get_device_size(device)
+    capacity_factors = (energy_production / base_power) / get_device_size(device)
     generation = filter(x -> x > 0, capacity_factors)
 
     energy_production_uc = results_uc["ActivePowerOutVariable__GenericBattery"][:, Symbol(get_name(device))] - results_uc["ActivePowerInVariable__GenericBattery"][:, Symbol(get_name(device))]
-    capacity_factors_uc = energy_production_uc / get_device_size(device)
+    capacity_factors_uc = (energy_production_uc / base_power) / get_device_size(device)
     generation_uc = filter(x -> x > 0, capacity_factors_uc)
     return capacity_factors
 end
@@ -235,7 +241,8 @@ function update_realized_reserve_perc!(device::PSY.Device,
                                         reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
                                         inertia_perc::Dict{String, Array{Float64, 2}},
                                         rt_products::Vector{SubString{String}},
-                                        only_da_products::Vector{String}) where S <: PSY.Service
+                                        only_da_products::Vector{String},
+                                        base_power::Float64) where S <: PSY.Service
     return
 end
 
@@ -249,23 +256,24 @@ function update_realized_reserve_perc!(device::PSY.Device,
                                         reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
                                         inertia_perc::Dict{String, Array{Float64, 2}},
                                         rt_products::Vector{SubString{String}},
-                                        only_da_products::Vector{String})
+                                        only_da_products::Vector{String},
+                                        base_power::Float64)
 
     service_name = PSY.get_name(service)
 
     if service_name == "Inertia"
         inertia_provision = results_ed["ActivePowerReserveVariable__VariableReserve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
-        inertia_perc_value = inertia_provision / get_device_size(device)
+        inertia_perc_value = inertia_provision / get_device_size(device) / base_power
         inertia_perc[get_name(device)][1, :] = inertia_perc_value
     else
         if service_name in rt_products
             reserve_provision = results_ed["ActivePowerReserveVariable__VariableReserve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
-            reserve_perc_value = reserve_provision / get_device_size(device)
+            reserve_perc_value = reserve_provision / get_device_size(device) / base_power
             reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
 
         elseif service_name in only_da_products
             reserve_provision = results_uc["ActivePowerReserveVariable__VariableReserve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
-            reserve_perc_value = reserve_provision / get_device_size(device)
+            reserve_perc_value = reserve_provision / get_device_size(device) / base_power
             reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
 
         end
@@ -284,18 +292,19 @@ function update_realized_reserve_perc!(device::PSY.Device,
                                         reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
                                         inertia_perc::Dict{String, Array{Float64, 2}},
                                         rt_products::Vector{SubString{String}},
-                                        only_da_products::Vector{String})
+                                        only_da_products::Vector{String},
+                                        base_power::Float64)
 
     service_name = PSY.get_name(service)
 
     if service_name in rt_products
         reserve_provision = results_ed["ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
-        reserve_perc_value = reserve_provision / get_device_size(device)
+        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
         reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
 
     elseif service_name in only_da_products
         reserve_provision = results_uc["ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
-        reserve_perc_value = reserve_provision / get_device_size(device)
+        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
         reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
 
     end
@@ -312,18 +321,19 @@ function update_realized_reserve_perc!(device::PSY.Device,
                                         reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
                                         inertia_perc::Dict{String, Array{Float64, 2}},
                                         rt_products::Vector{SubString{String}},
-                                        only_da_products::Vector{String})
+                                        only_da_products::Vector{String},
+                                        base_power::Float64)
 
     service_name = PSY.get_name(service)
 
     if service_name in rt_products
         reserve_provision = results_ed["ActivePowerReserveVariable__VariableReserve__ReserveDown__$(service_name)"][:, Symbol(get_name(device))]
-        reserve_perc_value = reserve_provision / get_device_size(device)
+        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
         reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
 
     elseif service_name in only_da_products
         reserve_provision = results_uc["ActivePowerReserveVariable__VariableReserve__ReserveDown__$(service_name)"][:, Symbol(get_name(device))]
-        reserve_perc_value = reserve_provision / get_device_size(device)
+        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
         reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
 
     end
@@ -347,7 +357,7 @@ function create_uc_template(inertia_product)
         )
         # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardUnitCommitment)
         PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalStandardUCOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardUnitCommitment)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -417,7 +427,7 @@ function create_uc_template(inertia_product)
         )
         # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardUnitCommitment)
         PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalStandardUCOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardUnitCommitment)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -487,8 +497,9 @@ function create_ed_template(inertia_product)
             ),
         )
         # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardDispatch)
-        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalDispatchOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardDispatch)
+        # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalDispatchOutages)
+        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalRampLimitedOutages)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -547,8 +558,9 @@ function create_ed_template(inertia_product)
             ),
         )
         # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardDispatch)
-        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalDispatchOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardDispatch)
+        # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalDispatchOutages)
+        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalRampLimitedOutages)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -607,6 +619,7 @@ function create_problem(template::PSI.ProblemTemplate, sys::PSY.System, type::St
                                     name = "UC",
                                     optimizer_solve_log_print = false,
                                     warm_start = true,
+                                    calculate_conflict = true,
                                     )
 
         elseif type == "ED"
@@ -618,6 +631,8 @@ function create_problem(template::PSI.ProblemTemplate, sys::PSY.System, type::St
                                         name = "ED",
                                         optimizer_solve_log_print = false,
                                         warm_start = true,
+                                        horizon =1,
+                                        calculate_conflict = true,
                                         )
             else
                 problem = PSI.DecisionModel(
@@ -627,6 +642,8 @@ function create_problem(template::PSI.ProblemTemplate, sys::PSY.System, type::St
                                         name = "ED",
                                         optimizer_solve_log_print = false,
                                         warm_start = true,
+                                        horizon =1,
+                                        calculate_conflict = true,
                                         )
             end
         else
@@ -663,7 +680,8 @@ function create_simulation( sys_UC::PSY.System,
                             da_resolution::Int64,
                             rt_resolution::Int64,
                             case_name::String,
-                            solver::JuMP.MOI.OptimizerWithAttributes;
+                            solver::JuMP.MOI.OptimizerWithAttributes,
+                            current_siip_sim;
                             kwargs...)
 
     inertia_product = collect(PSY.get_components_by_name(PSY.Service, sys_ED, "Inertia"))
@@ -677,16 +695,11 @@ function create_simulation( sys_UC::PSY.System,
     if isempty(inertia_product)
         feedforward_dict = Dict(
             "ED" => [
-                PSI.SemiContinuousFeedforward(
-                    component_type = PSY.ThermalStandard,
-                    source = PSI.OnVariable,
-                    affected_values = [PSI.ActivePowerVariable],
-                ),
-                PSI.SemiContinuousFeedforward(
-                    component_type = ThermalFastStartSIIP,
-                    source = PSI.OnVariable,
-                    affected_values = [PSI.ActivePowerVariable],
-                ),
+                # PSI.SemiContinuousFeedforward(
+                #     component_type = ThermalFastStartSIIP,
+                #     source = PSI.OnVariable,
+                #     affected_values = [PSI.ActivePowerVariable],
+                # ),
                 PSI.EnergyTargetFeedforward(
                     component_type = PSY.GenericBattery,
                     source = PSI.EnergyVariable,
@@ -704,16 +717,11 @@ function create_simulation( sys_UC::PSY.System,
     else
         feedforward_dict = Dict(
             "ED" => [
-                PSI.SemiContinuousFeedforward(
-                    component_type = PSY.ThermalStandard,
-                    source = PSI.OnVariable,
-                    affected_values = [PSI.ActivePowerVariable],
-                ),
-                PSI.SemiContinuousFeedforward(
-                    component_type = ThermalFastStartSIIP,
-                    source = PSI.OnVariable,
-                    affected_values = [PSI.ActivePowerVariable],
-                ),
+                # PSI.SemiContinuousFeedforward(
+                #     component_type = ThermalFastStartSIIP,
+                #     source = PSI.OnVariable,
+                #     affected_values = [PSI.ActivePowerVariable],
+                # ),
                 PSI.EnergyTargetFeedforward(
                     component_type = PSY.GenericBattery,
                     source = PSI.EnergyVariable,
@@ -751,7 +759,7 @@ function create_simulation( sys_UC::PSY.System,
 
     sim = PSI.Simulation(
                     name = "emis_$(case_name)",
-                    steps = 2,
+                    steps = 365,
                     models = models,
                     sequence = sequence,
                     simulation_folder = ".",
@@ -762,6 +770,8 @@ function create_simulation( sys_UC::PSY.System,
 
     adjust_reserve_voll!(sys_UC, uc_problem, simulation_dir, reserve_penalty, zones, default_balance_slack_cost, default_service_slack_cost, energy_voll_cost)
     adjust_reserve_voll!(sys_ED, ed_problem, simulation_dir, reserve_penalty, zones, default_balance_slack_cost, default_service_slack_cost, energy_voll_cost)
+
+    current_siip_sim[1] = sim
 
     execute_out = PSI.execute!(sim; enable_progress_bar = true)
 
@@ -902,7 +912,7 @@ function create_simulation( sys_UC::PSY.System,
 
     for tech in sys_techs
         name = get_name(tech)
-        capacity_factors[name][1, :] = get_realized_capacity_factors(tech, result_variables_ed, result_variables_uc)
+        capacity_factors[name][1, :] = get_realized_capacity_factors(tech, result_variables_ed, result_variables_uc, base_power)
         start_up_costs[name][1, :] = get_start_costs(tech, result_variables_uc, data_length_uc)
         shut_down_costs[name][1, :] = get_shut_costs(tech, result_variables_uc, data_length_uc)
 
@@ -917,7 +927,8 @@ function create_simulation( sys_UC::PSY.System,
                                          reserve_perc,
                                          inertia_perc,
                                          rt_products,
-                                         only_da_products)
+                                         only_da_products,
+                                         base_power)
 
         end
     end

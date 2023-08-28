@@ -61,12 +61,14 @@ function construct_net_load_forecast_error_distribution(simulation_dir::String,
 
         for gen in get_name.(renewable_generators)
             total_gen_rt += load_n_vg_df_rt[:, gen]
-            total_gen_extrap += load_n_vg_df_extrap[:, gen] * 2/3 + load_n_vg_df_rt[:, gen] * 1/3 # blended forecasts
+            # total_gen_extrap += load_n_vg_df_extrap[:, gen] * 2/3 + load_n_vg_df_rt[:, gen] * 1/3 # blended forecasts for RTS analysis because the DA forecast in RTS is problematic
+            total_gen_extrap += load_n_vg_df_extrap[:, gen]
         end
 
         for zone in zones
             total_load_rt += load_n_vg_df_rt[:, "load_$(zone)"]
-            total_load_extrap += load_n_vg_df_extrap[:, "load_$(zone)"] * 2/3 + load_n_vg_df_rt[:, "load_$(zone)"] * 1/3 # blended forecasts
+            # total_load_extrap += load_n_vg_df_extrap[:, "load_$(zone)"] * 2/3 + load_n_vg_df_rt[:, "load_$(zone)"] * 1/3 # blended forecasts for RTS analysis because the DA forecast in RTS is problematic
+            total_load_extrap += load_n_vg_df_extrap[:, "load_$(zone)"] 
         end
 
         load_n_vg_df_rt[:, "Total Generation"] = total_gen_rt
@@ -82,7 +84,7 @@ function construct_net_load_forecast_error_distribution(simulation_dir::String,
         error_std = Statistics.std(net_load_forecast_error[:, "Total"])
     end
 
-    return error_mean, error_std
+    return error_mean, error_std, Statistics.mean(total_load_extrap)
 
 end
 
