@@ -11,7 +11,9 @@
         total_horizon: Number of years of data available for the simulation.
         rolling_horizon: Number of years to be used for price prediction. If end of rolling horizon exceeds the years of available data, a receding horizon approach is used.
         simulation_years: Number of years to be simulated.
-        num_rep_days: Number of representative days used for price prediction.
+        rep_period_interval: Total number of hours in representative period selection e.g., 24 for representative days, 168 for representative weeks, etc. Default =  24
+        num_rep_periods: Number of representative periods to be used for price prediction. Default = 20.
+        rep_chronology_checkpoint: Number of hours in the checkpoint interval for chronological storage constraints in CEM. Default = 0, i.e., no chronological checkpoints
         da_resolution: Resolution of Day Ahead market clearing (minutes)
         rt_resolution: Resolution of Real Time market clearing (minutes)
         rps_target: High, Mid or Low RPS Target
@@ -46,7 +48,9 @@ struct CaseDefinition
     total_horizon::Int64
     rolling_horizon::Int64
     simulation_years::Int64
-    num_rep_days::Int64
+    rep_period_interval::Int64
+    num_rep_periods::Int64
+    rep_chronology_checkpoint::Int64
     da_resolution::Int64
     rt_resolution::Int64
     rps_target::String
@@ -79,7 +83,9 @@ struct CaseDefinition
                             total_horizon,
                             rolling_horizon,
                             simulation_years,
-                            num_rep_days,
+                            rep_period_interval,
+                            num_rep_periods,
+                            rep_chronology_checkpoint,
                             da_resolution,
                             rt_resolution,
                             rps_target,
@@ -133,7 +139,9 @@ struct CaseDefinition
                    total_horizon,
                    rolling_horizon,
                    simulation_years,
-                   num_rep_days,
+                   rep_period_interval,
+                   num_rep_periods,
+                   rep_chronology_checkpoint,
                    da_resolution,
                    rt_resolution,
                    rps_target,
@@ -168,7 +176,9 @@ function CaseDefinition(name::String,
                         total_horizon::Int64 = 20,
                         rolling_horizon::Int64 = 10,
                         simulation_years::Int64 = 10,
-                        num_rep_days::Int64 = 12,
+                        rep_period_interval::Int64 = 24,
+                        num_rep_periods::Int64 = 20,
+                        rep_chronology_checkpoint::Int64 = 0,
                         da_resolution::Int64 = 60,
                         rt_resolution::Int64 = 5,
                         rps_target::String = "Mid",
@@ -201,7 +211,9 @@ function CaseDefinition(name::String,
                    total_horizon,
                    rolling_horizon,
                    simulation_years,
-                   num_rep_days,
+                   rep_period_interval,
+                   num_rep_periods,
+                   rep_chronology_checkpoint,
                    da_resolution,
                    rt_resolution,
                    rps_target,
@@ -234,7 +246,9 @@ get_start_year(case::CaseDefinition) = case.start_year
 get_total_horizon(case::CaseDefinition) = case.total_horizon
 get_rolling_horizon(case::CaseDefinition) = case.rolling_horizon
 get_simulation_years(case::CaseDefinition) = case.simulation_years
-get_num_rep_days(case::CaseDefinition) = case.num_rep_days
+get_rep_period_interval(case::CaseDefinition) = case.rep_period_interval
+get_num_rep_periods(case::CaseDefinition) = case.num_rep_periods
+get_rep_chronology_checkpoint(case::CaseDefinition) = case.rep_chronology_checkpoint
 get_da_resolution(case::CaseDefinition) = case.da_resolution
 get_rt_resolution(case::CaseDefinition) = case.rt_resolution
 get_rps_target(case::CaseDefinition) = case.rps_target

@@ -5,7 +5,8 @@ function construct_ordc(sys::PSY.System,
                         simulation_dir::String,
                         investors::Vector{Investor},
                         iteration_year::Int64,
-                        rep_days::Dict{Dates.Date,Int64},
+                        representative_periods::Union{Dict{Int64,Int64},OrderedCollections.OrderedDict{Int64, Int64}},
+                        rep_period_interval::Int64,
                         ordc_curved::Bool,
                         ordc_unavailability_method::String,
                         reserve_penalty::String)
@@ -37,8 +38,8 @@ function construct_ordc(sys::PSY.System,
 
         MRR = calculate_min_reserve_req(simulation_dir, generators, MRR_scale, zonal)
 
-        println("MRR_$(product): ", MRR)
-        println("Penalty_$(product): ", penalty)
+        #println("MRR_$(product): ", MRR)
+        #println("Penalty_$(product): ", penalty)
 
         seasons = chop.(split(product_data[1, "seasons"], ";"), head = 1, tail = 1)
         timeblocks = chop.(split(product_data[1, "timeblocks"], ";"), head = 1, tail = 1)
@@ -93,9 +94,9 @@ function construct_ordc(sys::PSY.System,
                 rt_periods = find_rt_periods(hours, num_rt_intervals)
 
                 error_mean, error_var,meanload = construct_net_load_forecast_error_distribution(simulation_dir, renewable_generators, months, hours, zonal)
-                println("$(product), $(months_key): error_mean is $(error_mean) & error_var is $(error_var) & meanload is $(meanload)")
+                #println("$(product), $(months_key): error_mean is $(error_mean) & error_var is $(error_var) & meanload is $(meanload)")
                 unavail_mean, unavail_std = construct_gen_unavail_distribution(simulation_dir, smc_unavailability_timeseries, conv_unavail_mean, conv_unavail_std, months, hours)
-                println("$(product), $(months_key): unavail_mean is $(unavail_mean) & unavail_std is $(unavail_std)")
+                #println("$(product), $(months_key): unavail_mean is $(unavail_mean) & unavail_std is $(unavail_std)")
 
                 if zonal
                     aggregate_distribution = Dict{String, Distributions.Normal}()
@@ -152,7 +153,7 @@ function construct_ordc(sys::PSY.System,
                     if maximum_error < min(aggregate_distribution_std, 0.1*meanload)
                         maximum_error = min(aggregate_distribution_std, 0.1*meanload) #this step is used when the mean net load error+3std is negative; then we use a small positive number to represent the x-interval (above MRR)
                     end
-                    println("$(product), $(months_key): maximum_error is $(maximum_error)")
+                    #println("$(product), $(months_key): maximum_error is $(maximum_error)")
 
                     initial_points = [(0.0, Float64(penalty)), (MRR, Float64(penalty))]
 
@@ -192,7 +193,10 @@ function construct_ordc(sys::PSY.System,
         write_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves"), "$(product)_$(iteration_year).csv", ordc_df)
         write_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves"), "$(product)_REAL_TIME_$(iteration_year).csv", ordc_df_rt)
 
-        rep_ordc_df = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(rep_days)), ordc_df)
+        ordc_df[!, "Period_Number"] = 1:size(ordc_df, 1)
+        ordc_df[!, "Representative_Period"] = add_representative_period.(ordc_df[:, "Period_Number"], rep_period_interval)
+
+        rep_ordc_df = filter(row -> in(row["Representative_Period"], keys(representative_periods)), ordc_df)
 
         write_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves"), "rep_$(product)_$(iteration_year).csv", rep_ordc_df)
     end

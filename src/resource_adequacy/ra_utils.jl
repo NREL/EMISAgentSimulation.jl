@@ -216,15 +216,15 @@ function update_delta_irm!(initial_system::PSY.System,
         all_capacity_market_projects = get_all_techs(capacity_market_system)
         removeable_projects = PSY.Generator[]
 
-        CT_generators = sort!(filter(project -> occursin("CT", string(PSY.get_prime_mover(project))), all_capacity_market_projects), by = x -> get_device_size(x))
+        CT_generators = sort!(filter(project -> occursin("CT", string(PSY.get_prime_mover_type(project))), all_capacity_market_projects), by = x -> get_device_size(x))
         append!(removeable_projects, CT_generators)
-        CC_generators = sort!(filter(project -> occursin("CC", string(PSY.get_prime_mover(project))), all_capacity_market_projects), by = x -> get_device_size(x))
+        CC_generators = sort!(filter(project -> occursin("CC", string(PSY.get_prime_mover_type(project))), all_capacity_market_projects), by = x -> get_device_size(x))
         append!(removeable_projects, CC_generators)
 
         @time begin
         if !isempty(ra_targets)
             ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
-            println(ra_metrics)
+            #println(ra_metrics)
             adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
 
             count = 1
@@ -239,7 +239,7 @@ function update_delta_irm!(initial_system::PSY.System,
                     total_added_capacity += get_maxcap(incremental_project)
                     add_capacity_market_project!(capacity_market_system, incremental_project, simulation_dir, da_resolution)
                     ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
-                    println(ra_metrics)
+                    #println(ra_metrics)
                     adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
                     count += 1
                 end
@@ -253,7 +253,7 @@ function update_delta_irm!(initial_system::PSY.System,
                         total_removed_capacity += removed_capacity
                         PSY.remove_component!(capacity_market_system, removed_project)
                         ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
-                        println(ra_metrics)
+                        #println(ra_metrics)
                         adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
                         count += 1
                     end

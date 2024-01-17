@@ -11,6 +11,8 @@ function create_investors(simulation_data::AgentSimulationData)
         investor_dir = joinpath(dir_name, "$(investor_names[i])")
 
         rep_hour_weight = get_rep_hour_weight(simulation_data)
+        chron_weights = get_chron_weights(simulation_data)
+        rep_period_interval = get_rep_period_interval(simulation_data)
 
         # Read Investor Characteristics
         characteristics = read_data(joinpath(investor_dir, "characteristics.csv"))
@@ -198,7 +200,9 @@ function create_investors(simulation_data::AgentSimulationData)
                                 markets,
                                 carbon_tax,
                                 market_prices,
+                                rep_period_interval,
                                 rep_hour_weight,
+                                chron_weights,
                                 forecast,
                                 capital_cost_multiplier,
                                 preference_multiplier_range,

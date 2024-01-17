@@ -11,7 +11,9 @@ function read_rts(data_dir::String,
                   base_year::Int64,
                   annual_growth_past::AxisArrays.AxisArray{Float64, 2},
                   start_year::Int64,
-                  n_rep_days::Int64)
+                  rep_period_interval::Int64,
+                  n_rep_periods::Int64,
+                  rep_checkpoint::Int64)
 
     @assert (start_year - base_year) == size(annual_growth_past)[2]
     
@@ -156,14 +158,66 @@ function read_rts(data_dir::String,
     write_data(joinpath(data_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data.csv", net_load_df)
     write_data(joinpath(data_dir, "timeseries_data_files", "Net Load Data"), "load_n_vg_data_rt.csv", net_load_df_rt)
 
-    representative_days = find_representative_days(data_dir, test_system_dir, base_dir, n_rep_days)
-    rep_load_data = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), scaled_test_sys_load)
+    representative_periods, cluster_indices = find_representative_periods(data_dir, test_system_dir, base_dir, rep_period_interval, n_rep_periods)
 
-    rep_hour_weight = zeros(DataFrames.nrow(rep_load_data))
+    scaled_test_sys_load[!, "Period_Number"] = 1:size(scaled_test_sys_load, 1)
+    scaled_test_sys_load[!, "Representative_Period"] = add_representative_period.(scaled_test_sys_load[:, "Period_Number"], rep_period_interval)
+
+    rep_load_data = filter(row -> in(row["Representative_Period"], keys(representative_periods)), scaled_test_sys_load)
+
+    num_rep_hours = DataFrames.nrow(rep_load_data)
+    rep_datetime = [Dates.DateTime(row[:Year], row[:Month], row[:Day], row[:Period]) for row in eachrow(rep_load_data)] .- Dates.Hour(1)
+
+    num_checkpoints = Int(floor(map(x -> isinf(x) ? 0.0 : x, 8760 / rep_checkpoint)))
+    
+    chron_weights = Array{Int64}(undef, num_checkpoints, num_rep_hours)
+
+    start_date = DateTime(first(unique(rep_load_data[:, "Year"])), 1, 1)
+    
+    leap_checkpoint = Int(ceil(map(x -> isinf(x) ? 0.0 : x, ((31 + 28) * 24 + 1) / rep_checkpoint)))
+
+    for c in 1:num_checkpoints
+
+        hour_count = Dict(x => 0 for x in 1:num_rep_hours)
+        extra_hours = 8760 - num_checkpoints * rep_checkpoint
+        num_hours = (c == num_checkpoints) ? rep_checkpoint + extra_hours : rep_checkpoint
+
+        if Dates.isleapyear(first(unique(rep_load_data[:, "Year"]))) && c == leap_checkpoint
+            num_hours += 24
+        end
+
+        for h in (c - 1) * rep_checkpoint: (c - 1) * rep_checkpoint + num_hours - 1
+            hour = start_date + Dates.Hour(h)
+            if !(Dates.value(Dates.Month(hour)) == 2 && Dates.value(Dates.Day(hour)) == 29)
+
+                period = scaled_test_sys_load[h + 1, "Representative_Period"]
+
+                if period in keys(cluster_indices)
+                    rep_period = cluster_indices[period]
+                else
+                    rep_period = cluster_indices[period - 1]
+                end
+
+                rep_hour_idx = findfirst(x -> x == rep_period, rep_load_data[:, "Representative_Period"]) + h%rep_period_interval
+
+                hour_count[rep_hour_idx] += 1
+            end
+        end
+
+        for h in 1:num_rep_hours
+            chron_weights[c, h] = hour_count[h]
+        end
+
+    end
+
+    rep_hour_weight = zeros(num_rep_hours)
 
     for i in 1:length(rep_hour_weight)
-        rep_hour_weight[i] = representative_days[Dates.Date(rep_load_data[i, :Year], rep_load_data[i, :Month], rep_load_data[i, :Day])]
+        rep_hour_weight[i] = representative_periods[rep_load_data[i, "Representative_Period"]]
     end
+    
+    select!(scaled_test_sys_load, Not(["Period_Number", "Representative_Period"]))
+    select!(rep_load_data, Not(["Period_Number", "Representative_Period"]))
 
     write_data(joinpath(data_dir, "timeseries_data_files", "Load"), "load_0.csv", scaled_test_sys_load)
     write_data(joinpath(data_dir, "timeseries_data_files", "Load"), "rep_load_0.csv", rep_load_data)
@@ -173,11 +227,19 @@ function read_rts(data_dir::String,
     rep_system_reserves_data = Dict{String, DataFrames.DataFrame}()
 
     for product in reserve_products
-        rep_system_reserves_data[product] = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), scaled_test_system_reserves_data[product])
+
+        scaled_test_system_reserves_data[product][!, "Period_Number"] = 1:size(scaled_test_system_reserves_data[product], 1)
+        scaled_test_system_reserves_data[product][!, "Representative_Period"] = add_representative_period.(scaled_test_system_reserves_data[product][:, "Period_Number"], rep_period_interval)
+
+        rep_system_reserves_data[product] = filter(row -> in(row["Representative_Period"], keys(representative_periods)), scaled_test_system_reserves_data[product])
+
+        select!(scaled_test_system_reserves_data[product], Not(["Period_Number", "Representative_Period"]))
+        select!(rep_system_reserves_data[product], Not(["Period_Number", "Representative_Period"]))
+
         write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "$(product)_0.csv", scaled_test_system_reserves_data[product])
         write_data(joinpath(data_dir, "timeseries_data_files", "Reserves"), "rep_$(product)_0.csv", rep_system_reserves_data[product])
     end
-
+    
     # Create zonal lines
 
     zonal_lines = ZonalLine[]
@@ -217,5 +279,5 @@ function read_rts(data_dir::String,
         end
     end
 
-    return zones, representative_days, rep_hour_weight, system_peak_load, test_sys_hour_weight, zonal_lines
+    return zones, representative_periods, rep_hour_weight, chron_weights, system_peak_load, test_sys_hour_weight, zonal_lines
 end

@@ -197,7 +197,7 @@ export get_measurement_covariance
 export get_mincap
 export get_multiplier
 export get_name
-export get_num_rep_days
+export get_num_rep_periods
 export get_operation_cost
 export get_options
 export get_output_active_power_limits
@@ -287,9 +287,11 @@ import LinearAlgebra
 import PooledArrays
 import PowerSystems
 import PowerSimulations
+
 using EMISExtensions
 using PRAS
 using HiGHS
+using OrderedCollections
 import InfrastructureSystems
 import ReliablePowerSimulations
 

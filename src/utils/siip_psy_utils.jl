@@ -7,7 +7,7 @@ This function returns all generation and storage technologies included in the PS
 """
 function get_all_techs(sys::PSY.System)
     # sys_gens = PSY.get_components(PSY.Generator, sys)
-    sys_gens = PSY.get_components(PSY.Generator, sys, x -> PSY.get_available(x) == true)
+    sys_gens = PSY.get_components(x -> PSY.get_available(x) == true, Generator, sys)
     sys_storage = PSY.get_components(PSY.Storage, sys)
     sys_techs = union(sys_gens, sys_storage)
     return sys_techs
@@ -196,8 +196,8 @@ function update_PSY_timeseries!(sys::PSY.System,
     for load in nodal_loads
         zone = "zone_$(PSY.get_name(PSY.get_area(PSY.get_bus(load))))"
         scaled_active_power = deepcopy(PSY.get_max_active_power(load)) * (1 + load_growth[zone])
-        println(PSY.get_name(load))
-        println(scaled_active_power)
+        #= println(PSY.get_name(load))
+        println(scaled_active_power) =#
 
         PSY.set_max_active_power!(load, scaled_active_power)
 
@@ -261,8 +261,8 @@ function update_PSY_timeseries!(sys::PSY.System,
             PSY.add_time_series!(sys, service, forecast)
         elseif service_name == "Clean_Energy"
             clean_energy_requirement = total_active_power * rec_requirement * 1.0
-            println(rec_requirement)
-            println(clean_energy_requirement)
+            #= println(rec_requirement)
+            println(clean_energy_requirement) =#
             PSY.set_requirement!(service, clean_energy_requirement)
         else
             scaled_requirement = deepcopy(PSY.get_requirement(service)) * (1 + average_load_growth)
@@ -322,7 +322,7 @@ function update_PSY_outage_timeseries!(sys_UC::PSY.System,
             start_datetime_DA = start_datetime_DA + Dates.Hour((period_of_interest.start-1)*sys_DA_res_in_hour);
             finish_datetime_DA = start_datetime_DA +  Dates.Hour((N-1)*sys_DA_res_in_hour);
             all_timestamps = StepRange(start_datetime_DA, sys_DA_res_in_hour, finish_datetime_DA);
-            allnames = PSY.get_name.(PSY.get_components(ThermalFastStartSIIP,sys_UC,x -> get_prime_mover(x) in [PrimeMovers.CT, PrimeMovers.GT] && PSY.get_fuel(x) in [ThermalFuels.NATURAL_GAS]))
+            allnames = PSY.get_name.(PSY.get_components(ThermalFastStartSIIP,sys_UC,x -> get_prime_mover_type(x) in [PrimeMovers.CT, PrimeMovers.GT] && PSY.get_fuel(x) in [ThermalFuels.NATURAL_GAS]))
             allnames = allnames[findall(x->x in names(df_outage_profile), allnames)]
             asset_name = allnames[rand(1:length(allnames))]
             @info "Use $(asset_name) time series for $(PSY.get_name(d))..."
@@ -521,7 +521,7 @@ function add_psy_clean_energy_constraint!(sys::PSY.System,
         total_active_power * requirement,
     )
     contri_devices =
-        vcat(collect(PSY.get_components(PSY.ThermalStandard, sys, x -> (occursin("NUC", PSY.get_name(x)) || occursin("RECT", PSY.get_name(x))))),
+        vcat(collect(PSY.get_components(x -> (occursin("NUC", PSY.get_name(x)) || occursin("RECT", PSY.get_name(x))), PSY.ThermalStandard, sys)),
         collect(PSY.get_components(PSY.RenewableDispatch, sys)),
         collect(PSY.get_components(PSY.HydroDispatch, sys)),
         collect(PSY.get_components(PSY.HydroEnergyReservoir, sys)),
@@ -577,7 +577,7 @@ function convert_to_thermal_fast_start!(d::PSY.ThermalStandard, system::PSY.Syst
         operation_cost = d.operation_cost,
         base_power = d.base_power,
         time_limits = d.time_limits,
-        prime_mover = d.prime_mover,
+        prime_mover_type = d.prime_mover_type,
         fuel = d.fuel,
         ext = d.ext
     )
@@ -598,13 +598,13 @@ end
 
 function convert_thermal_fast_start!(system::PSY.System)
     for gen in PSY.get_components(PSY.ThermalStandard, system)
-        prime_mover = PSY.get_prime_mover(gen)
+        prime_mover_type = PSY.get_prime_mover_type(gen)
         fuel = PSY.get_fuel(gen)
 
         target_prime_mover = [PSY.PrimeMovers.CT,PSY.PrimeMovers.GT]
         target_fuel = PSY.ThermalFuels.NATURAL_GAS
 
-        if prime_mover in target_prime_mover && fuel == target_fuel
+        if prime_mover_type in target_prime_mover && fuel == target_fuel
             convert_to_thermal_fast_start!(gen, system)
         end
 

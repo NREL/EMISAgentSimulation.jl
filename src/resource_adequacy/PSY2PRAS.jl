@@ -80,7 +80,7 @@ function line_rating(line::Union{PSY.Line,PSY.MonitoredLine})
     return(forward_capacity = rate , backward_capacity = rate)
 end
 
-function line_rating(line::PSY.HVDCLine)
+function line_rating(line::PSY.TwoTerminalHVDCLine)
     forward_capacity = getfield(PSY.get_active_power_limits_from(line), :max)
     backward_capacity = getfield(PSY.get_active_power_limits_to(line), :max)
     return(forward_capacity = forward_capacity, backward_capacity = backward_capacity)
@@ -97,7 +97,7 @@ end
 # Functions to get generator category
 #######################################################
 function get_generator_category(gen::GEN) where {GEN <: PSY.RenewableGen}
-    return string(PSY.get_prime_mover(gen))
+    return string(PSY.get_prime_mover_type(gen))
 end
 
 function get_generator_category(gen::GEN) where {GEN <: PSY.ThermalGen}
@@ -347,8 +347,8 @@ function make_pras_system(sys::PSY.System;
         for (idx,region) in enumerate(regions)
             reg_ren_comps = availability_flag ? get_available_components_in_aggregation_topology(PSY.RenewableGen, sys, region) :
                                                  PSY.get_components_in_aggregation_topology(PSY.RenewableGen, sys, region)
-            wind_gs_DA= [g for g in reg_ren_comps if (PSY.get_prime_mover(g) == PSY.PrimeMovers.WT)] 
-            pv_gs_DA= [g for g in reg_ren_comps if (PSY.get_prime_mover(g) == PSY.PrimeMovers.PVe)] 
+            wind_gs_DA= [g for g in reg_ren_comps if (PSY.get_prime_mover_type(g) == PSY.PrimeMovers.WT)] 
+            pv_gs_DA= [g for g in reg_ren_comps if (PSY.get_prime_mover_type(g) == PSY.PrimeMovers.PVe)] 
             reg_gen_comps = availability_flag ? get_available_components_in_aggregation_topology(PSY.Generator, sys, region) :
                                                 PSY.get_components_in_aggregation_topology(PSY.Generator, sys, region)
             gs= [g for g in reg_gen_comps if (typeof(g) != PSY.HydroEnergyReservoir && PSY.get_max_active_power(g)!=0 && 
@@ -429,7 +429,7 @@ function make_pras_system(sys::PSY.System;
                 # Wind
                 temp_lumped_wind_gen = PSY.RenewableDispatch(nothing)
                 PSY.set_name!(temp_lumped_wind_gen,"Lumped_Wind_"*region_names[i])
-                PSY.set_prime_mover!(temp_lumped_wind_gen,PSY.PrimeMovers.WT)
+                PSY.set_prime_mover_type!(temp_lumped_wind_gen,PSY.PrimeMovers.WT)
                 ext = PSY.get_ext(temp_lumped_wind_gen)
                 ext["region_gens"] = reg_wind_gens_DA[i]
                 ext["outage_probability"] = 0.0
@@ -440,7 +440,7 @@ function make_pras_system(sys::PSY.System;
                 # PV
                 temp_lumped_pv_gen = PSY.RenewableDispatch(nothing)
                 PSY.set_name!(temp_lumped_pv_gen,"Lumped_PV_"*region_names[i])
-                PSY.set_prime_mover!(temp_lumped_pv_gen,PSY.PrimeMovers.PVe)
+                PSY.set_prime_mover_type!(temp_lumped_pv_gen,PSY.PrimeMovers.PVe)
                 ext = PSY.get_ext(temp_lumped_pv_gen)
                 ext["region_gens"] = reg_pv_gens_DA[i]
                 ext["outage_probability"] = 0.0
@@ -474,7 +474,7 @@ function make_pras_system(sys::PSY.System;
         # Nominal outage and recovery rate
         (λ,μ) = (0.0,1.0)
         
-        if (lump_pv_wind_gens && (PSY.get_prime_mover(g) == PSY.PrimeMovers.WT || PSY.get_prime_mover(g) == PSY.PrimeMovers.PVe))
+        if (lump_pv_wind_gens && (PSY.get_prime_mover_type(g) == PSY.PrimeMovers.WT || PSY.get_prime_mover_type(g) == PSY.PrimeMovers.PVe))
             reg_gens_DA = PSY.get_ext(g)["region_gens"];
             gen_cap_array[idx,:] = round.(Int,sum(get_forecast_values.(first.(PSY.get_time_series_multiple.(reg_gens_DA, name = "max_active_power")))
                                    .*PSY.get_max_active_power.(reg_gens_DA)));
@@ -501,7 +501,7 @@ function make_pras_system(sys::PSY.System;
         else
             if (~outage_flag)
                 if (gen_categories[idx] == "ThermalStandard")
-                    p_m = string(PSY.get_prime_mover(g))
+                    p_m = string(PSY.get_prime_mover_type(g))
                     fl = string(PSY.get_fuel(g))
 
                     p_m_idx = findall(x -> x == p_m, getfield.(outage_values,:prime_mover))
@@ -545,7 +545,7 @@ function make_pras_system(sys::PSY.System;
                     end
 
                 elseif (gen_categories[idx] == "HydroDispatch")
-                    p_m = string(PSY.get_prime_mover(g))
+                    p_m = string(PSY.get_prime_mover_type(g))
                     p_m_idx = findall(x -> x == p_m, getfield.(outage_values,:prime_mover))
 
                     temp_cap = floor(Int,PSY.get_max_active_power(g))
@@ -738,7 +738,7 @@ function make_pras_system(sys::PSY.System;
         
         if (~outage_flag)
             if (typeof(g_s) ==PSY.HydroEnergyReservoir)
-                p_m = string(PSY.get_prime_mover(g_s))
+                p_m = string(PSY.get_prime_mover_type(g_s))
                 p_m_idx = findall(x -> x == p_m, getfield.(outage_values,:prime_mover))
 
                 temp_cap = floor(Int,PSY.get_max_active_power(g_s))

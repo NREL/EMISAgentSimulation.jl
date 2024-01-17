@@ -9,11 +9,14 @@ function read_test_system(data_dir::String,
                           base_year::Int64,
                           annual_growth_past::AxisArrays.AxisArray{Float64, 2},
                           start_year::Int64,
-                          n_rep_days::Int64)
+                          rep_period_interval::Int64,
+                          n_rep_periods::Int64,
+                          rep_checkpoint::Int64)
 
     test_sys_hour_weight = nothing
     zones = nothing
     representative_days = nothing
+    chron_weights = nothing
     rep_hour_weight = nothing
     system_peak_load = nothing
     test_sys_hour_weight = nothing
@@ -21,8 +24,9 @@ function read_test_system(data_dir::String,
 
     if occursin("RTS", test_system_dir)
         zones,
-        representative_days,
+        representative_periods,
         rep_hour_weight,
+        chron_weights,
         system_peak_load,
         test_sys_hour_weight,
         zonal_lines = read_rts(data_dir,
@@ -33,8 +37,10 @@ function read_test_system(data_dir::String,
                                base_year,
                                annual_growth_past,
                                start_year,
-                               n_rep_days)
+                               rep_period_interval,
+                               n_rep_periods,
+                               rep_checkpoint)
     end
 
-    return zones, representative_days, rep_hour_weight, system_peak_load, test_sys_hour_weight, zonal_lines
+    return zones, representative_periods, rep_hour_weight, chron_weights, system_peak_load, test_sys_hour_weight, zonal_lines
 end

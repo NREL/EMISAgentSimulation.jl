@@ -75,14 +75,15 @@ function create_rts_sys(rts_dir::String,
     # prune_system_devices!(sys_UC, pruned_unit)
     # prune_system_devices!(sys_ED, pruned_unit)
 
-    sys_UC = PSY.System(joinpath(rts_dir,"DA_sys_EMIS_w2011_2hrRT_with_outage.json"), time_series_directory = "/tmp/scratch");
-    sys_ED = PSY.System(joinpath(rts_dir,"RT_sys_EMIS_w2011_2hrRT_with_outage.json"), time_series_directory = "/tmp/scratch");
+    sys_UC = PSY.System(joinpath(rts_dir,"DA_sys_EMIS_w2011_2hrRT_with_outage_PSY3.json"), time_series_directory = "C:\\Users\\MANWAR2\\.julia");
+    sys_ED = PSY.System(joinpath(rts_dir,"RT_sys_EMIS_w2011_2hrRT_with_outage_PSY3.json"), time_series_directory = "C:\\Users\\MANWAR2\\.julia");
 
     removegen_name = ["AUSTIN_1","AUSTIN_2"]
     for sys in [sys_UC, sys_ED]
-    	for d in PSY.get_components(PSY.Generator, sys, x -> x.name ∈ removegen_name)
-    		# println("Now removing $(get_name(d))")
-    		PSY.remove_component!(sys, d)
+    	for d in PSY.get_components(PSY.Generator, sys)
+            if d.name in removegen_name
+    		    PSY.remove_component!(sys, d)
+            end
     	end
     end
 
@@ -115,8 +116,8 @@ end
 function remove_vre_gens!(sys::PSY.System)
     for gen in get_all_techs(sys)
         if typeof(gen) == PSY.RenewableDispatch
-            println(PSY.get_name(gen))
-            println(PSY.get_ext(gen))
+            #println(PSY.get_name(gen))
+            #println(PSY.get_ext(gen))
             PSY.remove_component!(sys, gen)
         end
     end

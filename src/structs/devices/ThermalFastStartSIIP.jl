@@ -13,7 +13,7 @@
         operation_cost::OperationalCost
         base_power::Float64
         time_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}
-        prime_mover::PrimeMovers
+        prime_mover_type::PrimeMovers
         fuel::ThermalFuels
         services::Vector{Service}
         time_at_status::Float64
@@ -37,7 +37,7 @@ Data Structure for thermal generation technologies.
 - `operation_cost::OperationalCost`
 - `base_power::Float64`: Base power of the unit in MVA, validation range: `(0, nothing)`, action if invalid: `warn`
 - `time_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}`: Minimum up and Minimum down time limits in hours, validation range: `(0, nothing)`, action if invalid: `error`
-- `prime_mover::PrimeMovers`: Prime mover technology according to EIA 923
+- `prime_mover_type::PrimeMovers`: Prime mover technology according to EIA 923
 - `fuel::ThermalFuels`: Prime mover fuel according to EIA 923
 - `services::Vector{Service}`: Services that this device contributes to
 - `time_at_status::Float64`
@@ -56,7 +56,7 @@ mutable struct ThermalFastStartSIIP <: PSY.ThermalGen
     "Thermal limited MVA Power Output of the unit. <= Capacity"
     rating::Float64
     active_power_limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
-    reactive_power_limits::Union{Nothing, PSY.Min_Max}
+    reactive_power_limits::Union{Nothing, NamedTuple{(:min, :max), Tuple{Float64, Float64}}}
     "ramp up and ramp down limits in MW (in component base per unit) per minute"
     ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}
     operation_cost::PSY.OperationalCost
@@ -65,7 +65,7 @@ mutable struct ThermalFastStartSIIP <: PSY.ThermalGen
     "Minimum up and Minimum down time limits in hours"
     time_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}
     "Prime mover technology according to EIA 923"
-    prime_mover::PSY.PrimeMovers
+    prime_mover_type::PSY.PrimeMovers
     "Prime mover fuel according to EIA 923"
     fuel::PSY.ThermalFuels
     "Services that this device contributes to"
@@ -80,12 +80,12 @@ mutable struct ThermalFastStartSIIP <: PSY.ThermalGen
     internal::InfrastructureSystems.InfrastructureSystemsInternal
 end
 
-function ThermalFastStartSIIP(name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits=nothing, prime_mover=PSY.PrimeMovers.OT, fuel=PSY.ThermalFuels.OTHER, services=PSY.Device[], time_at_status=PSY.INFINITE_TIME, dynamic_injector=nothing, ext=Dict{String, Any}(), time_series_container=InfrastructureSystems.TimeSeriesContainer(), )
-    ThermalFastStartSIIP(name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits, prime_mover, fuel, services, time_at_status, dynamic_injector, ext, time_series_container, InfrastructureSystemsInternal(), )
+function ThermalFastStartSIIP(name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits=nothing, prime_mover_type=PSY.PrimeMovers.OT, fuel=PSY.ThermalFuels.OTHER, services=PSY.Device[], time_at_status=PSY.INFINITE_TIME, dynamic_injector=nothing, ext=Dict{String, Any}(), time_series_container=InfrastructureSystems.TimeSeriesContainer(), )
+    ThermalFastStartSIIP(name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits, prime_mover_type, fuel, services, time_at_status, dynamic_injector, ext, time_series_container, InfrastructureSystemsInternal(), )
 end
 
-function ThermalFastStartSIIP(; name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits=nothing, prime_mover=PSY.PrimeMovers.OT, fuel=PSY.ThermalFuels.OTHER, services=PSY.Device[], time_at_status=PSY.INFINITE_TIME, dynamic_injector=nothing, ext=Dict{String, Any}(), time_series_container=InfrastructureSystems.TimeSeriesContainer(), internal=InfrastructureSystems.InfrastructureSystemsInternal(), )
-    ThermalFastStartSIIP(name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits, prime_mover, fuel, services, time_at_status, dynamic_injector, ext, time_series_container, internal, )
+function ThermalFastStartSIIP(; name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits=nothing, prime_mover_type=PSY.PrimeMovers.OT, fuel=PSY.ThermalFuels.OTHER, services=PSY.Device[], time_at_status=PSY.INFINITE_TIME, dynamic_injector=nothing, ext=Dict{String, Any}(), time_series_container=InfrastructureSystems.TimeSeriesContainer(), internal=InfrastructureSystems.InfrastructureSystemsInternal(), )
+    ThermalFastStartSIIP(name, available, status, bus, active_power, reactive_power, rating, active_power_limits, reactive_power_limits, ramp_limits, operation_cost, base_power, time_limits, prime_mover_type, fuel, services, time_at_status, dynamic_injector, ext, time_series_container, internal, )
 end
 
 # Constructor for demo purposes; non-functional.
@@ -104,7 +104,7 @@ function ThermalFastStartSIIP(::Nothing)
         operation_cost=ThreePartCost(nothing),
         base_power=0.0,
         time_limits=nothing,
-        prime_mover=PrimeMovers.OT,
+        prime_mover_type=PrimeMovers.OT,
         fuel=ThermalFuels.OTHER,
         services=Device[],
         time_at_status=INFINITE_TIME,
@@ -141,7 +141,7 @@ PSY.get_base_power(value::ThermalFastStartSIIP) = value.base_power
 """Get [`ThermalFastStartSIIP`](@ref) `time_limits`."""
 PSY.get_time_limits(value::ThermalFastStartSIIP) = value.time_limits
 """Get [`ThermalFastStartSIIP`](@ref) `prime_mover`."""
-PSY.get_prime_mover(value::ThermalFastStartSIIP) = value.prime_mover
+PSY.get_prime_mover_type(value::ThermalFastStartSIIP) = value.prime_mover_type
 """Get [`ThermalFastStartSIIP`](@ref) `fuel`."""
 PSY.get_fuel(value::ThermalFastStartSIIP) = value.fuel
 """Get [`ThermalFastStartSIIP`](@ref) `services`."""
@@ -184,7 +184,7 @@ PSY.set_base_power!(value::ThermalFastStartSIIP, val) = value.base_power = val
 """Set [`ThermalFastStartSIIP`](@ref) `time_limits`."""
 PSY.set_time_limits!(value::ThermalFastStartSIIP, val) = value.time_limits = val
 """Set [`ThermalFastStartSIIP`](@ref) `prime_mover`."""
-PSY.set_prime_mover!(value::ThermalFastStartSIIP, val) = value.prime_mover = val
+PSY.set_prime_mover_type!(value::ThermalFastStartSIIP, val) = value.prime_mover_type = val
 """Set [`ThermalFastStartSIIP`](@ref) `fuel`."""
 PSY.set_fuel!(value::ThermalFastStartSIIP, val) = value.fuel = val
 """Set [`ThermalFastStartSIIP`](@ref) `services`."""

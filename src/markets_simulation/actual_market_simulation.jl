@@ -76,15 +76,15 @@ function create_realized_marketdata(simulation::AgentSimulation,
         daily_cec_production = 0.0
         for gen in get_all_techs(sys_ED)
             name = PSY.get_name(gen)
-            if !(occursin("BA", string(PSY.get_prime_mover(gen)))) #!(occursin("BA", name))
+            if !(occursin("BA", string(PSY.get_prime_mover_type(gen)))) #!(occursin("BA", name))
                 energy_production = sum(capacity_factors[name][time:time + Int(24*60/get_rt_resolution(get_case(simulation)))-1]) * get_device_size(gen)
                 total_production += energy_production
                 daily_total_production += energy_production
-                if occursin("WT", string(PSY.get_prime_mover(gen))) || occursin("PVe", string(PSY.get_prime_mover(gen))) || occursin("HY", string(PSY.get_prime_mover(gen))) #occursin("WT", name) || occursin("WIND", name) || occursin("PV", name) || occursin("HY", name) || occursin("NU", name) || occursin("RE", name)
+                if occursin("WT", string(PSY.get_prime_mover_type(gen))) || occursin("PVe", string(PSY.get_prime_mover_type(gen))) || occursin("HY", string(PSY.get_prime_mover_type(gen))) #occursin("WT", name) || occursin("WIND", name) || occursin("PV", name) || occursin("HY", name) || occursin("NU", name) || occursin("RE", name)
                     total_cec_production += energy_production
                     daily_cec_production += energy_production
                 end
-                if occursin("ST", string(PSY.get_prime_mover(gen)))
+                if occursin("ST", string(PSY.get_prime_mover_type(gen)))
                     if occursin("NUCLEAR", string(PSY.get_fuel(gen))) 
                         total_cec_production += energy_production
                         daily_cec_production += energy_production
@@ -295,7 +295,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
     ordc_unavailability_method = get_ordc_unavailability_method(get_case(simulation))
 
-    construct_ordc(deepcopy(sys_UC), simulation_dir, get_investors(simulation), iteration_year, get_rep_days(simulation), ordc_curved, ordc_unavailability_method, reserve_penalty)
+    construct_ordc(deepcopy(sys_UC), simulation_dir, get_investors(simulation), iteration_year, get_rep_periods(simulation), get_rep_period_interval(simulation), ordc_curved, ordc_unavailability_method, reserve_penalty)
 
     peak_load_new = (1 + average_load_growth) * peak_load
     set_peak_load!(simulation, peak_load_new)

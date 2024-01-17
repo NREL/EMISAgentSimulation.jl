@@ -4,6 +4,8 @@ function cem(system::MarketClearingProblem{Z, T},
     jump_model_dir::String,
     resultfile::String="") where {Z, T}
 
+    include(joinpath(@__DIR__, "..", "representative_days", "chronological_clustering.jl"))
+
     # HiGHS_optimizer = JuMP.optimizer_with_attributes(HiGHS.Optimizer,
     #                                             "output_flag" => false,
     #                                             "presolve" => "on",
@@ -16,12 +18,12 @@ function cem(system::MarketClearingProblem{Z, T},
     lines = [line.name for line in system.lines] # Lines
     projects = [project.name for project in system.projects] # Projects
     invperiods = 1:length(system.inv_periods)     # Investment periods
-    opperiods = 1:T
+    ophours = 1:T
+    rep_period_interval = system.rep_period_interval
     rep_hour_weight = system.rep_hour_weight
+    chron_weights = system.chron_weights
     capital_cost_multiplier = system.capital_cost_multiplier
     carbon_tax = system.carbon_tax
-
-    end_of_day = collect(24:24:T)
 
     tech_type,                                # technology type of project
     project_type,                             # is the project of storage type or generator type
@@ -128,7 +130,7 @@ function cem(system::MarketClearingProblem{Z, T},
     # Populate markets data
     zones = system.zones
     price_cap_e = AxisArrays.AxisArray(zeros(length(zones), length(invperiods)), zones, invperiods)
-    demand_e = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
+    demand_e = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
 
     reserve_up_products = unique(keys(getproperty(system.inv_periods[p], :reserveup)) for p in invperiods)[1]
     reserve_down_products = unique(keys(getproperty(system.inv_periods[p], :reservedown)) for p in invperiods)[1]
@@ -136,8 +138,8 @@ function cem(system::MarketClearingProblem{Z, T},
 
     all_reserves = append!(append!(append!([], reserve_up_products), reserve_down_products), ordc_products)
 
-    demand_ru = Dict(product => AxisArrays.AxisArray(zeros(length(invperiods), T), invperiods, opperiods) for product in reserve_up_products)
-    demand_rd = Dict(product => AxisArrays.AxisArray(zeros(length(invperiods), T), invperiods, opperiods) for product in reserve_down_products)
+    demand_ru = Dict(product => AxisArrays.AxisArray(zeros(length(invperiods), T), invperiods, ophours) for product in reserve_up_products)
+    demand_rd = Dict(product => AxisArrays.AxisArray(zeros(length(invperiods), T), invperiods, ophours) for product in reserve_down_products)
 
     price_cap_ru = Dict(product => AxisArrays.AxisArray(zeros(length(invperiods)), invperiods) for product in reserve_up_products)
     price_cap_rd = Dict(product => AxisArrays.AxisArray(zeros(length(invperiods)), invperiods) for product in reserve_down_products)
@@ -262,7 +264,85 @@ function cem(system::MarketClearingProblem{Z, T},
         end
     end
 
+   fixed_block_size = false
+
+   block_divisions = 4
+
+    if fixed_block_size
+        if block_divisions == 1
+            start_index = 0
+        end
+        start_index = 2
+        block_size = block_divisions
+
+        @assert start_index <= block_divisions
+
+        TB, opperiods,
+        availability_agg, 
+        demand_e_agg, 
+        demand_ru_agg, 
+        demand_rd_agg, 
+        ordc_numsegments_agg, 
+        ordc_segmentsize_agg, 
+        ordc_segmentgrad_agg, 
+        ordc_pricepoints_agg,
+        rep_block_weight,
+        time_blocks = aggregate_timeseries(
+            block_size,
+            start_index,
+            T,
+            invperiods,
+            generator_projects, availability,
+            zones, demand_e, 
+            reserve_up_products, demand_ru,
+            reserve_down_products, demand_rd,
+            ordc_products, ordc_numsegments, ordc_segmentsize, ordc_segmentgrad, ordc_price_points,
+            rep_hour_weight
+            )
+
+        block_size_vec = block_size .* ones(TB)
+    else
+
+        K = Int(T / block_divisions)
+
+        time_blocks = generate_variable_blocks(
+            K,
+            T, ophours,
+            rep_period_interval, 
+            zones, demand_e,
+            generator_projects, tech_type, availability, max_gen)
+
+        TB, opperiods,
+        availability_agg, 
+        demand_e_agg, 
+        demand_ru_agg, 
+        demand_rd_agg, 
+        ordc_numsegments_agg, 
+        ordc_segmentsize_agg, 
+        ordc_segmentgrad_agg, 
+        ordc_pricepoints_agg,
+        rep_block_weight = aggregate_timeseries(
+            time_blocks,
+            invperiods,
+            generator_projects, availability,
+            zones, demand_e, 
+            reserve_up_products, demand_ru,
+            reserve_down_products, demand_rd,
+            ordc_products, ordc_numsegments, ordc_segmentsize, ordc_segmentgrad, ordc_price_points,
+            rep_hour_weight
+            )
+
+        block_size_vec = [length(i) for i in time_blocks]
+    end
+    
+    interval_blocks = Int(rep_period_interval / block_divisions)
+
+    end_of_period = collect(interval_blocks:interval_blocks:Int(T / block_divisions))
+
+    opperiod_map = [find_index(i, time_blocks) for i in ophours]
+    
     m = JuMP.Model(solver)
+
     # m = JuMP.Model(HiGHS_optimizer)
     JuMP.set_optimizer_attribute(m, "PRESOLVE", 1)
     # INVESTMENT DECISION VARIABLES
@@ -274,7 +354,7 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@variable(m, temp == 0) # For avoiding add_to_expression errors
 
     # ORDC DEMAND VARIABLE
-    JuMP.@variable(m, d_ordc[rp in ordc_products, p in invperiods, t in opperiods, s in 1:ordc_numsegments[rp][p, t]] >= 0)
+    JuMP.@variable(m, d_ordc[rp in ordc_products, p in invperiods, t in opperiods, s in 1:ordc_numsegments_agg[rp][p, t]] >= 0)
 
     # CAPACITY MARKET ELASTIC DEMAND
     JuMP.@variable(m, d_cap[p in invperiods, s in 1:cap_numsegments[p]] >= 0)
@@ -285,15 +365,15 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@variable(m, p_in[g in storage_projects, p in invperiods, t in opperiods] >= 0) # Storage charging [MW]
     JuMP.@variable(m, p_ru[g in projects, rp in reserve_up_products, p in invperiods, t in opperiods] >= 0) # reserve up provided [MW]
     JuMP.@variable(m, p_rd[g in projects, rp in reserve_down_products,  p in invperiods, t in opperiods] >= 0) # reserve down provided [MW]
-    JuMP.@variable(m, p_ordc[g in projects, rp in ordc_products, p in invperiods, t in opperiods] >= 0) # synchronous reserve provided [MW]
+    JuMP.@variable(m, p_ordc[g in projects, rp in ordc_products, p in invperiods, t in opperiods] >= 0) # ORDC reserve provided [MW]
 
     JuMP.@variable(m, p_in_ru[g in storage_projects, rp in reserve_up_products, p in invperiods, t in opperiods] >= 0) # reserve up provided by storage charging [MW]
     JuMP.@variable(m, p_in_rd[g in storage_projects, rp in reserve_down_products, p in invperiods, t in opperiods] >= 0) # reserve down provided by storage charging [MW]
-    JuMP.@variable(m, p_in_ordc[g in storage_projects, rp in ordc_products, p in invperiods, t in opperiods] >= 0) # synchronous reserve provided by storage charging [MW]
+    JuMP.@variable(m, p_in_ordc[g in storage_projects, rp in ordc_products, p in invperiods, t in opperiods] >= 0) # ORDC reserve provided by storage charging [MW]
 
     JuMP.@variable(m, p_out_ru[g in storage_projects, rp in reserve_up_products, p in invperiods, t in opperiods] >= 0) # reserve up provided by storage discharging [MW]
     JuMP.@variable(m, p_out_rd[g in storage_projects, rp in reserve_down_products, p in invperiods, t in opperiods] >= 0) # reserve down provided by storage discharging [MW]
-    JuMP.@variable(m, p_out_ordc[g in storage_projects, rp in ordc_products, p in invperiods, t in opperiods] >= 0) # synchronous reserve provided by storage discharging [MW]
+    JuMP.@variable(m, p_out_ordc[g in storage_projects, rp in ordc_products, p in invperiods, t in opperiods] >= 0) # ORDC reserve provided by storage discharging [MW]
 
     JuMP.@variable(m, p_inertia[g in projects, p in invperiods, t in opperiods] >= 0) # inertia provided by project [MW-s]
     JuMP.@variable(m, p_out_inertia[g in storage_projects, p in invperiods, t in opperiods] >= 0) # inertia provided by storage project discharging [MW-s]
@@ -324,7 +404,7 @@ function cem(system::MarketClearingProblem{Z, T},
 
     # Storage level evolution
     JuMP.@expression(m, storage_level[g in storage_projects, p in invperiods, t in opperiods],
-                    p_in[g, p, t] * efficiency_in[g] - p_e[g, p, t] / efficiency_out[g])
+                    (p_in[g, p, t] * efficiency_in[g] - p_e[g, p, t] / efficiency_out[g]) * block_size_vec[t])
 
     for g in projects
 
@@ -351,7 +431,7 @@ function cem(system::MarketClearingProblem{Z, T},
                 end
             if in(g, storage_projects)
                 for t in opperiods
-                    if t == 1 || in(t, end_of_day + ones(length(end_of_day)))
+                    if t == 1 || in(t, end_of_period + ones(length(end_of_period)))
                         JuMP.add_to_expression!(storage_level[g, p, t], init_storage[g] * max_storage[g] * unitsdispatchable[g, p])
                     else
                         JuMP.add_to_expression!(storage_level[g, p, t], storage_level[g, p, t - 1])
@@ -388,7 +468,7 @@ function cem(system::MarketClearingProblem{Z, T},
                               + carbon_emissions[g, p, t] * carbon_tax[p]
                               + sum(p_ru[g, rp, p, t] * marginal_reserve_cost[g][rp] for rp in reserve_up_products)
                               + sum(p_rd[g, rp, p, t] * marginal_reserve_cost[g][rp] for rp in reserve_down_products)
-                              + sum(p_ordc[g, rp, p, t] * marginal_reserve_cost[g][rp] for rp in ordc_products)) * rep_hour_weight[t] for t in opperiods))
+                              + sum(p_ordc[g, rp, p, t] * marginal_reserve_cost[g][rp] for rp in ordc_products)) * rep_block_weight[t] for t in opperiods))
 
     # OBJECTIVE FUNCTION
 
@@ -399,9 +479,9 @@ function cem(system::MarketClearingProblem{Z, T},
     + 1/2 * sum(sum(cap_segmentgrad[p][s] * d_cap[p, s]^2 for s in 1:cap_numsegments[p]) * social_npv_array[p] for p in invperiods)
 
     # ORDC welfare
-    + sum(sum(d_ordc[rp, p, t, s] * rep_hour_weight[t] * ordc_price_points[rp][p, t][s] for rp in ordc_products, t in opperiods, s in 1:ordc_numsegments[rp][p, t])
+    + sum(sum(d_ordc[rp, p, t, s] * rep_block_weight[t] * ordc_pricepoints_agg[rp][p, t][s] for rp in ordc_products, t in opperiods, s in 1:ordc_numsegments_agg[rp][p, t])
     * social_npv_array[p] for p in invperiods)
-    + 1/2 * sum(sum(ordc_segmentgrad[rp][p, t][s] * (d_ordc[rp, p, t, s])^2 * rep_hour_weight[t] for rp in ordc_products, t in opperiods, s in 1:ordc_numsegments[rp][p, t])
+    + 1/2 * sum(sum(ordc_segmentgrad_agg[rp][p, t][s] * (d_ordc[rp, p, t, s])^2 * rep_block_weight[t] for rp in ordc_products, t in opperiods, s in 1:ordc_numsegments_agg[rp][p, t])
     * social_npv_array[p] for p in invperiods)
 
     # REC market Alternative Compliance Payment
@@ -418,16 +498,16 @@ function cem(system::MarketClearingProblem{Z, T},
 
     +  (# weigh operations according to actual duration
     # operations market shortfall penalties
-             - sum(v_e[z, p, t] * price_cap_e[z, p] * rep_hour_weight[t] * social_npv_array[p]
+             - sum(v_e[z, p, t] * price_cap_e[z, p] * rep_block_weight[t] * social_npv_array[p]
                 for z in zones, p in invperiods, t in opperiods)
 
-             - sum(v_ru[rp, p, t] * price_cap_ru[rp][p] * rep_hour_weight[t] * social_npv_array[p]
+             - sum(v_ru[rp, p, t] * price_cap_ru[rp][p] * rep_block_weight[t] * social_npv_array[p]
                 for rp in reserve_up_products, p in invperiods, t in opperiods)
 
-             - sum(v_rd[rp, p, t] * price_cap_rd[rp][p] * rep_hour_weight[t] * social_npv_array[p]
+             - sum(v_rd[rp, p, t] * price_cap_rd[rp][p] * rep_block_weight[t] * social_npv_array[p]
                 for rp in reserve_down_products, p in invperiods, t in opperiods)
 
-             - sum(v_inertia[p, t] * price_cap_inertia[p] * rep_hour_weight[t] * social_npv_array[p]
+             - sum(v_inertia[p, t] * price_cap_inertia[p] * rep_block_weight[t] * social_npv_array[p]
                 for p in invperiods, t in opperiods))
 
         )
@@ -480,12 +560,12 @@ function cem(system::MarketClearingProblem{Z, T},
 
                     if synchronous_inertia[g]
                         JuMP.@constraint(m, p_e[g, p, t] + sum(p_ru[g, rp, p, t] for rp in reserve_up_products) + sum(p_ordc[g, rp, p, t] for rp in ordc_products) <=
-                                        unitsdispatchable[g, p] * max_gen[g] * availability[g][p, t]) # Maximum dispatch
+                                        unitsdispatchable[g, p] * max_gen[g] * availability_agg[g][p, t]) # Maximum dispatch
 
                         JuMP.@constraint(m, p_inertia[g, p, t] == p_e[g, p, t]) # Inertia provision
                     else
                         JuMP.@constraint(m, p_e[g, p, t] + sum(p_ru[g, rp, p, t] for rp in reserve_up_products) + sum(p_ordc[g, rp, p, t] for rp in ordc_products) + p_inertia[g, p, t] <=
-                                        unitsdispatchable[g, p] * max_gen[g] * availability[g][p, t]) # Maximum dispatch
+                                        unitsdispatchable[g, p] * max_gen[g] * availability_agg[g][p, t]) # Maximum dispatch
                     end
 
                     for rp in reserve_up_products
@@ -526,14 +606,14 @@ function cem(system::MarketClearingProblem{Z, T},
 
                     JuMP.@constraint(m, p_inertia[g, p, t] <= p_out_inertia[g, p, t] + p_in_inertia[g, p, t]) # Total storage inertia
 
+                    JuMP.@constraint(m, p_out_inertia[g, p, t] * inertia_constant[g] <= storage_level[g, p, t]) # Minimum storage level
+                    
                     JuMP.@constraint(m, storage_level[g, p, t] >= unitsdispatchable[g, p] * min_storage[g]) # Minimum storage level
                     JuMP.@constraint(m, storage_level[g, p, t] <= unitsdispatchable[g, p] * max_storage[g]) # Maximum storage level
 
-                    JuMP.@constraint(m, p_out_inertia[g, p, t] * inertia_constant[g] <= storage_level[g, p, t]) # Minimum storage level
-
-                    #if in(t, end_of_day)
-                    #    JuMP.@constraint(m, storage_level[g, p, t] == init_storage[g] * max_storage[g] * unitsdispatchable[g, p])
-                    #end
+                    if in(t, end_of_period)
+                        JuMP.@constraint(m, storage_level[g, p, t] == init_storage[g] * max_storage[g] * unitsdispatchable[g, p])
+                    end
                 end
             end
 
@@ -544,14 +624,53 @@ function cem(system::MarketClearingProblem{Z, T},
             end
 
             for rp in ordc_products
-                for s in 1:ordc_numsegments[rp][p, t]
-                    JuMP.@constraint(m, d_ordc[rp, p, t, s] <= ordc_segmentsize[rp][p, t][s]) #ORDC segment limit
+                for s in 1:ordc_numsegments_agg[rp][p, t]
+                    JuMP.@constraint(m, d_ordc[rp, p, t, s] <= ordc_segmentsize_agg[rp][p, t][s]) #ORDC segment limit
                 end
             end
         end
 
         if rec_binding[p]
             JuMP.@constraint(m, v_rec[p] == 0)
+        end
+    end
+
+    if isempty(chron_weights)
+        println("no checkpoints")
+        #= for g in storage_projects
+            println(g)
+            println(max_gen[g])
+            println(max_storage[g])
+            for p in invperiods
+                for t in opperiods
+
+                    #= if in(t, end_of_day)
+                        JuMP.@constraint(m, storage_level[g, p, t] == init_storage[g] * max_storage[g] * unitsdispatchable[g, p])
+                    end =#
+                end
+            end
+        end =#
+    else
+        num_chron_checkpoints = size(chron_weights, 1)
+        println("number of chronological checkpoints: $(num_chron_checkpoints)")
+
+        JuMP.@expression(m, chron_storage_level[g in storage_projects, p in invperiods, c in 1:num_chron_checkpoints], 
+                        sum((p_in[g, p, t] * efficiency_in[g] - p_e[g, p, t] / efficiency_out[g]) * chron_weights[c, t] * block_size_vec[t] for t in opperiods))
+
+        for g in storage_projects
+            for p in invperiods
+                for c in 1:num_chron_checkpoints
+                    if c == 1
+                        JuMP.add_to_expression!(chron_storage_level[g, p, 1], init_storage[g] * max_storage[g] * unitsdispatchable[g, p])
+                    else
+                        JuMP.add_to_expression!(chron_storage_level[g, p, c], chron_storage_level[g, p, c - 1])
+                        #JuMP.add_to_expression!(chron_storage_level[g, p, c], init_storage[g] * max_storage[g] * unitsdispatchable[g, p])
+                    end
+
+                    JuMP.@constraint(m, chron_storage_level[g, p, c] >= unitsdispatchable[g, p] * min_storage[g]) # Minimum storage level
+                    JuMP.@constraint(m, chron_storage_level[g, p, c] <= unitsdispatchable[g, p] * max_storage[g]) # Maximum storage level
+                end
+            end
         end
     end
 
@@ -562,19 +681,19 @@ function cem(system::MarketClearingProblem{Z, T},
         sum(p_e[g ,p, t] for g in zone_projects[z])
         + sum(flow[l, p, t] for l in lines_to_zone[z])
         - sum(flow[l, p, t] for l in lines_from_zone[z])
-        + v_e[z, p, t] >= demand_e[z, p, t] + sum(p_in[g, p, t] for g in zone_storage[z]))
+        + v_e[z, p, t] >= demand_e_agg[z, p, t] + sum(p_in[g, p, t] for g in zone_storage[z]))
 
     # reserve up markets
     JuMP.@constraint(m, reserve_up_market[rp in reserve_up_products, p in invperiods, t in opperiods], # reserve up balance
-        sum(p_ru[g, rp, p, t] for g in reserve_up_projects[rp]) + v_ru[rp, p, t] >= demand_ru[rp][p, t])
+        sum(p_ru[g, rp, p, t] for g in reserve_up_projects[rp]) + v_ru[rp, p, t] >= demand_ru_agg[rp][p, t])
 
     # reserve down markets
     JuMP.@constraint(m, reserve_down_market[rp in reserve_down_products, p in invperiods, t in opperiods], # reserve down balance
-        sum(p_rd[g, rp, p, t] for g in reserve_down_projects[rp]) + v_rd[rp, p, t]  >= demand_rd[rp][p, t])
+        sum(p_rd[g, rp, p, t] for g in reserve_down_projects[rp]) + v_rd[rp, p, t]  >= demand_rd_agg[rp][p, t])
 
     # ordc markets
     JuMP.@constraint(m, ordc_market[rp in ordc_products, p in invperiods, t in opperiods], # ordc market balance
-        sum(p_ordc[g, rp, p, t] for g in ordc_projects[rp]) >= sum(d_ordc[rp, p, t, s] for s in 1:ordc_numsegments[rp][p, t]))
+        sum(p_ordc[g, rp, p, t] for g in ordc_projects[rp]) >= sum(d_ordc[rp, p, t, s] for s in 1:ordc_numsegments_agg[rp][p, t]))
 
     # Capacity market
     JuMP.@constraint(m, capacity_market[p in invperiods],
@@ -582,8 +701,8 @@ function cem(system::MarketClearingProblem{Z, T},
 
     # REC market
     JuMP.@constraint(m, rps_compliance[p in invperiods],
-        sum(p_e[g, p, t] * rec_correction[g] * rep_hour_weight[t] for g in rps_compliant_projects, t in opperiods) + v_rec[p]
-        >= (sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods)) * rec_requirement[p])
+        sum(p_e[g, p, t] * rec_correction[g] * rep_block_weight[t] for g in rps_compliant_projects, t in opperiods) + v_rec[p]
+        >= (sum(demand_e_agg[z, p, t] * rep_block_weight[t] for z in zones, t in opperiods)) * rec_requirement[p])
 
     # Inertia market
     JuMP.@constraint(m, inertia_market[p in invperiods, t in opperiods],
@@ -597,6 +716,10 @@ function cem(system::MarketClearingProblem{Z, T},
     #     end
     # end
 
+    #= filename = "jump_model.txt"
+    open(filename, "w") do file
+        write(file, string(m))
+    end =#
 
     println("Price Projection:")
     @time JuMP.optimize!(m)
@@ -621,8 +744,8 @@ function cem(system::MarketClearingProblem{Z, T},
     REC_price = JuMP.dual.(rps_compliance)
     inertia_price = JuMP.dual.(inertia_market)
 
-    capacity_factor = Dict([g => zeros(length(invperiods), length(opperiods)) for g in projects])
-    total_utilization = Dict([g => zeros(length(invperiods), length(opperiods)) for g in projects])
+    capacity_factor = Dict([g => zeros(length(invperiods), length(ophours)) for g in projects])
+    total_utilization = Dict([g => zeros(length(invperiods), length(ophours)) for g in projects])
     capacity_accepted_perc = Dict([g => zeros(length(invperiods)) for g in projects])
 
     # Number of new options invested in the first year of the CEM.
@@ -638,19 +761,20 @@ function cem(system::MarketClearingProblem{Z, T},
             else
                 capacity_accepted_perc[g][p] = value.(c[g, p]) / value.(unitsdispatchable[g, p])
             end
-            for t in opperiods
-                if (value.(unitsdispatchable[g, p]) < 0.0001) || (value.(p_e[g, p, t]) < 0.0)
+            for t in ophours
+                tb = opperiod_map[t]
+                if (value.(unitsdispatchable[g, p]) < 0.0001) || (value.(p_e[g, p, tb]) < 0.0)
                     capacity_factor[g][p, t] = 0.0
                     total_utilization[g][p, t] = 0.0
                 else
-                    capacity_factor[g][p, t] = max(0.0, value.(p_e[g, p, t]) /(value.(unitsdispatchable[g, p]) * max_gen[g]))
-                    total_utilization[g][p, t] = max(0.0, value.(p_e[g, p, t]))
+                    capacity_factor[g][p, t] = max(0.0, value.(p_e[g, p, tb]) /(value.(unitsdispatchable[g, p]) * max_gen[g]))
+                    total_utilization[g][p, t] = max(0.0, value.(p_e[g, p, tb]))
                     if length(reserve_up_products) > 0
-                        total_utilization[g][p, t] +=  sum(value.(p_ru[g, rp, p, t]) for rp in reserve_up_products)
+                        total_utilization[g][p, t] +=  sum(value.(p_ru[g, rp, p, tb]) for rp in reserve_up_products)
                     end
 
                     if length(ordc_products) > 0
-                        total_utilization[g][p, t] +=  sum(value.(p_ordc[g, rp, p, t]) for rp in ordc_products)
+                        total_utilization[g][p, t] +=  sum(value.(p_ordc[g, rp, p, tb]) for rp in ordc_products)
                     end
 
                     total_utilization[g][p, t] = total_utilization[g][p, t] / (value.(unitsdispatchable[g, p]) * max_gen[g])
@@ -672,64 +796,71 @@ function cem(system::MarketClearingProblem{Z, T},
         end
     end
 
+    for (key, value) in new_options_by_type
+        if value < ϵ
+            new_options_by_type[key] = 0.0
+        end
+    end
+
     new_options_by_type = Dict(key => ceil(value) for (key, value) in new_options_by_type)
 
     nominal_capacity_price = AxisArrays.AxisArray(zeros(length(capacity_price)), invperiods)
     nominal_REC_price = AxisArrays.AxisArray(zeros(length(REC_price)), invperiods)
-    nominal_energy_price = AxisArrays.AxisArray(zeros(size(energy_price)), zones, invperiods, opperiods)
-    nominal_reserve_price = Dict(product => zeros(length(invperiods), length(opperiods)) for product in all_reserves)
-    nominal_inertia_price = AxisArrays.AxisArray(zeros(size(inertia_price)), invperiods, opperiods)
+    nominal_energy_price = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
+    nominal_reserve_price = Dict(product => zeros(length(invperiods), length(ophours)) for product in all_reserves)
+    nominal_inertia_price = AxisArrays.AxisArray(zeros(length(invperiods), T), invperiods, ophours)
     REC_slack = AxisArrays.AxisArray(zeros(length(REC_price)), invperiods)
     REC_supply = AxisArrays.AxisArray(zeros(length(REC_price)), invperiods)
     REC_demand = AxisArrays.AxisArray(zeros(length(REC_price)), invperiods)
-    # Energy_supply = AxisArrays.AxisArray(zeros(size(energy_price)), zones, invperiods, opperiods)
-    # Energy_demand = AxisArrays.AxisArray(zeros(size(energy_price)), zones, invperiods, opperiods)
+    # Energy_supply = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
+    # Energy_demand = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
     investment = AxisArrays.AxisArray(zeros(size(n)), projects, invperiods)
     retirement = AxisArrays.AxisArray(zeros(size(r)), projects, invperiods)
 
-    p_e_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
-    in_flow_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
-    out_flow_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
-    v_e_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
-    p_in_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
-    p_e_storage_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, opperiods)
+    p_e_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
+    in_flow_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
+    out_flow_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
+    v_e_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
+    p_in_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
+    p_e_storage_print = AxisArrays.AxisArray(zeros(length(zones), length(invperiods), T), zones, invperiods, ophours)
 
-    p_e_detail = AxisArrays.AxisArray(zeros(size(p_e)), projects, invperiods, opperiods)
+    p_e_detail = AxisArrays.AxisArray(zeros(length(projects), length(invperiods), T), projects, invperiods, ophours)
     
-    p_in_ru_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
-    p_in_ordc_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
-    p_in_inertia_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
-    p_in_rd_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
-    p_out_ru_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
-    p_out_ordc_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
-    p_out_inertia_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
-    p_out_rd_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, opperiods)
+    p_in_ru_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
+    p_in_ordc_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
+    p_in_inertia_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
+    p_in_rd_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
+    p_out_ru_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
+    p_out_ordc_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
+    p_out_inertia_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
+    p_out_rd_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
 
 
     for p in invperiods
         nominal_capacity_price[p] = capacity_price[p] / social_npv_array[p]
         nominal_REC_price[p] = REC_price[p] / social_npv_array[p]
         REC_slack[p] = value.(v_rec[p])
-        REC_supply[p] = sum(value.(p_e[g, p, t]) * rec_correction[g] * rep_hour_weight[t] for g in rps_compliant_projects, t in opperiods) + value.(v_rec[p])
-        REC_demand[p] = (sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods)) * rec_requirement[p]
-        for t in opperiods
-            nominal_energy_price[:, p, t] = (energy_price[:, p, t] / rep_hour_weight[t]) / social_npv_array[p]
+        REC_supply[p] = sum(value.(p_e[g, p, t]) * rec_correction[g] * rep_block_weight[t] for g in rps_compliant_projects, t in opperiods) + value.(v_rec[p])
+        REC_demand[p] = (sum(demand_e_agg[z, p, t] * rep_block_weight[t] for z in zones, t in opperiods)) * rec_requirement[p]
+        for t in ophours
+            tb = opperiod_map[t]
+            nominal_energy_price[:, p, t] = (energy_price[:, p, tb] / (rep_block_weight[tb])) / social_npv_array[p]
 
             for product in all_reserves
                 if product in reserve_up_products
-                    nominal_reserve_price[product][p, t] = (reserve_up_price[product, p, t] / rep_hour_weight[t]) / social_npv_array[p]
+                    nominal_reserve_price[product][p, t] = (reserve_up_price[product, p, tb] / (rep_block_weight[tb])) / social_npv_array[p]
                 elseif product in reserve_down_products
-                    nominal_reserve_price[product][p, t] = (reserve_down_price[product, p, t] / rep_hour_weight[t]) / social_npv_array[p]
+                    nominal_reserve_price[product][p, t] = (reserve_down_price[product, p, tb] / (rep_block_weight[tb])) / social_npv_array[p]
                 elseif product in ordc_products
-                    nominal_reserve_price[product][p, t] = (ordc_price[product, p, t] / rep_hour_weight[t]) / social_npv_array[p]
+                    nominal_reserve_price[product][p, t] = (ordc_price[product, p, tb] / (rep_block_weight[tb])) / social_npv_array[p]
                 end
             end
 
             for g in projects
-                p_e_detail[g, p, t] = value.(p_e[g, p, t])
+                p_e_detail[g, p, t] = value.(p_e[g, p, tb])
             end
 
-            nominal_inertia_price[p, t] = (inertia_price[p, t] / rep_hour_weight[t]) / social_npv_array[p]
+            nominal_inertia_price[p, t] = (inertia_price[p, tb] / (rep_block_weight[tb])) / social_npv_array[p]
 
         end
         for g in projects
@@ -738,8 +869,7 @@ function cem(system::MarketClearingProblem{Z, T},
         end
     end
 
-    #=
-    for p in invperiods
+    #= for p in invperiods
 
         println(p)
         println("Energy")
@@ -756,53 +886,55 @@ function cem(system::MarketClearingProblem{Z, T},
 
 
         println("Total Demand")
-        println(sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods))
+        println(sum(demand_e_agg[z, p, t] * rep_block_weight[t] for z in zones, t in opperiods))
 
         println("Total Generation")
-        println(sum(value.(p_e[g, p, t]) * rep_hour_weight[t] for g in generator_projects, t in opperiods))
+        println(sum(value.(p_e[g, p, t]) * rep_block_weight[t] for g in generator_projects, t in opperiods))
 
         println("Total Clean Generation")
-        println(sum(value.(p_e[g, p, t]) * rep_hour_weight[t] for g in rps_compliant_projects, t in opperiods))
+        println(sum(value.(p_e[g, p, t]) * rep_block_weight[t] for g in rps_compliant_projects, t in opperiods))
 
         println("RPS Target")
         println(rec_requirement[p])
 
         println("RPS Achieved")
-        println(sum(value.(p_e[g, p, t]) * rep_hour_weight[t] for g in rps_compliant_projects, t in opperiods) / (sum(demand_e[z, p, t] * rep_hour_weight[t] for z in zones, t in opperiods)))
+        println(sum(value.(p_e[g, p, t]) * rep_block_weight[t] for g in rps_compliant_projects, t in opperiods) / (sum(demand_e_agg[z, p, t] * rep_block_weight[t] for z in zones, t in opperiods)))
 
-    end
-    =#
+    end =#
+
     println(nominal_capacity_price)
     println(nominal_REC_price)
-    println(new_options)
+    println(new_options_by_type)
 
     for z in zones
         for p in invperiods
-            for t in opperiods
+            for t in ophours
+                tb = opperiod_map[t]
                 if nominal_energy_price[z, p, t] <= 1e-5
                     nominal_energy_price[z, p, t] = 1e-5 # replace zeros with 1e-5, to avoid no energy production by renewables when price is 0.
                 end
-                p_e_print[z, p, t] = !isempty(zone_projects[z]) ? sum(value.(p_e[g ,p, t]) for g in zone_projects[z]) : 0.0
-                in_flow_print[z, p, t] = !isempty(lines_to_zone[z]) ? sum(value.(flow[l, p, t]) for l in lines_to_zone[z]) : 0.0
-                out_flow_print[z, p, t] = !isempty(lines_from_zone[z]) ? sum(value.(flow[l, p, t]) for l in lines_from_zone[z]) : 0.0
-                v_e_print[z, p, t] = value.(v_e[z, p, t])
-                p_in_print[z, p, t] = !isempty(zone_storage[z]) ? sum(value.(p_in[g, p, t]) for g in zone_storage[z]) : 0.0
-                p_e_storage_print[z, p, t] = !isempty(zone_storage[z]) ? sum(value.(p_e[g, p, t]) for g in zone_storage[z]) : 0.0
+                p_e_print[z, p, t] = !isempty(zone_projects[z]) ? sum(value.(p_e[g ,p, tb]) for g in zone_projects[z]) : 0.0
+                in_flow_print[z, p, t] = !isempty(lines_to_zone[z]) ? sum(value.(flow[l, p, tb]) for l in lines_to_zone[z]) : 0.0
+                out_flow_print[z, p, t] = !isempty(lines_from_zone[z]) ? sum(value.(flow[l, p, tb]) for l in lines_from_zone[z]) : 0.0
+                v_e_print[z, p, t] = value.(v_e[z, p, tb])
+                p_in_print[z, p, t] = !isempty(zone_storage[z]) ? sum(value.(p_in[g, p, tb]) for g in zone_storage[z]) : 0.0
+                p_e_storage_print[z, p, t] = !isempty(zone_storage[z]) ? sum(value.(p_e[g, p, tb]) for g in zone_storage[z]) : 0.0
             end
         end
     end
 
     for p in invperiods
-        for t in opperiods
+        for t in ophours
+            tb = opperiod_map[t]
             for g in storage_projects
-                p_in_inertia_detail[g, p, t] = value.(p_in_inertia[g, p, t])
-                p_out_inertia_detail[g, p, t] = value.(p_out_inertia[g, p, t])
-                p_in_ru_detail[g, p, t] = sum(value.(p_in_ru[g, rp, p, t]) for rp in reserve_up_products)
-                p_out_ru_detail[g, p, t] = sum(value.(p_out_ru[g, rp, p, t]) for rp in reserve_up_products)
-                p_in_rd_detail[g, p, t] = sum(value.(p_in_rd[g, rp, p, t]) for rp in reserve_down_products)
-                p_out_rd_detail[g, p, t] = sum(value.(p_out_rd[g, rp, p, t]) for rp in reserve_down_products)
-                p_in_ordc_detail[g, p, t] = sum(value.(p_in_ordc[g, rp, p, t]) for rp in ordc_products)
-                p_out_ordc_detail[g, p, t] = sum(value.(p_out_ordc[g, rp, p, t]) for rp in ordc_products)
+                p_in_inertia_detail[g, p, t] = value.(p_in_inertia[g, p, tb])
+                p_out_inertia_detail[g, p, t] = value.(p_out_inertia[g, p, tb])
+                p_in_ru_detail[g, p, t] = sum(value.(p_in_ru[g, rp, p, tb]) for rp in reserve_up_products)
+                p_out_ru_detail[g, p, t] = sum(value.(p_out_ru[g, rp, p, tb]) for rp in reserve_up_products)
+                p_in_rd_detail[g, p, t] = sum(value.(p_in_rd[g, rp, p, tb]) for rp in reserve_down_products)
+                p_out_rd_detail[g, p, t] = sum(value.(p_out_rd[g, rp, p, tb]) for rp in reserve_down_products)
+                p_in_ordc_detail[g, p, t] = sum(value.(p_in_ordc[g, rp, p, tb]) for rp in ordc_products)
+                p_out_ordc_detail[g, p, t] = sum(value.(p_out_ordc[g, rp, p, tb]) for rp in ordc_products)
             end
         end
     end

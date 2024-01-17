@@ -21,7 +21,7 @@ function adjust_reserve_voll!(sys::PSY.System,
         bus = find_zonal_bus(zone, sys)
         slack_coefficients = [PSI.SystemBalanceSlackUp, PSI.SystemBalanceSlackDown]
         for c in slack_coefficients
-            slack_key = PSI.VariableKey{c, PSY.Bus}("")
+            slack_key = PSI.VariableKey{c, PSY.ACBus}("")
             index = findall(x -> x == PSY.get_number(bus), variables[slack_key].axes[1])[1]
             slack_variables = variables[slack_key].data[index, :]
             delta_cost = energy_voll_cost[zone] * base_power - default_balance_slack_cost
@@ -361,13 +361,13 @@ function create_uc_template(inertia_product)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
-        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, PSI.HydroCommitmentRunOfRiver)
-        PSI.set_device_model!(template, PSY.HydroDispatch, PSI.HydroCommitmentRunOfRiver) # TODO: check which hydro device we have
-        PSI.set_device_model!(template, PSY.GenericBattery, PSI.BatteryAncillaryServices)
+        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, HSI.HydroCommitmentRunOfRiver)
+        PSI.set_device_model!(template, PSY.HydroDispatch, HSI.HydroCommitmentRunOfRiver) # TODO: check which hydro device we have
+        PSI.set_device_model!(template, PSY.GenericBattery, SSI.StorageDispatchWithReserves)
         PSI.set_device_model!(template, PSY.Line, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.Transformer2W, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
-        PSI.set_device_model!(template, PSY.HVDCLine, PSI.HVDCLossless)
+        PSI.set_device_model!(template, PSY.TwoTerminalHVDCLine, PSI.HVDCTwoTerminalLossless)
         PSI.set_service_model!(
             template,
             PSI.ServiceModel(
@@ -431,13 +431,13 @@ function create_uc_template(inertia_product)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
-        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, PSI.HydroCommitmentRunOfRiver)
-        PSI.set_device_model!(template, PSY.HydroDispatch, PSI.HydroCommitmentRunOfRiver) # TODO: check which hydro device we have
-        PSI.set_device_model!(template, PSY.GenericBattery, PSI.BatteryAncillaryServices)
+        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, HSI.HydroCommitmentRunOfRiver)
+        PSI.set_device_model!(template, PSY.HydroDispatch, HSI.HydroCommitmentRunOfRiver) # TODO: check which hydro device we have
+        PSI.set_device_model!(template, PSY.GenericBattery, SSI.StorageDispatchWithReserves)
         PSI.set_device_model!(template, PSY.Line, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.Transformer2W, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
-        PSI.set_device_model!(template, PSY.HVDCLine, PSI.HVDCLossless)
+        PSI.set_device_model!(template, PSY.TwoTerminalHVDCLine, PSI.HVDCTwoTerminalLossless)
         PSI.set_service_model!(
             template,
             PSI.ServiceModel(
@@ -503,13 +503,13 @@ function create_ed_template(inertia_product)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
-        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, PSI.HydroDispatchRunOfRiver)
-        PSI.set_device_model!(template, PSY.HydroDispatch, PSI.HydroDispatchRunOfRiver) # TODO: check which hydro device we have
-        PSI.set_device_model!(template, PSY.GenericBattery, PSI.BatteryAncillaryServices)
+        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, HSI.HydroDispatchRunOfRiver)
+        PSI.set_device_model!(template, PSY.HydroDispatch, HSI.HydroDispatchRunOfRiver) # TODO: check which hydro device we have
+        PSI.set_device_model!(template, PSY.GenericBattery, SSI.StorageDispatchWithReserves)
         PSI.set_device_model!(template, PSY.Line, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.Transformer2W, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
-        PSI.set_device_model!(template, PSY.HVDCLine, PSI.HVDCLossless)
+        PSI.set_device_model!(template, PSY.TwoTerminalHVDCLine, PSI.HVDCTwoTerminalLossless)
         PSI.set_service_model!(
             template,
             PSI.ServiceModel(
@@ -564,13 +564,13 @@ function create_ed_template(inertia_product)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
-        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, PSI.HydroDispatchRunOfRiver)
-        PSI.set_device_model!(template, PSY.HydroDispatch, PSI.HydroDispatchRunOfRiver) # TODO: check which hydro device we have
-        PSI.set_device_model!(template, PSY.GenericBattery, PSI.BatteryAncillaryServices)
+        PSI.set_device_model!(template, PSY.HydroEnergyReservoir, HSI.HydroDispatchRunOfRiver)
+        PSI.set_device_model!(template, PSY.HydroDispatch, HSI.HydroDispatchRunOfRiver) # TODO: check which hydro device we have
+        PSI.set_device_model!(template, PSY.GenericBattery, SSI.StorageDispatchWithReserves)
         PSI.set_device_model!(template, PSY.Line, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.Transformer2W, PSI.StaticBranch)
         PSI.set_device_model!(template, PSY.TapTransformer, PSI.StaticBranch)
-        PSI.set_device_model!(template, PSY.HVDCLine, PSI.HVDCLossless)
+        PSI.set_device_model!(template, PSY.TwoTerminalHVDCLine, PSI.HVDCTwoTerminalLossless)
         PSI.set_service_model!(
             template,
             PSI.ServiceModel(
@@ -700,7 +700,7 @@ function create_simulation( sys_UC::PSY.System,
                 #     source = PSI.OnVariable,
                 #     affected_values = [PSI.ActivePowerVariable],
                 # ),
-                PSI.EnergyTargetFeedforward(
+                SSI.EnergyTargetFeedforward(
                     component_type = PSY.GenericBattery,
                     source = PSI.EnergyVariable,
                     target_period = 1,
@@ -722,7 +722,7 @@ function create_simulation( sys_UC::PSY.System,
                 #     source = PSI.OnVariable,
                 #     affected_values = [PSI.ActivePowerVariable],
                 # ),
-                PSI.EnergyTargetFeedforward(
+                SSI.EnergyTargetFeedforward(
                     component_type = PSY.GenericBattery,
                     source = PSI.EnergyVariable,
                     target_period = 1,
@@ -824,12 +824,12 @@ function create_simulation( sys_UC::PSY.System,
             end
     end
 
-    println(any(isnan, energy_price))
+    #println(any(isnan, energy_price))
     replace!(energy_price, NaN => 0.0)
     scale_voll(energy_price, rt_resolution)
 
-    println(any(isnan, energy_price))
-    println(Statistics.mean(energy_price))
+    #println(any(isnan, energy_price))
+    #println(Statistics.mean(energy_price))
 
 
     for service in get_system_services(sys_ED)

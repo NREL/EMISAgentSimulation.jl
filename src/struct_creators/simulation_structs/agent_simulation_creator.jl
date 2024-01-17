@@ -6,7 +6,9 @@ function gather_data(case::CaseDefinition)
     data_dir = get_data_dir(case)
     test_system_dir = get_sys_dir(case)
     start_year = get_start_year(case)
-    n_rep_days = get_num_rep_days(case)
+    rep_period_interval = get_rep_period_interval(case)
+    n_rep_periods = get_num_rep_periods(case)
+    rep_checkpoint = get_rep_chronology_checkpoint(case)
 
     annual_growth_df = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
 
@@ -29,8 +31,9 @@ function gather_data(case::CaseDefinition)
                               1:DataFrames.nrow(annual_growth_df_simulation))
 
     zones,
-    representative_days,
+    representative_periods,
     rep_hour_weight,
+    chron_weights,
     system_peak_load,
     test_sys_hour_weight,
     zonal_lines = read_test_system(
@@ -42,8 +45,10 @@ function gather_data(case::CaseDefinition)
         base_year,
         annual_growth_past,
         start_year,
-        n_rep_days)
-  
+        rep_period_interval,
+        n_rep_periods,
+        rep_checkpoint)
+
     if isnothing(zones)
         zones = ["zone_1"]
     end
@@ -110,9 +115,11 @@ function gather_data(case::CaseDefinition)
                                         sys_ED,
                                         zones,
                                         zonal_lines,
-                                        representative_days,
+                                        representative_periods,
+                                        rep_period_interval,
                                         test_sys_hour_weight,
                                         rep_hour_weight,
+                                        chron_weights,
                                         system_peak_load,
                                         markets_dict,
                                         carbon_tax,
@@ -131,7 +138,7 @@ function gather_data(case::CaseDefinition)
     convert_thermal_fast_start!(sys_UC)
     convert_thermal_fast_start!(sys_ED)
 
-    construct_ordc(deepcopy(sys_UC), data_dir, investors, 0, representative_days, get_ordc_curved(case), get_ordc_unavailability_method(case), get_reserve_penalty(case))
+    construct_ordc(deepcopy(sys_UC), data_dir, investors, 0, representative_periods, rep_period_interval, get_ordc_curved(case), get_ordc_unavailability_method(case), get_reserve_penalty(case))
     add_psy_ordc!(data_dir, markets_dict, sys_UC, "UC", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
     add_psy_ordc!(data_dir, markets_dict, sys_ED, "ED", 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
 
@@ -147,7 +154,10 @@ function gather_data(case::CaseDefinition)
     # Adding representative days availability data to investor folders
     system_availability_data = DataFrames.DataFrame(CSV.File(joinpath(data_dir, "timeseries_data_files", "Availability", "DAY_AHEAD_availability.csv")))
 
-    rep_projects_availability = filter(row -> in(Dates.Date(row[:Year], row[:Month], row[:Day]), keys(representative_days)), system_availability_data)
+    system_availability_data[!, "Period_Number"] = 1:size(system_availability_data, 1)
+    system_availability_data[!, "Representative_Period"] = add_representative_period.(system_availability_data[:, "Period_Number"], rep_period_interval)
+
+    rep_projects_availability = filter(row -> in(row["Representative_Period"], keys(representative_periods)), system_availability_data)
 
     for dir in get_data_dir.(investors)
         write_data(joinpath(dir, "timeseries_data_files", "Availability"), "DAY_AHEAD_availability.csv", rep_projects_availability)
@@ -204,7 +214,8 @@ function create_agent_simulation(case::CaseDefinition)
                             get_system_ED(simulation_data),
                             get_zones(simulation_data),
                             get_lines(simulation_data),
-                            get_rep_days(simulation_data),
+                            get_rep_periods(simulation_data),
+                            get_rep_period_interval(simulation_data),
                             get_hour_weight(simulation_data),
                             get_peak_load(simulation_data),
                             get_markets(simulation_data),

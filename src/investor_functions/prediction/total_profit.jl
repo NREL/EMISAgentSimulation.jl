@@ -120,8 +120,8 @@ function update_expected_profit!(project::P,
     expected_rec_revenues = [sum(get_probability(scenario_data[i]) * rec_revenue_array[i][y] for i in 1:length(rec_revenue_array))
                                  for y in 1:profit_array_length]
 
-    println(get_name(project))
-    println("expected_annual_operating_profit is $(expected_annual_operating_profit) & expected_capacity_revenues is $(expected_capacity_revenues) & expected_rec_revenues is $(expected_rec_revenues)")
+    #println(get_name(project))
+    #println("expected_annual_operating_profit is $(expected_annual_operating_profit) & expected_capacity_revenues is $(expected_capacity_revenues) & expected_rec_revenues is $(expected_rec_revenues)")
 
     #Calculate capacity market going forward cost.
     expected_capacity_going_forward_cost = total_annual_cost - expected_annual_operating_profit - expected_rec_revenues

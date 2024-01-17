@@ -105,19 +105,19 @@ function add_investor_project_availability!(simulation_dir::String,
                     # gens_in_zone = filter(g -> (first("$(bus)", 1) == first(g, 1)) && (occursin("wind", lowercase(g)) || occursin("wt", lowercase(g))),
                     #                                 names(system_availability_data))
                     gens_in_zone = filter(g -> (first("$(bus)", 1) == first(string(PSY.get_number(PSY.get_bus(PSY.get_component(PSY.StaticInjection, sys_UC,g)))), 1)) &&
-                                                occursin("WT", string(PSY.get_prime_mover(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
+                                                occursin("WT", string(PSY.get_prime_mover_type(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
                                                     gennames)
                 elseif get_type(tech) == "PVe"
                     # gens_in_zone = filter(g -> (first("$(bus)", 1)== first(g, 1)) && occursin("pv", lowercase(g)),
                     #                                 names(system_availability_data))
                     gens_in_zone = filter(g -> (first("$(bus)", 1) == first(string(PSY.get_number(PSY.get_bus(PSY.get_component(PSY.StaticInjection, sys_UC,g)))), 1)) &&
-                                                occursin("PVe", string(PSY.get_prime_mover(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
+                                                occursin("PVe", string(PSY.get_prime_mover_type(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
                                                     gennames)
                 elseif get_type(tech) == "HY"
                     # gens_in_zone = filter(g -> (first("$(bus)", 1) == first(g, 1)) && occursin("hy", lowercase(g)),
                     #                                 names(system_availability_data))
                     gens_in_zone = filter(g -> (first("$(bus)", 1) == first(string(PSY.get_number(PSY.get_bus(PSY.get_component(PSY.StaticInjection, sys_UC,g)))), 1)) &&
-                                                occursin("HY", string(PSY.get_prime_mover(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
+                                                occursin("HY", string(PSY.get_prime_mover_type(PSY.get_component(PSY.StaticInjection, sys_UC,g)))),
                                                     gennames)
                 end
 
@@ -527,7 +527,7 @@ function create_tech_type(name::String,
         ramp_limits = (up = device_ramp_limits[:up] * base_power * 60, down = device_ramp_limits[:down] * base_power * 60)
     end
 
-    prime_mover = string(deepcopy(PSY.get_prime_mover(device)))
+    prime_mover = string(deepcopy(PSY.get_prime_mover_type(device)))
     fuel = string(deepcopy(PSY.get_fuel(device)))
 
     if fuel == "NUCLEAR"
@@ -632,7 +632,7 @@ function create_tech_type(name::String,
 
     bus = deepcopy(PSY.get_bus(device))
 
-    type = string(deepcopy(PSY.get_prime_mover(device)))
+    type = string(deepcopy(PSY.get_prime_mover_type(device)))
 
     FOR = projectdata["FOR"]
     MTTR = projectdata["MTTR Hr"]
@@ -728,7 +728,7 @@ function create_tech_type(name::String,
 
     bus = deepcopy(PSY.get_bus(device))
 
-    type = string(deepcopy(PSY.get_prime_mover(device)))
+    type = string(deepcopy(PSY.get_prime_mover_type(device)))
     input_active_power_limits = deepcopy(PSY.get_input_active_power_limits(device))
     output_active_power_limits = deepcopy(PSY.get_output_active_power_limits(device))
     storage_capacity = deepcopy(PSY.get_state_of_charge_limits(device))

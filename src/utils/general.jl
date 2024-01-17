@@ -65,7 +65,7 @@ get_device_size(device::PSY.GenericBattery) = PSY.get_rating(device)
 This function returns line rating for PSY Lines.
 """
 get_line_rating(line::PSY.Line) = PSY.get_rate(line)
-get_line_rating(line::PSY.HVDCLine) = line.active_power_limits_from[:max]
+get_line_rating(line::PSY.TwoTerminalHVDCLine) = line.active_power_limits_from[:max]
 
 """
 This function removes leap days from the data if year is not leap year.

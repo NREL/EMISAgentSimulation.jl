@@ -29,11 +29,15 @@ function gather_prediction_parameters(investor::Investor,
 
     carbon_tax = get_carbon_tax(investor)
 
+    rep_period_interval = get_rep_period_interval(investor)
+
     rep_hour_weight = get_rep_hour_weight(investor)
+
+    chron_weights = get_chron_weights(investor)
 
     scenarios = get_scenario_data(get_forecast(investor))
 
-    return investor_name, investor_dir, market_names, carbon_tax, reserve_products, ordc_products, rep_hour_weight, scenarios
+    return investor_name, investor_dir, market_names, carbon_tax, reserve_products, ordc_products, rep_period_interval, rep_hour_weight, chron_weights, scenarios
 end
 
 """
@@ -72,7 +76,9 @@ function create_investor_predictions(investors::Vector{Investor},
             reserve_penalty_pmap = String[]
             resource_adequacy_pmap = ResourceAdequacy[]
             irm_scalar_pmap = Float64[]
+            rep_period_interval_pmap = Int64[]
             rep_hour_weight_pmap = Vector{Float64}[]
+            chron_weights_pmap = Matrix{Int64}[]
             expected_portfolio_pmap = Vector{Project}[]
 
             for investor in investors
@@ -83,7 +89,9 @@ function create_investor_predictions(investors::Vector{Investor},
                 carbon_tax,
                 reserve_products,
                 ordc_products,
+                rep_period_interval,
                 rep_hour_weight,
+                chron_weights,
                 scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
                 for scenario in scenarios
@@ -99,6 +107,8 @@ function create_investor_predictions(investors::Vector{Investor},
                     push!(resource_adequacy_pmap, resource_adequacy)
                     push!(irm_scalar_pmap, irm_scalar)
                     push!(rep_hour_weight_pmap, rep_hour_weight)
+                    push!(rep_period_interval_pmap, rep_period_interval)
+                    push!(chron_weights_pmap, chron_weights)
                     push!(expected_portfolio_pmap, active_projects)
 
                 end
@@ -120,7 +130,9 @@ function create_investor_predictions(investors::Vector{Investor},
                  repeat([zones], num_tasks),
                  repeat([lines], num_tasks),
                  repeat([peak_load], num_tasks),
+                 rep_period_interval_pmap,
                  rep_hour_weight_pmap,
+                 chron_weights_pmap,
                  repeat([average_capital_cost_multiplier], num_tasks),
                  scenarios_pmap,
                  repeat([iteration_year], num_tasks),
@@ -161,7 +173,9 @@ function create_investor_predictions(investors::Vector{Investor},
             carbon_tax,
             reserve_products,
             ordc_products,
+            rep_period_interval,
             rep_hour_weight,
+            chron_weights,
             scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
             if parallelize_scenarios
@@ -182,7 +196,9 @@ function create_investor_predictions(investors::Vector{Investor},
                     repeat([zones], num_scenarios),
                     repeat([lines], num_scenarios),
                     repeat([peak_load], num_scenarios),
+                    repeat([rep_period_interval], num_scenarios),
                     repeat([rep_hour_weight], num_scenarios),
+                    repeat([chron_weights], num_scenarios),
                     repeat([average_capital_cost_multiplier], num_scenarios),
                     scenarios,
                     repeat([iteration_year], num_scenarios),
@@ -207,7 +223,9 @@ function create_investor_predictions(investors::Vector{Investor},
                                             zones,
                                             lines,
                                             peak_load,
+                                            rep_period_interval,
                                             rep_hour_weight,
+                                            chron_weights,
                                             average_capital_cost_multiplier,
                                             scenario,
                                             iteration_year,

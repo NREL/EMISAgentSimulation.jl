@@ -6,7 +6,9 @@ This struct contains all the data for an investor.
     markets: Vector of markets in which the investor is participating.
     carbon_tax: Vector of annual carbon tax.
     market_prices: Expected market prices.
-    rep_hour_weight: Representative hour weight for operating markets.
+    rep_period_interval: Total number of hours in representative period selection e.g., 24 for representative days, 168 for representative weeks, etc. Default =  24
+    rep_hour_weight: Representative hour weight for operating markets.    
+    chron_weights: Weights for representative hours for modeling chronological constraints
     forecast: Forecast parameters.
     cap_cost_multiplier: Capital cost multiplier.
     max_annual_projects: Maximum number of projects.
@@ -20,7 +22,9 @@ mutable struct Investor
     markets::Vector{Symbol}
     carbon_tax::Vector{Float64}
     market_prices::MarketPrices
+    rep_period_interval::Int64
     rep_hour_weight::Vector{Float64}
+    chron_weights::Matrix{Int64}
     forecast::F where F <: Forecast
     cap_cost_multiplier::Float64
     preference_multiplier_range::NamedTuple{(:min, :max),Tuple{Float64,Float64}}
@@ -36,7 +40,9 @@ get_projects(investor::Investor) = investor.projects
 get_markets(investor::Investor) = investor.markets
 get_carbon_tax(investor::Investor) = investor.carbon_tax
 get_market_prices(investor::Investor) = investor.market_prices
+get_rep_period_interval(investor::Investor) = investor.rep_period_interval
 get_rep_hour_weight(investor::Investor) = investor.rep_hour_weight
+get_chron_weights(investor::Investor) = investor.chron_weights
 get_forecast(investor::Investor) = investor.forecast
 get_cap_cost_multiplier(investor::Investor) = investor.cap_cost_multiplier
 get_max_annual_projects(investor::Investor) = investor.max_annual_projects

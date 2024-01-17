@@ -10,7 +10,7 @@
         total_horizon: Number of years of data available for the simulation.
         rolling_horizon: Number of years to be used for price prediction. If end of rolling horizon exceeds the years of available data, a receding horizon approach is used.
         simulation_years: Number of years to be simulated.
-        num_rep_days: Number of representative days used for price prediction.
+        num_rep_periods: Number of representative days used for price prediction.
         da_resolution: Resolution of Day Ahead market clearing (minutes)
         rt_resolution: Resolution of Real Time market clearing (minutes)
         rps_target: High, Mid or Low RPS Target
@@ -40,7 +40,7 @@ struct CaseDefinition
     total_horizon::Int64
     rolling_horizon::Int64
     simulation_years::Int64
-    num_rep_days::Int64
+    num_rep_periods::Int64
     da_resolution::Int64
     rt_resolution::Int64
     rps_target::String
@@ -69,7 +69,7 @@ struct CaseDefinition
                             total_horizon,
                             rolling_horizon,
                             simulation_years,
-                            num_rep_days,
+                            num_rep_periods,
                             da_resolution,
                             rt_resolution,
                             rps_target,
@@ -118,7 +118,7 @@ struct CaseDefinition
                    total_horizon,
                    rolling_horizon,
                    simulation_years,
-                   num_rep_days,
+                   num_rep_periods,
                    da_resolution,
                    rt_resolution,
                    rps_target,
@@ -149,7 +149,7 @@ function CaseDefinition(base_dir::String,
                         total_horizon::Int64 = 20,
                         rolling_horizon::Int64 = 10,
                         simulation_years::Int64 = 10,
-                        num_rep_days::Int64 = 12,
+                        num_rep_periods::Int64 = 12,
                         da_resolution::Int64 = 60,
                         rt_resolution::Int64 = 5,
                         rps_target::String = "Mid",
@@ -178,7 +178,7 @@ function CaseDefinition(base_dir::String,
                    total_horizon,
                    rolling_horizon,
                    simulation_years,
-                   num_rep_days,
+                   num_rep_periods,
                    da_resolution,
                    rt_resolution,
                    rps_target,
@@ -208,7 +208,7 @@ get_start_year(case::CaseDefinition) = case.start_year
 get_total_horizon(case::CaseDefinition) = case.total_horizon
 get_rolling_horizon(case::CaseDefinition) = case.rolling_horizon
 get_simulation_years(case::CaseDefinition) = case.simulation_years
-get_num_rep_days(case::CaseDefinition) = case.num_rep_days
+get_num_rep_periods(case::CaseDefinition) = case.num_rep_periods
 get_da_resolution(case::CaseDefinition) = case.da_resolution
 get_rt_resolution(case::CaseDefinition) = case.rt_resolution
 get_rps_target(case::CaseDefinition) = case.rps_target

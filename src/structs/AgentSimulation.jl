@@ -8,7 +8,8 @@ This struct contains all the data for the simulation to be run.
     zones: Names of modeled zones.
     lines: Inter-zonal ransmission lines modeled.
     hour_weight: Weight allocated to each hour of actual market clearing.
-    rep_days: Dictionary of representative days
+    rep_periods: Dictionary of representative periods
+    rep_period_interval: Total number of hours in representative period selection e.g., 24 for representative days, 168 for representative weeks, etc. Default =  24
     peak_load: Annual system-wide peak load for capacity market clearing.
     markets: Boolean for selecting which markets are modeled.
     carbon_tax: Vector of annual carbon taxes
@@ -26,7 +27,8 @@ mutable struct AgentSimulation
     system_ED::Union{Nothing, PSY.System}
     zones::Vector{String}
     lines::Vector{ZonalLine}
-    rep_days::Dict{Dates.Date,Int64}
+    rep_periods::Union{Dict{Int64,Int64}, OrderedCollections.OrderedDict{Int64, Int64}}
+    rep_period_interval::Int64
     hour_weight::Vector{Float64}
     peak_load::Float64
     markets::Dict{Symbol, Bool}
@@ -45,7 +47,8 @@ get_system_UC(sim::AgentSimulation) = sim.system_UC
 get_system_ED(sim::AgentSimulation) = sim.system_ED
 get_zones(sim::AgentSimulation) = sim.zones
 get_lines(sim::AgentSimulation) = sim.lines
-get_rep_days(sim::AgentSimulation) = sim.rep_days
+get_rep_periods(sim::AgentSimulation) = sim.rep_periods
+get_rep_period_interval(sim::AgentSimulation) = sim.rep_period_interval
 get_hour_weight(sim::AgentSimulation) = sim.hour_weight
 get_peak_load(sim::AgentSimulation) = sim.peak_load
 get_markets(sim::AgentSimulation) = sim.markets
@@ -76,9 +79,11 @@ mutable struct AgentSimulationData
     system_ED::Union{Nothing, PSY.System}
     zones::Vector{String}
     lines::Vector{ZonalLine}
-    rep_days::Dict{Dates.Date,Int64}
+    rep_periods::Union{Dict{Int64,Int64}, OrderedCollections.OrderedDict{Int64, Int64}}
+    rep_period_interval::Int64
     hour_weight::Vector{Float64}
     rep_hour_weight::Vector{Float64}
+    chron_weights::Matrix{Int64}
     peak_load::Float64
     markets::Dict{Symbol, Bool}
     carbon_tax::Vector{Float64}
@@ -95,9 +100,11 @@ function AgentSimulationData(case::CaseDefinition,
                         system_ED::Union{Nothing, PSY.System},
                         zones::Vector{String},
                         lines::Vector{ZonalLine},
-                        rep_days::Dict{Dates.Date,Int64},
+                        rep_periods::Union{Dict{Int64,Int64}, OrderedCollections.OrderedDict{Int64, Int64}},
+                        rep_period_interval::Int64,
                         hour_weight::Vector{Float64},
-                        rep_hour_weight::Vector{Float64},
+                        rep_hour_weight::Vector{Float64},                     
+                        chron_weights::Matrix{Int64},
                         peak_load::Float64,
                         markets::Dict{Symbol, Bool},
                         carbon_tax::Vector{Float64},
@@ -112,9 +119,11 @@ function AgentSimulationData(case::CaseDefinition,
                           system_ED,
                           zones,
                           lines,
-                          rep_days,
+                          rep_periods,
+                          rep_period_interval,
                           hour_weight,
                           rep_hour_weight,
+                          chron_weights,
                           peak_load,
                           markets,
                           carbon_tax,
@@ -132,9 +141,11 @@ get_system_UC(sim::AgentSimulationData) = sim.system_UC
 get_system_ED(sim::AgentSimulationData) = sim.system_ED
 get_zones(sim::AgentSimulationData) = sim.zones
 get_lines(sim::AgentSimulationData) = sim.lines
-get_rep_days(sim::AgentSimulationData) = sim.rep_days
+get_rep_periods(sim::AgentSimulationData) = sim.rep_periods
+get_rep_period_interval(sim::AgentSimulationData) = sim.rep_period_interval
 get_hour_weight(sim::AgentSimulationData) = sim.hour_weight
 get_rep_hour_weight(sim::AgentSimulationData) = sim.rep_hour_weight
+get_chron_weights(sim::AgentSimulationData) = sim.chron_weights
 get_peak_load(sim::AgentSimulationData) = sim.peak_load
 get_markets(sim::AgentSimulationData) = sim.markets
 get_carbon_tax(sim::AgentSimulationData) = sim.carbon_tax
