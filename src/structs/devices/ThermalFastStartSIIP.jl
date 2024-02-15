@@ -156,6 +156,7 @@ PSY.get_ext(value::ThermalFastStartSIIP) = value.ext
 PSY.get_time_series_container(value::ThermalFastStartSIIP) = value.time_series_container
 """Get [`ThermalFastStartSIIP`](@ref) `internal`."""
 PSY.get_internal(value::ThermalFastStartSIIP) = value.internal
+PSY.get_must_run(::ThermalFastStartSIIP) = false
 
 """Set [`ThermalFastStartSIIP`](@ref) `name`."""
 PSY.set_name!(value::ThermalFastStartSIIP, val) = value.name = val

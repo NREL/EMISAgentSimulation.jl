@@ -14,10 +14,12 @@ end
 function calculate_RA_metrics(sys::PSY.System,
                               exportoutage::Bool,
                               base_dir::String,
-                              iteration_year::Int64)
+                              iteration_year::Int64;
+                              samples::Int64 = 1000,
+                              seed::Int64 = 42)
 
     system_period_of_interest = range(1, length = 8760);
-    correlated_outage_csv_location = "/lustre/eaglefs/projects/gmlcmarkets/Phase2_EMIS_Analysis/Correlated Outages/ThermalFOR_2011.csv"
+    correlated_outage_csv_location = "C:/Users/MANWAR2/Documents/Projects/EMIS/Test Cases/Correlated Outages/ThermalFOR_2011.csv"
     pras_system = make_pras_system(sys,
                                     system_model="Single-Node",
                                     aggregation="Area",
@@ -31,7 +33,7 @@ function calculate_RA_metrics(sys::PSY.System,
 
     ra_metrics = Dict{String, Float64}()
     # seed = 3
-    shortfall, gens_avail= @time PRAS.assess(pras_system,  PRAS.SequentialMonteCarlo(samples = 5000),  PRAS.Shortfall(),  PRAS.GeneratorAvailability()) #PRAS.SequentialMonteCarlo(samples = 100, seed=seed)
+    shortfall, gens_avail= @time PRAS.assess(pras_system,  PRAS.SequentialMonteCarlo(samples = samples, seed = seed),  PRAS.Shortfall(),  PRAS.GeneratorAvailability()) 
     @info "Finished PRAS simulation... "
     eue_overall = PRAS.EUE(shortfall)
     lole_overall = PRAS.LOLE(shortfall)
@@ -223,7 +225,7 @@ function update_delta_irm!(initial_system::PSY.System,
 
         @time begin
         if !isempty(ra_targets)
-            ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
+            ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false, get_results_dir(simulation),iteration_year)
             #println(ra_metrics)
             adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
 
@@ -234,14 +236,25 @@ function update_delta_irm!(initial_system::PSY.System,
 
             if !(adequacy_conditions_met)
                 while !(adequacy_conditions_met)
-                    incremental_project = deepcopy(first(filter(p -> occursin("new_CT", get_name(p)), active_projects)))
-                    set_name!(incremental_project, "addition_CT_project_$(count)")
-                    total_added_capacity += get_maxcap(incremental_project)
-                    add_capacity_market_project!(capacity_market_system, incremental_project, simulation_dir, da_resolution)
+
+                    scalar = 2
+                    ratio = 0
+                    for metric in keys(ra_targets)
+                        ratio += (ra_metrics[metric] - ra_targets[metric]) / ra_targets[metric] 
+                    end
+                    ratio = max(1, scalar * ratio /  length(keys(ra_targets)))
+
+                    for i in 1:ceil(ratio)
+                        incremental_project = deepcopy(first(filter(p -> occursin("new_CT", get_name(p)), active_projects)))
+                        set_name!(incremental_project, "addition_CT_project_$(count)")
+                        total_added_capacity += get_maxcap(incremental_project)
+                        add_capacity_market_project!(capacity_market_system, incremental_project, simulation_dir, da_resolution)
+                        count += 1
+                    end
+                    
                     ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year)
                     #println(ra_metrics)
                     adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
-                    count += 1
                 end
 
             elseif !(scarcity_conditions_met)
@@ -269,4 +282,94 @@ function update_delta_irm!(initial_system::PSY.System,
     end
 
     return
+end
+
+function create_base_system(initial_system::PSY.System,
+    active_projects::Vector{Project},
+    capacity_forward_years::Int64,
+    resource_adequacy::ResourceAdequacy,
+    iteration_year::Int64,
+    load_growth::AxisArrays.AxisArray{Float64, 1},
+    simulation_dir::String,
+    da_resolution::Int64,
+    simulation::Union{AgentSimulation,AgentSimulationData})
+
+    capacity_market_system = create_capacity_mkt_system(initial_system,
+                                                        active_projects,
+                                                        capacity_forward_years,
+                                                        iteration_year,
+                                                        load_growth,
+                                                        simulation_dir,
+                                                        da_resolution)
+
+    ra_targets = get_targets(resource_adequacy)
+    println(ra_targets)
+
+    all_capacity_market_projects = get_all_techs(capacity_market_system)
+    removeable_projects = PSY.Generator[]
+
+    CT_generators = sort!(filter(project -> occursin("CT", string(PSY.get_prime_mover_type(project))), all_capacity_market_projects), by = x -> get_device_size(x))
+    append!(removeable_projects, CT_generators)
+    CC_generators = sort!(filter(project -> occursin("CC", string(PSY.get_prime_mover_type(project))), all_capacity_market_projects), by = x -> get_device_size(x))
+    append!(removeable_projects, CC_generators)
+
+    @time begin
+    if !isempty(ra_targets)
+        ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false, get_results_dir(simulation),iteration_year;samples = 500)
+
+        println(ra_metrics)
+        adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
+
+        count = 1
+        total_added_capacity = 0.0
+        total_removed_capacity = 0.0
+        removed_capacity = 0.0
+
+        if !(adequacy_conditions_met)
+            while !(adequacy_conditions_met)
+                scalar = 2
+                ratio = 0
+                for metric in keys(ra_targets)
+                    ratio += (ra_metrics[metric] - ra_targets[metric]) / ra_targets[metric] 
+                end
+                ratio = max(1, scalar * ratio /  length(keys(ra_targets)))
+
+                for i in 1:ceil(ratio)
+                    incremental_project = deepcopy(first(filter(p -> occursin("new_CT", get_name(p)), active_projects)))
+                    set_name!(incremental_project, "addition_CT_project_$(count)")
+                    total_added_capacity += get_maxcap(incremental_project)
+                    add_capacity_market_project!(capacity_market_system, incremental_project, simulation_dir, da_resolution)
+                    count += 1
+                end
+                
+                ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year;samples = 500)
+                println("Added Capacity")
+                println(ra_metrics)
+                adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
+                
+            end
+
+        elseif !(scarcity_conditions_met)
+            while !(scarcity_conditions_met)
+                if !(isempty(removeable_projects))
+                    removed_project = removeable_projects[1]
+                    popfirst!(removeable_projects)
+                    removed_capacity = get_device_size(removed_project) * PSY.get_base_power(removed_project)
+                    total_removed_capacity += removed_capacity
+                    PSY.remove_component!(capacity_market_system, removed_project)
+                    ra_metrics, shortfall = calculate_RA_metrics(capacity_market_system, false,get_results_dir(simulation),iteration_year;samples = 500)
+                    println("Removed Capacity")
+                    println(ra_metrics)
+                    adequacy_conditions_met, scarcity_conditions_met = check_ra_conditions(ra_targets, ra_metrics)
+                    count += 1
+                end
+            end
+            total_removed_capacity -= removed_capacity
+        end
+
+        println(total_added_capacity - total_removed_capacity)
+    end
+    end
+
+    return capacity_market_system
 end

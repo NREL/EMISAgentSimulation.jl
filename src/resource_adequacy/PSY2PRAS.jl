@@ -170,7 +170,7 @@ function make_pras_system(sys::PSY.System;
     # Double counting of HybridSystem subcomponents
     #######################################################
     dup_uuids =[];
-    h_s_comps = availability_flag ? PSY.get_components(PSY.HybridSystem, sys, PSY.get_available) : PSY.get_components(PSY.HybridSystem, sys)
+    h_s_comps = availability_flag ? PSY.get_components(x -> PSY.get_available(x) == true, PSY.HybridSystem, sys) : PSY.get_components(PSY.HybridSystem, sys)
     for h_s in h_s_comps
         h_s_subcomps = PSY._get_components(h_s)
         for subcomp in h_s_subcomps
@@ -302,7 +302,7 @@ function make_pras_system(sys::PSY.System;
      # PRAS Regions - Areas in SIIP
     #######################################################
     @info "Processing Regions in PSY System... "
-    regions = collect(PSY.get_components(aggregation_topology, sys));
+    regions = sort!(collect(PSY.get_components(aggregation_topology, sys)), by =x -> lowercase(x.name));
     if (length(regions)!=0)
         @info "The PSY System has $(length(regions)) regions based on PSY AggregationTopology : $(aggregation_topology)."
     else
@@ -804,8 +804,8 @@ function make_pras_system(sys::PSY.System;
 
     # Dictionary with topology mapping
         line = availability_flag ? 
-        collect(PSY.get_components(PSY.Branch, sys, (x -> ~in(typeof(x), [PSY.TapTransformer, PSY.Transformer2W,PSY.PhaseShiftingTransformer]) && PSY.get_available(x)))) :
-        collect(PSY.get_components(PSY.Branch, sys, x -> ~in(typeof(x), [PSY.TapTransformer, PSY.Transformer2W,PSY.PhaseShiftingTransformer])));
+        collect(PSY.get_components((x -> ~in(typeof(x), [PSY.TapTransformer, PSY.Transformer2W,PSY.PhaseShiftingTransformer]) && PSY.get_available(x)), PSY.Branch, sys)) :
+        collect(PSY.get_components(x -> ~in(typeof(x), [PSY.TapTransformer, PSY.Transformer2W,PSY.PhaseShiftingTransformer]), PSY.Branch, sys));
 
         mapping_dict = PSY.get_aggregation_topology_mapping(aggregation_topology,sys); # Dict with mapping from Areas to Bus_Names
         new_mapping_dict=Dict{String,Array{Int64,1}}(); 

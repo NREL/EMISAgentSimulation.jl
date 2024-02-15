@@ -33,11 +33,14 @@ function gather_prediction_parameters(investor::Investor,
 
     rep_hour_weight = get_rep_hour_weight(investor)
 
+    avg_block_size = get_avg_block_size(investor)
+    fixed_block_size = get_fixed_block_size(investor)
+
     chron_weights = get_chron_weights(investor)
 
     scenarios = get_scenario_data(get_forecast(investor))
 
-    return investor_name, investor_dir, market_names, carbon_tax, reserve_products, ordc_products, rep_period_interval, rep_hour_weight, chron_weights, scenarios
+    return investor_name, investor_dir, market_names, carbon_tax, reserve_products, ordc_products, rep_period_interval, rep_hour_weight, avg_block_size, fixed_block_size, chron_weights, scenarios
 end
 
 """
@@ -78,6 +81,8 @@ function create_investor_predictions(investors::Vector{Investor},
             irm_scalar_pmap = Float64[]
             rep_period_interval_pmap = Int64[]
             rep_hour_weight_pmap = Vector{Float64}[]
+            avg_block_size_pmap = Vector{Int64}[]
+            fixed_block_size_pmap = Vector{Bool}[]    
             chron_weights_pmap = Matrix{Int64}[]
             expected_portfolio_pmap = Vector{Project}[]
 
@@ -91,6 +96,8 @@ function create_investor_predictions(investors::Vector{Investor},
                 ordc_products,
                 rep_period_interval,
                 rep_hour_weight,
+                avg_block_size,
+                fixed_block_size,
                 chron_weights,
                 scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
@@ -108,6 +115,8 @@ function create_investor_predictions(investors::Vector{Investor},
                     push!(irm_scalar_pmap, irm_scalar)
                     push!(rep_hour_weight_pmap, rep_hour_weight)
                     push!(rep_period_interval_pmap, rep_period_interval)
+                    push!(avg_block_size_pmap, avg_block_size)
+                    push!(fixed_block_size_pmap, fixed_block_size)
                     push!(chron_weights_pmap, chron_weights)
                     push!(expected_portfolio_pmap, active_projects)
 
@@ -132,6 +141,8 @@ function create_investor_predictions(investors::Vector{Investor},
                  repeat([peak_load], num_tasks),
                  rep_period_interval_pmap,
                  rep_hour_weight_pmap,
+                 avg_block_size_pmap,
+                 fixed_block_size_pmap,
                  chron_weights_pmap,
                  repeat([average_capital_cost_multiplier], num_tasks),
                  scenarios_pmap,
@@ -175,6 +186,8 @@ function create_investor_predictions(investors::Vector{Investor},
             ordc_products,
             rep_period_interval,
             rep_hour_weight,
+            avg_block_size,
+            fixed_block_size,
             chron_weights,
             scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
@@ -198,6 +211,8 @@ function create_investor_predictions(investors::Vector{Investor},
                     repeat([peak_load], num_scenarios),
                     repeat([rep_period_interval], num_scenarios),
                     repeat([rep_hour_weight], num_scenarios),
+                    repeat([avg_block_size], num_scenarios),
+                    repeat([fixed_block_size], num_scenarios),
                     repeat([chron_weights], num_scenarios),
                     repeat([average_capital_cost_multiplier], num_scenarios),
                     scenarios,
@@ -225,6 +240,8 @@ function create_investor_predictions(investors::Vector{Investor},
                                             peak_load,
                                             rep_period_interval,
                                             rep_hour_weight,
+                                            avg_block_size,
+                                            fixed_block_size,
                                             chron_weights,
                                             average_capital_cost_multiplier,
                                             scenario,

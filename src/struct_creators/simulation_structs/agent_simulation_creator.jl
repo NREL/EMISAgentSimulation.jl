@@ -109,8 +109,11 @@ function gather_data(case::CaseDefinition)
     end
 
     resource_adequacy = ResourceAdequacy(ra_targets, zeros(simulation_years), [ra_metrics for i in 1:simulation_years])
+    
+    results_dir = make_results_dir(case)
 
     simulation_data = AgentSimulationData(case,
+                                        results_dir,
                                         sys_UC,
                                         sys_ED,
                                         zones,
@@ -163,7 +166,12 @@ function gather_data(case::CaseDefinition)
         write_data(joinpath(dir, "timeseries_data_files", "Availability"), "DAY_AHEAD_availability.csv", rep_projects_availability)
     end
 
-    update_simulation_derating_data!(simulation_data, get_derating_scale(case))
+    update_simulation_derating_data!(
+        simulation_data,
+        1,
+        get_derating_scale(case),
+        methodology = get_accreditation_methodology(case),
+        ra_metric = get_accreditation_metric(case))
 
     return simulation_data
 end
@@ -205,10 +213,9 @@ This function returns the AgentSimulation struct which contains all the required
 """
 function create_agent_simulation(case::CaseDefinition)
     make_case_data_dir(case)
-    results_dir = make_results_dir(case)
     simulation_data = gather_data(case)
     simulation = AgentSimulation(case,
-                            results_dir,
+                            get_results_dir(simulation_data),
                             1,
                             get_system_UC(simulation_data),
                             get_system_ED(simulation_data),

@@ -96,7 +96,13 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         end
 
-        update_simulation_derating_data!(simulation, get_derating_scale(get_case(simulation)))
+        update_simulation_derating_data!(
+            simulation,
+            iteration_year,
+            get_derating_scale(get_case(simulation)),
+            methodology = get_accreditation_methodology(get_case(simulation)),
+            ra_metric = get_accreditation_metric(get_case(simulation)))
+
         #Get all existing projects to calculate realized profits for energy and REC markets.
         all_existing_projects = vcat(get_existing.(get_investors(simulation))...)
 
@@ -180,6 +186,9 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
             end
         end
 
+        ra_metrics, shortfall = calculate_RA_metrics(deepcopy(sys_ED),true,get_results_dir(simulation),iteration_year)
+        println(ra_metrics)
+        set_metrics!(get_resource_adequacy(simulation), iteration_year, ra_metrics)
 
         #Update forecasts and realized profits of all existing projects for each investor.
 
@@ -222,9 +231,6 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         end
 
-        ra_metrics, shortfall = calculate_RA_metrics(deepcopy(sys_ED),true,get_results_dir(simulation),iteration_year)
-        println(ra_metrics)
-        set_metrics!(get_resource_adequacy(simulation), iteration_year, ra_metrics)
 
         println("COMPLETED YEAR $(iteration_year)")
         FileIO.save(joinpath(get_results_dir(simulation), "simulation_data_year$(iteration_year).jld2"), "simulation_data", simulation)

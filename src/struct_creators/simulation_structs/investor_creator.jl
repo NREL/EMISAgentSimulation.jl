@@ -11,6 +11,8 @@ function create_investors(simulation_data::AgentSimulationData)
         investor_dir = joinpath(dir_name, "$(investor_names[i])")
 
         rep_hour_weight = get_rep_hour_weight(simulation_data)
+        avg_block_size = get_avg_block_size(get_case(simulation_data))
+        fixed_block_size = get_fixed_block_size(get_case(simulation_data))
         chron_weights = get_chron_weights(simulation_data)
         rep_period_interval = get_rep_period_interval(simulation_data)
 
@@ -202,6 +204,8 @@ function create_investors(simulation_data::AgentSimulationData)
                                 market_prices,
                                 rep_period_interval,
                                 rep_hour_weight,
+                                avg_block_size,
+                                fixed_block_size,
                                 chron_weights,
                                 forecast,
                                 capital_cost_multiplier,

@@ -21,6 +21,8 @@ function cem(system::MarketClearingProblem{Z, T},
     ophours = 1:T
     rep_period_interval = system.rep_period_interval
     rep_hour_weight = system.rep_hour_weight
+    avg_block_size = system.avg_block_size
+    fixed_block_size = system.fixed_block_size
     chron_weights = system.chron_weights
     capital_cost_multiplier = system.capital_cost_multiplier
     carbon_tax = system.carbon_tax
@@ -264,18 +266,14 @@ function cem(system::MarketClearingProblem{Z, T},
         end
     end
 
-   fixed_block_size = false
-
-   block_divisions = 4
-
     if fixed_block_size
-        if block_divisions == 1
+        if avg_block_size == 1
             start_index = 0
         end
         start_index = 2
-        block_size = block_divisions
+        block_size = avg_block_size
 
-        @assert start_index <= block_divisions
+        @assert start_index <= avg_block_size
 
         TB, opperiods,
         availability_agg, 
@@ -303,7 +301,7 @@ function cem(system::MarketClearingProblem{Z, T},
         block_size_vec = block_size .* ones(TB)
     else
 
-        K = Int(T / block_divisions)
+        K = Int(T / avg_block_size)
 
         time_blocks = generate_variable_blocks(
             K,
@@ -335,9 +333,9 @@ function cem(system::MarketClearingProblem{Z, T},
         block_size_vec = [length(i) for i in time_blocks]
     end
     
-    interval_blocks = Int(rep_period_interval / block_divisions)
+    interval_blocks = Int(rep_period_interval / avg_block_size)
 
-    end_of_period = collect(interval_blocks:interval_blocks:Int(T / block_divisions))
+    end_of_period = collect(interval_blocks:interval_blocks:Int(T / avg_block_size))
 
     opperiod_map = [find_index(i, time_blocks) for i in ophours]
     

@@ -145,6 +145,194 @@ function calculate_derating_data(simulation_dir::String,
 end
 
 """
+This function calculates the derating data for existing and new renewable generation
+and storage based on PRAS outcomes.
+"""
+
+function calculate_derating_factors(
+    simulation::Union{AgentSimulation,AgentSimulationData},
+    iteration_year::Int64,
+    derating_scale::Float64,
+    methodology::String,
+    ra_matric::String)
+
+    if methodology == "ELCC"
+        methodology = PRAS.ELCC
+    elseif methodology == "EFC"
+        methodology = PRAS.EFC
+    else
+        @error "Capacity Accreditation methodology should be either ELCC, EFC or TopNetLoad"
+    end
+
+    if ra_matric == "LOLE"
+        ra_matric = PRAS.LOLE
+    elseif ra_matric == "EUE"
+        ra_matric = PRAS.EUE
+    else
+        @error "Resource Adequacy metric should be either LOLE or EUE"
+    end
+
+
+    simulation_dir = get_data_dir(get_case(simulation))
+    da_resolution = get_da_resolution(get_case(simulation))
+    zones = get_zones(simulation)
+
+    derating_factors = read_data(joinpath(simulation_dir, "markets_data", "derating_dict.csv"))
+
+    load_growth = get_annual_growth(simulation)[:, iteration_year]
+
+    active_projects = get_activeprojects(simulation)
+    
+    existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
+    options = filter(p -> typeof(p) == RenewableGenEMIS{Option}, active_projects)
+
+    existing_types = unique(get_type.(get_tech.(existing)))
+    new_types = unique(get_type.(get_tech.(options)))
+
+    capacity_forward_years = 3
+
+    resource_adequacy = get_resource_adequacy(simulation)
+
+    sys_UC = get_system_UC(simulation)
+
+    base_sys = deepcopy(sys_UC)
+
+    # create adjusted base system (by iteratively adding or removing generators) such that it meets the RA targets
+    adjusted_base_system = create_base_system(base_sys,
+        active_projects,
+        capacity_forward_years,
+        resource_adequacy,
+        iteration_year,
+        load_growth,
+        simulation_dir,
+        da_resolution,
+        simulation)
+
+    system_period_of_interest = range(1, length = 8760)
+    correlated_outage_csv_location = "C:/Users/MANWAR2/Documents/Projects/EMIS/Test Cases/Correlated Outages/ThermalFOR_2011.csv"
+
+    # create "Base" PRAS system to be used for calculation of ELCC or EFC.
+    base_pras_system = make_pras_system(adjusted_base_system,
+                                system_model="Single-Node",
+                                aggregation="Area",
+                                period_of_interest = system_period_of_interest,
+                                outage_flag=false,
+                                lump_pv_wind_gens=false,
+                                availability_flag=true,
+                                outage_csv_location = correlated_outage_csv_location)
+
+    for zone in zones
+        
+        for type in new_types
+            idx = findfirst(x -> ((get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)), options)
+            if !isnothing(idx)
+                
+                augmented_sys = deepcopy(adjusted_base_system)
+                build_size = 4 # set to 4 considering that there are 4 investors, so if a project is viable, there could be 4 such units coming online together.
+                max_cap = get_maxcap(options[idx]) * build_size
+                for i in 1:build_size
+                    new_project = deepcopy(options[idx])
+                    set_name!(new_project, "$(get_name(new_project))_$i")
+                    add_capacity_market_project!(augmented_sys, new_project, simulation_dir, da_resolution)
+                end
+                
+                augmented_pras_system = make_pras_system(augmented_sys,
+                                    system_model="Single-Node",
+                                    aggregation="Area",
+                                    period_of_interest = system_period_of_interest,
+                                    outage_flag=false,
+                                    lump_pv_wind_gens=false,
+                                    availability_flag=true,
+                                    outage_csv_location = correlated_outage_csv_location)
+
+                # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
+                cc_result  =  PRAS.assess(base_pras_system,  augmented_pras_system,  methodology{ra_matric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
+                cc_lower,  cc_upper  =  extrema(cc_result) 
+                cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
+                derating_factors[!, "new_$(type)_$(zone)"] .= cc_final
+            end
+        end
+    end
+    
+    # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
+    augmented_sys = deepcopy(adjusted_base_system)
+    augmented_pras_system = make_pras_system(augmented_sys,
+                                    system_model="Single-Node",
+                                    aggregation="Area",
+                                    period_of_interest = system_period_of_interest,
+                                    outage_flag=false,
+                                    lump_pv_wind_gens=false,
+                                    availability_flag=true,
+                                    outage_csv_location = correlated_outage_csv_location)
+
+    for zone in zones
+        for type in existing_types
+            pruned_based_sys = deepcopy(adjusted_base_system)
+            total_capacity = 0.0
+            zone_tech_units = existing[findall(x -> ((get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)), existing)]
+            if !isempty(zone_tech_units)
+                for project in zone_tech_units
+                    remove_system_component!(pruned_based_sys, project)
+                    total_capacity += get_maxcap(project)
+                end
+
+                @assert total_capacity > 0
+                pruned_base_pras_system = make_pras_system(pruned_based_sys,
+                                        system_model="Single-Node",
+                                        aggregation="Area",
+                                        period_of_interest = system_period_of_interest,
+                                        outage_flag=false,
+                                        lump_pv_wind_gens=false,
+                                        availability_flag=true,
+                                        outage_csv_location = correlated_outage_csv_location)
+                #  Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
+                cc_result  =  PRAS.assess(pruned_base_pras_system, augmented_pras_system, PRAS.ELCC{ra_matric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
+                cc_lower,  cc_upper  =  extrema(cc_result) 
+                cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
+
+                derating_factors[!, "existing_$(type)_$(zone)"] .= cc_final
+            end
+        end
+    end
+       
+    pruned_based_sys = deepcopy(adjusted_base_system)
+    battery_projects = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
+
+    # Battery capacuty credits are based on average ELCC/EFC.
+    if isempty(battery_projects)
+        battery_projects = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
+    end
+
+    if !isempty(battery_projects)
+        stor_duration = Int(round(Statistics.mean(get_storage_capacity(get_tech(battery_projects[1]))[:max] ./ get_maxcap(battery_projects[1]))))
+        total_capacity = 0.0
+        for project in battery_projects
+            remove_system_component!(pruned_based_sys, project)
+            total_capacity += get_maxcap(project)
+        end
+        
+        pruned_base_pras_system = make_pras_system(pruned_based_sys,
+            system_model="Single-Node",
+            aggregation="Area",
+            period_of_interest = system_period_of_interest,
+            outage_flag=false,
+            lump_pv_wind_gens=false,
+            availability_flag=true,
+            outage_csv_location = correlated_outage_csv_location)
+        
+            # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
+        cc_result  =  PRAS.assess(pruned_base_pras_system, augmented_pras_system, PRAS.ELCC{ra_matric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
+        cc_lower,  cc_upper  =  extrema(cc_result) 
+        cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
+        derating_factors[!, "BA_$(stor_duration)"] .= cc_final
+    end
+
+    # Overwrite file with new derating factors.
+    write_data(joinpath(simulation_dir, "markets_data"), "derating_dict.csv", derating_factors)
+end
+
+
+"""
 This function does nothing is project is not of ThermalGenEMIS, HydroGenEMIS, RenewableGenEMIS or BatteryEMIS type.
 """
 function update_derating_factor!(project::P,
@@ -245,13 +433,25 @@ end
 """
 This function updates the derating factors of all active projects in the simulation.
 """
-function update_simulation_derating_data!(simulation::Union{AgentSimulation, AgentSimulationData}, derating_scale::Float64)
+function update_simulation_derating_data!(
+    simulation::Union{AgentSimulation,AgentSimulationData},
+    iteration_year::Int64,
+    derating_scale::Float64;
+    methodology::String = "ELCC",
+    ra_metric::String = "LOLE")
+
     data_dir = get_data_dir(get_case(simulation))
     active_projects = get_activeprojects(simulation)
 
-    calculate_derating_data(data_dir, active_projects, derating_scale)
+    if methodology == "TopNetLoad"
+        calculate_derating_data(data_dir, active_projects, derating_scale)
+    else
+        calculate_derating_factors(simulation, iteration_year, derating_scale, methodology, ra_metric)
+    end
     for project in active_projects
         update_derating_factor!(project, data_dir, derating_scale)
     end
     return
 end
+
+

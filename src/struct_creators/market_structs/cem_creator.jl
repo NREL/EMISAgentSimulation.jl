@@ -16,6 +16,8 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                                     peak_load::Float64,
                                     rep_period_interval::Int64,
                                     rep_hour_weight::Vector{Float64},
+                                    avg_block_size::Int64,
+                                    fixed_block_size::Bool,
                                     chron_weights::Matrix{Int64},
                                     average_capital_cost_multiplier::Float64,
                                     scenario::Scenario,
@@ -255,7 +257,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
     append!(cem_projects, aggregated_options)
 
-    system = MarketClearingProblem(zones, lines, average_capital_cost_multiplier, markets, carbon_tax_vector, cem_projects, rep_period_interval, rep_hour_weight, chron_weights)
+    system = MarketClearingProblem(zones, lines, average_capital_cost_multiplier, markets, carbon_tax_vector, cem_projects, rep_period_interval, rep_hour_weight, avg_block_size, fixed_block_size, chron_weights)
 
     return system
 end

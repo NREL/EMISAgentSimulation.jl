@@ -8,6 +8,8 @@ This struct contains all the data for an investor.
     market_prices: Expected market prices.
     rep_period_interval: Total number of hours in representative period selection e.g., 24 for representative days, 168 for representative weeks, etc. Default =  24
     rep_hour_weight: Representative hour weight for operating markets.    
+    avg_block_size: Number of hours in CEM aggregated time blocks. Default = 4. Set to 1 if hourly granularity is needed.
+    fixed_block_size: Whether the block size in CEM time block aggregation is fixed, i.e., all blocks are of the same length = avg_block_size. If set to FALSE, the model will select variable size time blocks based on chronological clustering.
     chron_weights: Weights for representative hours for modeling chronological constraints
     forecast: Forecast parameters.
     cap_cost_multiplier: Capital cost multiplier.
@@ -24,6 +26,8 @@ mutable struct Investor
     market_prices::MarketPrices
     rep_period_interval::Int64
     rep_hour_weight::Vector{Float64}
+    avg_block_size::Int64
+    fixed_block_size::Bool
     chron_weights::Matrix{Int64}
     forecast::F where F <: Forecast
     cap_cost_multiplier::Float64
@@ -42,6 +46,8 @@ get_carbon_tax(investor::Investor) = investor.carbon_tax
 get_market_prices(investor::Investor) = investor.market_prices
 get_rep_period_interval(investor::Investor) = investor.rep_period_interval
 get_rep_hour_weight(investor::Investor) = investor.rep_hour_weight
+get_avg_block_size(investor::Investor) = investor.avg_block_size
+get_fixed_block_size(investor::Investor) = investor.fixed_block_size
 get_chron_weights(investor::Investor) = investor.chron_weights
 get_forecast(investor::Investor) = investor.forecast
 get_cap_cost_multiplier(investor::Investor) = investor.cap_cost_multiplier

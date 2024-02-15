@@ -44,6 +44,7 @@ function create_PSY_generator(gen::ThermalGenEMIS{<: BuildPhase}, sys::PSY.Syste
         get_operation_cost(tech), # operation cost
         base_power, # base power
         get_time_limits(tech), # up and down time limits
+        false, # must run
         PSY.PrimeMovers(findfirst(x -> Symbol(x) == Symbol(type), collect(instances(PSY.PrimeMovers)))), # primemover
         PSY.ThermalFuels(findfirst(x -> Symbol(x) == Symbol(get_fuel(tech)), collect(instances(PSY.ThermalFuels)))), # fuel type
     )

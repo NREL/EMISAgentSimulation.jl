@@ -12,7 +12,9 @@
         rolling_horizon: Number of years to be used for price prediction. If end of rolling horizon exceeds the years of available data, a receding horizon approach is used.
         simulation_years: Number of years to be simulated.
         rep_period_interval: Total number of hours in representative period selection e.g., 24 for representative days, 168 for representative weeks, etc. Default =  24
-        num_rep_periods: Number of representative periods to be used for price prediction. Default = 20.
+        num_rep_periods: Number of representative periods to be used for price prediction. Default = 10.
+        avg_block_size: Number of hours in CEM aggregated time blocks. Default = 4. Set to 1 if hourly granularity is needed.
+        fixed_block_size: Whether the block size in CEM time block aggregation is fixed, i.e., all blocks are of the same length = avg_block_size. If set to FALSE, the model will select variable size time blocks based on chronological clustering.
         rep_chronology_checkpoint: Number of hours in the checkpoint interval for chronological storage constraints in CEM. Default = 0, i.e., no chronological checkpoints
         da_resolution: Resolution of Day Ahead market clearing (minutes)
         rt_resolution: Resolution of Real Time market clearing (minutes)
@@ -28,6 +30,8 @@
         reserve_penalty: High, Mid or Low penalty prices for reserves
         static_capacity_market: Whether the capacity market demand curve is static or RA-informed
         irm_scalar: Scalar for installed reserve margin to be used for creating the capacity market demand curve.
+        accreditation_methodology: RA metric used for ELCC and EFC accreditation methodology. Options: LOLE or EUE. Set to "Nothing" if accreditation methodology is TopNetLoad.
+        accreditation_metric: Scalar used for modifying the derating factors of VRE and batteries. Range > 0.0
         forecast_type: "Perfect" or "imperfect" forecasts used for price prediction.
         max_carbon_tax_increase: Maximum annual increase in carbon prices due to under-achievement of Clean Energy Targets.
         info_symmetry: Whether investors have symmetric information about forecast parameters.
@@ -50,6 +54,8 @@ struct CaseDefinition
     simulation_years::Int64
     rep_period_interval::Int64
     num_rep_periods::Int64
+    avg_block_size::Int64
+    fixed_block_size::Bool
     rep_chronology_checkpoint::Int64
     da_resolution::Int64
     rt_resolution::Int64
@@ -60,6 +66,8 @@ struct CaseDefinition
     reserve_penalty::String
     static_capacity_market::Bool
     irm_scalar::Float64
+    accreditation_methodology::String
+    accreditation_metric::String
     derating_scale::Float64
     mopr::Bool
     battery_cap_mkt::Bool
@@ -85,6 +93,8 @@ struct CaseDefinition
                             simulation_years,
                             rep_period_interval,
                             num_rep_periods,
+                            avg_block_size,
+                            fixed_block_size,
                             rep_chronology_checkpoint,
                             da_resolution,
                             rt_resolution,
@@ -95,6 +105,8 @@ struct CaseDefinition
                             reserve_penalty,
                             static_capacity_market,
                             irm_scalar,
+                            accreditation_methodology,
+                            accreditation_metric,
                             derating_scale,
                             mopr,
                             battery_cap_mkt,
@@ -141,6 +153,8 @@ struct CaseDefinition
                    simulation_years,
                    rep_period_interval,
                    num_rep_periods,
+                   avg_block_size,
+                   fixed_block_size,
                    rep_chronology_checkpoint,
                    da_resolution,
                    rt_resolution,
@@ -151,6 +165,8 @@ struct CaseDefinition
                    reserve_penalty,
                    static_capacity_market,
                    irm_scalar,
+                   accreditation_methodology,
+                   accreditation_metric,
                    derating_scale,
                    mopr,
                    battery_cap_mkt,
@@ -173,11 +189,13 @@ function CaseDefinition(name::String,
                         solver::JuMP.MOI.OptimizerWithAttributes;
                         siip_market_clearing::Bool = true,
                         start_year::Int64 = 2020,
-                        total_horizon::Int64 = 20,
+                        total_horizon::Int64 = 15,
                         rolling_horizon::Int64 = 10,
-                        simulation_years::Int64 = 10,
+                        simulation_years::Int64 = 15,
                         rep_period_interval::Int64 = 24,
-                        num_rep_periods::Int64 = 20,
+                        num_rep_periods::Int64 = 10,
+                        avg_block_size::Int64 = 4,
+                        fixed_block_size::Bool = FALSE,
                         rep_chronology_checkpoint::Int64 = 0,
                         da_resolution::Int64 = 60,
                         rt_resolution::Int64 = 5,
@@ -188,6 +206,8 @@ function CaseDefinition(name::String,
                         reserve_penalty::String = "Mid",
                         static_capacity_market::Bool = true,
                         irm_scalar::Float64 = 1.0,
+                        accreditation_methodology::String = "TopNetLoad",
+                        accreditation_metric::String = "None",
                         derating_scale::Float64 = 1.0,
                         mopr::Bool = false,
                         battery_cap_mkt::Bool = true,
@@ -213,6 +233,8 @@ function CaseDefinition(name::String,
                    simulation_years,
                    rep_period_interval,
                    num_rep_periods,
+                   avg_block_size,
+                   fixed_block_size,
                    rep_chronology_checkpoint,
                    da_resolution,
                    rt_resolution,
@@ -223,6 +245,8 @@ function CaseDefinition(name::String,
                    reserve_penalty,
                    static_capacity_market,
                    irm_scalar,
+                   accreditation_methodology,
+                   accreditation_metric,
                    derating_scale,
                    mopr,
                    battery_cap_mkt,
@@ -248,6 +272,8 @@ get_rolling_horizon(case::CaseDefinition) = case.rolling_horizon
 get_simulation_years(case::CaseDefinition) = case.simulation_years
 get_rep_period_interval(case::CaseDefinition) = case.rep_period_interval
 get_num_rep_periods(case::CaseDefinition) = case.num_rep_periods
+get_avg_block_size(case::CaseDefinition) = case.avg_block_size
+get_fixed_block_size(case::CaseDefinition) = case.fixed_block_size
 get_rep_chronology_checkpoint(case::CaseDefinition) = case.rep_chronology_checkpoint
 get_da_resolution(case::CaseDefinition) = case.da_resolution
 get_rt_resolution(case::CaseDefinition) = case.rt_resolution
@@ -258,6 +284,8 @@ get_reserve_penalty(case::CaseDefinition) = case.reserve_penalty
 get_static_capacity_market(case::CaseDefinition) = case.static_capacity_market
 get_irm_scalar(case::CaseDefinition) = case.irm_scalar
 get_ordc_unavailability_method(case::CaseDefinition) = case.ordc_unavailability_method
+get_accreditation_methodology(case::CaseDefinition) = case.accreditation_methodology
+get_accreditation_metric(case::CaseDefinition) = case.accreditation_metric
 get_derating_scale(case::CaseDefinition) = case.derating_scale
 get_mopr(case::CaseDefinition) = case.mopr
 get_battery_cap_mkt(case::CaseDefinition) = case.battery_cap_mkt

@@ -344,6 +344,7 @@ end
 This function creates the Unit Commitment template for PSI Simulation.
 """
 #TODO: Update needed
+
 function create_uc_template(inertia_product)
 
     if !(isempty(inertia_product))
@@ -392,7 +393,8 @@ function create_uc_template(inertia_product)
             template,
             PSI.ServiceModel(
                 PSY.ReserveDemandCurve{PSY.ReserveUp},
-                EMISEx.QuadraticCostRampReserve,
+                PSI.StepwiseCostReserve,
+                "Synchronous",
                 use_slacks=true,
                 duals = [PSI.RequirementConstraint],
             )
@@ -462,7 +464,8 @@ function create_uc_template(inertia_product)
             template,
             PSI.ServiceModel(
                 PSY.ReserveDemandCurve{PSY.ReserveUp},
-                EMISEx.QuadraticCostRampReserve,
+                PSI.StepwiseCostReserve,
+                "Synchronous",
                 use_slacks=true,
                 duals = [PSI.RequirementConstraint],
             )
@@ -534,7 +537,8 @@ function create_ed_template(inertia_product)
             template,
             PSI.ServiceModel(
                 PSY.ReserveDemandCurve{PSY.ReserveUp},
-                EMISEx.QuadraticCostRampReserve,
+                PSI.StepwiseCostReserve,
+                "Synchronous",
                 use_slacks=true,
                 duals = [PSI.RequirementConstraint],
             )
@@ -595,7 +599,8 @@ function create_ed_template(inertia_product)
             template,
             PSI.ServiceModel(
                 PSY.ReserveDemandCurve{PSY.ReserveUp},
-                EMISEx.QuadraticCostRampReserve,
+                PSI.StepwiseCostReserve,
+                "Synchronous",
                 use_slacks=true,
                 duals = [PSI.RequirementConstraint],
             )
@@ -667,6 +672,8 @@ function create_sequence(problems::PSI.SimulationModels, feedforward_dict)
 end
 
 
+PSY.get_max_output_fraction(value::PSY.ReserveDemandCurve{PSY.ReserveUp}) = 1.0
+
 """
 This function creates the PSI Simulation and post-processes the results.
 """
@@ -700,13 +707,6 @@ function create_simulation( sys_UC::PSY.System,
                 #     source = PSI.OnVariable,
                 #     affected_values = [PSI.ActivePowerVariable],
                 # ),
-                SSI.EnergyTargetFeedforward(
-                    component_type = PSY.GenericBattery,
-                    source = PSI.EnergyVariable,
-                    target_period = 1,
-                    penalty_cost = 1e5,
-                    affected_values = [PSI.EnergyVariable],
-                ),
                 RPSI.SemiContinuousOutageFeedforward(
                     component_type = PSY.ThermalStandard,
                     source = PSI.OnVariable,
@@ -722,13 +722,6 @@ function create_simulation( sys_UC::PSY.System,
                 #     source = PSI.OnVariable,
                 #     affected_values = [PSI.ActivePowerVariable],
                 # ),
-                SSI.EnergyTargetFeedforward(
-                    component_type = PSY.GenericBattery,
-                    source = PSI.EnergyVariable,
-                    target_period = 1,
-                    penalty_cost = 1e5,
-                    affected_values = [PSI.EnergyVariable],
-                ),
                 RPSI.SemiContinuousOutageFeedforward(
                     component_type = PSY.ThermalStandard,
                     source = PSI.OnVariable,

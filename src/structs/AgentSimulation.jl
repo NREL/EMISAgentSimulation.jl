@@ -74,6 +74,7 @@ This struct temporarily holds the data for creating a simulation.
 """
 mutable struct AgentSimulationData
     case::CaseDefinition
+    results_dir::String
     iteration_year::Int64
     system_UC::Union{Nothing, PSY.System}
     system_ED::Union{Nothing, PSY.System}
@@ -96,6 +97,7 @@ mutable struct AgentSimulationData
 end
 
 function AgentSimulationData(case::CaseDefinition,
+                        results_dir::String,
                         system_UC::Union{Nothing, PSY.System},
                         system_ED::Union{Nothing, PSY.System},
                         zones::Vector{String},
@@ -114,6 +116,7 @@ function AgentSimulationData(case::CaseDefinition,
                         annual_growth::AxisArrays.AxisArray{Float64, 2},
                         resource_adequacy::ResourceAdequacy)
     return AgentSimulationData(case,
+                          results_dir,
                           1,
                           system_UC,
                           system_ED,
@@ -136,6 +139,7 @@ function AgentSimulationData(case::CaseDefinition,
 end
 
 get_case(sim::AgentSimulationData) = sim.case
+get_results_dir(sim::AgentSimulationData) = sim.results_dir
 get_iteration_year(sim::AgentSimulationData) = sim.iteration_year
 get_system_UC(sim::AgentSimulationData) = sim.system_UC
 get_system_ED(sim::AgentSimulationData) = sim.system_ED
