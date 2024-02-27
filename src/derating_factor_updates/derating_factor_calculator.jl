@@ -209,7 +209,7 @@ function calculate_derating_factors(
         simulation)
 
     system_period_of_interest = range(1, length = 8760)
-    correlated_outage_csv_location = "C:/Users/MANWAR2/Documents/Projects/EMIS/Test Cases/Correlated Outages/ThermalFOR_2011.csv"
+    correlated_outage_csv_location = "/kfs2/projects/gmlcmarkets/Phase2_EMIS_Analysis/Correlated Outages/ThermalFOR_2011.csv"
 
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
     base_pras_system = make_pras_system(adjusted_base_system,

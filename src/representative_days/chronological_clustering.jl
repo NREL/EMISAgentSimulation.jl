@@ -16,7 +16,7 @@ function custom_triu(A::AbstractMatrix)
     return upper_triangular_part
 end
 
-function normalize_vector(vector)
+function normalize_vector(vector::Vector{Float64})
     # Calculate mean and standard deviation
     mean_value = mean(vector)
     std_value = std(vector)

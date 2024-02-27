@@ -19,7 +19,7 @@ function calculate_RA_metrics(sys::PSY.System,
                               seed::Int64 = 42)
 
     system_period_of_interest = range(1, length = 8760);
-    correlated_outage_csv_location = "C:/Users/MANWAR2/Documents/Projects/EMIS/Test Cases/Correlated Outages/ThermalFOR_2011.csv"
+    correlated_outage_csv_location = "/kfs2/projects/gmlcmarkets/Phase2_EMIS_Analysis/Correlated Outages/ThermalFOR_2011.csv"
     pras_system = make_pras_system(sys,
                                     system_model="Single-Node",
                                     aggregation="Area",

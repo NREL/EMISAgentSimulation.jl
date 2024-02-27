@@ -40,8 +40,8 @@ function adjust_reserve_voll!(sys::PSY.System,
         if name == "Clean_Energy"
             delta_cost = default_service_slack_cost * 5
             #delta_cost = -default_service_slack_cost
-            slack_variables = variables[PSI.VariableKey{PSI.ReserveRequirementSlack, PSY.VariableReserve{PSY.ReserveUp}}("Clean_Energy")]
-            println(PSY.get_requirement(s))
+            # slack_variables = variables[PSI.VariableKey{PSI.ReserveRequirementSlack, PSY.VariableReserve{PSY.ReserveUp}}("Clean_Energy")]
+            # println(PSY.get_requirement(s))
         elseif name == "Reg_Up" || name == "Inertia"
             reserve_data = read_data(joinpath(simulation_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "$(name).csv"))
             slack_variables = variables[PSI.VariableKey{PSI.ReserveRequirementSlack, PSY.VariableReserve{PSY.ReserveUp}}("$name")]
@@ -356,9 +356,10 @@ function create_uc_template(inertia_product)
                 use_slacks = true,
             ),
         )
-        # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardUnitCommitment)
-        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalStandardUCOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
+        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardUnitCommitment)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardUnitCommitment)
+        # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalStandardUCOutages)
+        # PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -409,16 +410,16 @@ function create_uc_template(inertia_product)
                 duals = [PSI.RequirementConstraint],
             )
         )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.VariableReserve{PSY.ReserveUp},
-                EMISEx.CleanEnergyReserve,
-                "Clean_Energy",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
+        # PSI.set_service_model!(
+        #     template,
+        #     PSI.ServiceModel(
+        #         PSY.VariableReserve{PSY.ReserveUp},
+        #         EMISEx.CleanEnergyReserve,
+        #         "Clean_Energy",
+        #         use_slacks=true,
+        #         duals = [PSI.RequirementConstraint],
+        #     )
+        # )
     else
         template = PSI.ProblemTemplate(
             PSI.NetworkModel(
@@ -427,9 +428,10 @@ function create_uc_template(inertia_product)
                 use_slacks = true,
             ),
         )
-        # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardUnitCommitment)
-        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalStandardUCOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
+        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardUnitCommitment)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardUnitCommitment)
+        # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalStandardUCOutages)
+        # PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -470,16 +472,16 @@ function create_uc_template(inertia_product)
                 duals = [PSI.RequirementConstraint],
             )
         )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.VariableReserve{PSY.ReserveUp},
-                EMISEx.CleanEnergyReserve,
-                "Clean_Energy",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
+        # PSI.set_service_model!(
+        #     template,
+        #     PSI.ServiceModel(
+        #         PSY.VariableReserve{PSY.ReserveUp},
+        #         EMISEx.CleanEnergyReserve,
+        #         "Clean_Energy",
+        #         use_slacks=true,
+        #         duals = [PSI.RequirementConstraint],
+        #     )
+        # )
     end
 
     return template
@@ -499,10 +501,11 @@ function create_ed_template(inertia_product)
                 use_slacks = true,
             ),
         )
-        # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardDispatch)
+        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalBasicDispatch)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardUnitCommitment)
         # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalDispatchOutages)
-        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalRampLimitedOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
+        # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalRampLimitedOutages)
+        # PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -561,10 +564,11 @@ function create_ed_template(inertia_product)
                 use_slacks = true,
             ),
         )
-        # PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalStandardDispatch)
+        PSI.set_device_model!(template, PSY.ThermalStandard, PSI.ThermalBasicDispatch)
+        PSI.set_device_model!(template, ThermalFastStartSIIP, PSI.ThermalStandardUnitCommitment)
         # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalDispatchOutages)
-        PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalRampLimitedOutages)
-        PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
+        # PSI.set_device_model!(template, PSY.ThermalStandard, RPSI.ThermalRampLimitedOutages)
+        # PSI.set_device_model!(template, ThermalFastStartSIIP, RPSI.ThermalStandardUCOutages)
         PSI.set_device_model!(template, PSY.RenewableDispatch, PSI.RenewableFullDispatch)
         PSI.set_device_model!(template, PSY.RenewableFix, PSI.FixedOutput)
         PSI.set_device_model!(template, PSY.PowerLoad, PSI.StaticPowerLoad)
@@ -702,31 +706,31 @@ function create_simulation( sys_UC::PSY.System,
     if isempty(inertia_product)
         feedforward_dict = Dict(
             "ED" => [
-                # PSI.SemiContinuousFeedforward(
-                #     component_type = ThermalFastStartSIIP,
-                #     source = PSI.OnVariable,
-                #     affected_values = [PSI.ActivePowerVariable],
-                # ),
-                RPSI.SemiContinuousOutageFeedforward(
+                PSI.SemiContinuousFeedforward(
                     component_type = PSY.ThermalStandard,
                     source = PSI.OnVariable,
                     affected_values = [PSI.ActivePowerVariable],
                 ),
+                # RPSI.SemiContinuousOutageFeedforward(
+                #     component_type = PSY.ThermalStandard,
+                #     source = PSI.OnVariable,
+                #     affected_values = [PSI.ActivePowerVariable],
+                # ),
             ],
         )
     else
         feedforward_dict = Dict(
             "ED" => [
-                # PSI.SemiContinuousFeedforward(
-                #     component_type = ThermalFastStartSIIP,
-                #     source = PSI.OnVariable,
-                #     affected_values = [PSI.ActivePowerVariable],
-                # ),
-                RPSI.SemiContinuousOutageFeedforward(
+                PSI.SemiContinuousFeedforward(
                     component_type = PSY.ThermalStandard,
                     source = PSI.OnVariable,
                     affected_values = [PSI.ActivePowerVariable],
                 ),
+                # RPSI.SemiContinuousOutageFeedforward(
+                #     component_type = PSY.ThermalStandard,
+                #     source = PSI.OnVariable,
+                #     affected_values = [PSI.ActivePowerVariable],
+                # ),
             ],
          )
     end
@@ -752,7 +756,7 @@ function create_simulation( sys_UC::PSY.System,
 
     sim = PSI.Simulation(
                     name = "emis_$(case_name)",
-                    steps = 365,
+                    steps = 3,
                     models = models,
                     sequence = sequence,
                     simulation_folder = ".",
@@ -781,8 +785,8 @@ function create_simulation( sys_UC::PSY.System,
     result_variables_ed = PSI.read_realized_variables(res_ed)
     result_variables_uc = PSI.read_realized_variables(res_uc)
 
-    data_length_ed = DataFrames.nrow(dual_values_ed["NodalBalanceActiveConstraint__Bus"])
-    data_length_uc = DataFrames.nrow(dual_values_uc["NodalBalanceActiveConstraint__Bus"])
+    data_length_ed = DataFrames.nrow(dual_values_ed["NodalBalanceActiveConstraint__ACBus"])
+    data_length_uc = DataFrames.nrow(dual_values_uc["NodalBalanceActiveConstraint__ACBus"])
 
     energy_price = AxisArrays.AxisArray(zeros(length(zones), 1, data_length_ed), zones, 1:1, 1:data_length_ed)
     energy_voll = AxisArrays.AxisArray(zeros(length(zones), 1, data_length_ed), zones, 1:1, 1:data_length_ed)
@@ -811,9 +815,9 @@ function create_simulation( sys_UC::PSY.System,
                 energy_voll[zone, 1, :] = zeros(data_length_ed)
             else
                 energy_price[zone, 1, :] =
-                abs.(round.(dual_values_ed["NodalBalanceActiveConstraint__Bus"][:, PSY.get_name(bus)], digits = 5)) / base_power
-                energy_voll[zone, 1, :] = abs.(round.(result_variables_ed["SystemBalanceSlackUp__Bus"][:, string(PSY.get_number(bus))], digits = 5)) / base_power
-                energy_voll[zone, 1, :] += abs.(round.(result_variables_ed["SystemBalanceSlackDown__Bus"][:, string(PSY.get_number(bus))], digits = 5)) / base_power
+                abs.(round.(dual_values_ed["NodalBalanceActiveConstraint__ACBus"][:, PSY.get_name(bus)], digits = 5)) / base_power
+                energy_voll[zone, 1, :] = abs.(round.(result_variables_ed["SystemBalanceSlackUp__ACBus"][:, string(PSY.get_number(bus))], digits = 5)) / base_power
+                energy_voll[zone, 1, :] += abs.(round.(result_variables_ed["SystemBalanceSlackDown__ACBus"][:, string(PSY.get_number(bus))], digits = 5)) / base_power
             end
     end
 

@@ -931,8 +931,8 @@ function cem(system::MarketClearingProblem{Z, T},
                 p_out_ru_detail[g, p, t] = sum(value.(p_out_ru[g, rp, p, tb]) for rp in reserve_up_products)
                 p_in_rd_detail[g, p, t] = sum(value.(p_in_rd[g, rp, p, tb]) for rp in reserve_down_products)
                 p_out_rd_detail[g, p, t] = sum(value.(p_out_rd[g, rp, p, tb]) for rp in reserve_down_products)
-                p_in_ordc_detail[g, p, t] = sum(value.(p_in_ordc[g, rp, p, tb]) for rp in ordc_products)
-                p_out_ordc_detail[g, p, t] = sum(value.(p_out_ordc[g, rp, p, tb]) for rp in ordc_products)
+                # p_in_ordc_detail[g, p, t] = sum(value.(p_in_ordc[g, rp, p, tb]) for rp in ordc_products)
+                # p_out_ordc_detail[g, p, t] = sum(value.(p_out_ordc[g, rp, p, tb]) for rp in ordc_products)
             end
         end
     end
