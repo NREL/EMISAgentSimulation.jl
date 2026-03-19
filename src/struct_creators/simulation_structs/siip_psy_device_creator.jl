@@ -20,7 +20,12 @@ function create_PSY_generator(gen::ThermalGenEMIS{<: BuildPhase}, sys::PSY.Syste
     bus = filter(b -> string(PSY.get_number(b)) == get_bus(tech), collect(buses))
 
     if isempty(bus)
-        error("No matching bus found for generator $(gen_name) with bus name $(get_bus(tech))")
+        bus = filter(b -> PSY.get_name(b) == get_bus(tech), collect(buses))
+        if isempty(bus)
+            error("No matching bus found for generator $(gen_name) with bus name $(get_bus(tech))")
+        else
+            gen_bus = only(bus)
+        end
     else
         gen_bus = only(bus)
     end
@@ -87,7 +92,12 @@ function create_PSY_generator(gen::RenewableGenEMIS{<: BuildPhase}, sys::PSY.Sys
     bus = filter(b -> string(PSY.get_number(b)) == get_bus(tech), collect(buses))
 
     if isempty(bus)
-        error("No matching bus found for generator $(gen_name) with bus name $(get_bus(tech))")
+        bus = filter(b -> PSY.get_name(b) == get_bus(tech), collect(buses))
+        if isempty(bus)
+            error("No matching bus found for generator $(gen_name) with bus name $(get_bus(tech))")
+        else
+            gen_bus = only(bus)
+        end
     else
         gen_bus = only(bus)
     end
@@ -126,7 +136,12 @@ function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
     bus = filter(b -> string(PSY.get_number(b)) == get_bus(tech), collect(buses))
 
     if isempty(bus)
-        error("No matching bus found for generator $(get_name(gen)) with bus name $(get_bus(tech))")
+        bus = filter(b -> PSY.get_name(b) == get_bus(tech), collect(buses))
+        if isempty(bus)
+            error("No matching bus found for generator $(gen_name) with bus name $(get_bus(tech))")
+        else
+            gen_bus = only(bus)
+        end
     else
         gen_bus = only(bus)
     end
