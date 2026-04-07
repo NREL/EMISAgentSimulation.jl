@@ -80,8 +80,6 @@ function create_PSY_generator(gen::RenewableGenEMIS{<: BuildPhase}, sys::PSY.Sys
     base_power = get_maxcap(gen)
     gen_name = get_name(gen)
 
-    @info "Creating generator $(gen_name) of type $(get_type(tech)) with max capacity $(get_maxcap(gen)) MW and bus $(get_bus(tech))"
-
     if get_type(tech) == "WT"
         primemover = PSY.PrimeMovers.WT
     elseif get_type(tech) == "PVe"
@@ -126,11 +124,21 @@ end
 
 """
 This function creates a PowerSystems EnergyReservoirStorage unit.
+EnergyReservoirStorage in PSY: https://nrel-sienna.github.io/PowerSystems.jl/stable/model_library/generated_EnergyReservoirStorage/#EnergyReservoirStorage
 """
 function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
+    # @info "Creating PSY EnergyReservoirStorage for battery $(get_name(gen))"
     tech = get_tech(gen)
-    base_power = get_maxcap(gen)
+    base_power = get_base_power(gen)
     gen_name = get_name(gen)
+    rating = get_storage_rating(gen)
+    maxcap = get_maxcap(gen)
+    storage_capacity = get_storage_capacity(gen)
+    storage_level_limits = get_storage_level_limits(gen)
+    input_active_power_limits = get_input_active_power_limits(gen)
+    output_active_power_limits = get_output_active_power_limits(gen)
+    initial_storage_capacity_level = get_initial_storage_capacity_level(gen)
+    efficiency = get_efficiency(gen)
 
     buses = PSY.get_components(PSY.Bus, sys)
     bus = filter(b -> string(PSY.get_number(b)) == get_bus(tech), collect(buses))
@@ -147,25 +155,25 @@ function create_PSY_generator(gen::BatteryEMIS{<: BuildPhase}, sys::PSY.System)
     end
 
     PSY_gen = PSY.EnergyReservoirStorage(
-        get_name(gen),  # name
+        gen_name,  # name
         true,           # available
-        gen_bus, # bus
+        gen_bus,        # bus
         PSY.PrimeMovers.BA, # primemover
-        StorageTech.LIB,
-        get_storage_capacity(tech)[:max] / get_maxcap(gen),
-        (min = 0.0, max = 1.0), # state of charge limits
-        get_soc(tech) / base_power, # initial state of charge
-        get_maxcap(gen) / base_power, # rating
-        get_maxcap(gen) / base_power, # active power
+        StorageTech.LIB, # storage technology
+        storage_capacity[:max], # storage capacity MWh
+        storage_level_limits, # state of charge limits
+        initial_storage_capacity_level, # initial state of charge
+        rating, # rating
+        maxcap / base_power, # active power
         (
-            min = get_input_active_power_limits(tech)[:min] / base_power,
-            max = get_input_active_power_limits(tech)[:max] / base_power,
+            min = input_active_power_limits[:min],
+            max = input_active_power_limits[:max],
         ), # input active power limits
         (
-            min = get_output_active_power_limits(tech)[:min] / base_power,
-            max = get_output_active_power_limits(tech)[:max] / base_power,
+            min = output_active_power_limits[:min],
+            max = output_active_power_limits[:max],
         ), # output active power limits
-        get_efficiency(tech), # efficiency
+        efficiency, # in/out efficiency
         1.0,             # reactive power
         nothing,      # reactive power limits
         base_power, # base power

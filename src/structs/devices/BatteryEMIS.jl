@@ -13,16 +13,20 @@ This struct contains the technical data of a battery.
 
 struct BatteryTech <: Tech
     type::String
-    input_active_power_limits::NamedTuple{(:min, :max),Tuple{Float64,Float64}}
-    output_active_power_limits::NamedTuple{(:min, :max),Tuple{Float64,Float64}}
+    input_active_power_limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
+    output_active_power_limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
     ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}
-    storage_capacity::NamedTuple{(:min, :max),Tuple{Float64,Float64}}
+    storage_capacity::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
+    storage_level_limits::NamedTuple{(:min, :max), Tuple{Float64, Float64}}
+    initial_storage_capacity_level::Float64
+    rating::Float64
     soc::Float64
     efficiency::NamedTuple{(:in, :out), Tuple{Float64, Float64}}
     bus::String
     zone::String
     FOR::Float64
     MTTR::Int64
+    base_power::Float64
 end
 
 get_type(tech::BatteryTech) = tech.type
@@ -30,12 +34,16 @@ get_input_active_power_limits(tech::BatteryTech) = tech.input_active_power_limit
 get_output_active_power_limits(tech::BatteryTech) = tech.output_active_power_limits
 get_ramp_limits(tech::BatteryTech) = tech.ramp_limits
 get_storage_capacity(tech::BatteryTech) = tech.storage_capacity
+get_storage_level_limits(tech::BatteryTech) = tech.storage_level_limits
+get_initial_storage_capacity_level(tech::BatteryTech) = tech.initial_storage_capacity_level
 get_soc(tech::BatteryTech) = tech.soc
 get_efficiency(tech::BatteryTech) = tech.efficiency
 get_bus(tech::BatteryTech) = tech.bus
 get_zone(tech::BatteryTech) = tech.zone
 get_FOR(tech::BatteryTech) = tech.FOR
 get_MTTR(tech::BatteryTech) = tech.MTTR
+get_base_power(tech::BatteryTech) = tech.base_power
+get_storage_rating(tech::BatteryTech) = tech.rating
 
 """
 This struct contains all the data for battery storage.
