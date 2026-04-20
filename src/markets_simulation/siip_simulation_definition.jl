@@ -1445,7 +1445,7 @@ function create_simulation(sys_MD::PSY.System,
                 PSY.get_components(PSY.HydroTurbine, sys),
             ])
                 if !(service in PSY.get_services(device))
-                    @info "Adding $(service) to $(device)"
+                    # @info "Adding $(service) to $(device)"
                     PSY.add_service!(device, service, sys)
                 end
             end
@@ -1491,8 +1491,6 @@ function create_simulation(sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = PENALTY_COST,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(;
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
@@ -1540,8 +1538,6 @@ function create_simulation(sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = PENALTY_COST,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(;
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
@@ -1591,8 +1587,6 @@ function create_simulation(sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = PENALTY_COST,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(;
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
@@ -1631,8 +1625,6 @@ function create_simulation(sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = PENALTY_COST,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(;
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
