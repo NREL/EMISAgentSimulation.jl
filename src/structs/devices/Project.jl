@@ -6,60 +6,82 @@ abstract type StorageEMIS{T <: BuildPhase} <: Project{T} end  #Storage - subtype
 
 abstract type Tech end
 
-get_name(project::P) where P <: Project{<: BuildPhase} = project.name
-get_tech(project::P) where P <: Project{<: BuildPhase}  = project.tech
-get_decision_year(project::P) where P <: Project{<: BuildPhase}  = project.decision_year
-get_construction_year(project::P) where P <: Project{<: BuildPhase}  = project.construction_year
-get_retirement_year(project::P) where P <: Project{<: BuildPhase}  = project.retirement_year
-get_end_life_year(project::P) where P <: Project{<: BuildPhase}  = project.end_life_year
-get_finance_data(project::P) where P <: Project{<: BuildPhase}  = project.finance_data
-get_products(project::P) where P <: Project{<: BuildPhase} = project.products
-get_mincap(project::P) where P <: GeneratorEMIS{<: BuildPhase}  = get_active_power_limits(get_tech(project))[:min]
-get_maxcap(project::P) where P <: GeneratorEMIS{<: BuildPhase}  = get_active_power_limits(get_tech(project))[:max]
-get_mincap(project::P) where P <: StorageEMIS{<: BuildPhase}  = get_output_active_power_limits(get_tech(project))[:min]
-get_maxcap(project::P) where P <: StorageEMIS{<: BuildPhase}  = get_output_active_power_limits(get_tech(project))[:max]
+get_name(project::P) where {P <: Project{<: BuildPhase}} = project.name
+get_tech(project::P) where {P <: Project{<: BuildPhase}} = project.tech
+get_decision_year(project::P) where {P <: Project{<: BuildPhase}} = project.decision_year
+get_construction_year(project::P) where {P <: Project{<: BuildPhase}} =
+    project.construction_year
+get_retirement_year(project::P) where {P <: Project{<: BuildPhase}} =
+    project.retirement_year
+get_end_life_year(project::P) where {P <: Project{<: BuildPhase}} = project.end_life_year
+get_finance_data(project::P) where {P <: Project{<: BuildPhase}} = project.finance_data
+get_products(project::P) where {P <: Project{<: BuildPhase}} = project.products
+get_mincap(project::P) where {P <: GeneratorEMIS{<: BuildPhase}} =
+    get_active_power_limits(get_tech(project))[:min]
+get_maxcap(project::P) where {P <: GeneratorEMIS{<: BuildPhase}} =
+    get_active_power_limits(get_tech(project))[:max]
+get_mincap(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_output_active_power_limits(get_tech(project))[:min]
+get_maxcap(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_output_active_power_limits(get_tech(project))[:max]
+get_base_power(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_base_power(get_tech(project))
+get_storage_rating(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_storage_rating(get_tech(project))
+get_storage_level_limits(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_storage_level_limits(get_tech(project))
+get_input_active_power_limits(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_input_active_power_limits(get_tech(project))
+get_output_active_power_limits(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_output_active_power_limits(get_tech(project))
+get_storage_capacity(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_storage_capacity(get_tech(project))
+get_initial_storage_capacity_level(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_initial_storage_capacity_level(get_tech(project))   
+get_efficiency(project::P) where {P <: StorageEMIS{<: BuildPhase}} =
+    get_efficiency(get_tech(project))       
 
 get_operation_cost(tech::Tech) = nothing
 get_heat_rate_curve(tech::Tech) = nothing
 get_fuel_cost(tech::Tech) = 0.0
 
 function set_name!(project::P,
-                   name::String) where P <: Project{<: BuildPhase}
-        project.name = name
+    name::String) where {P <: Project{<: BuildPhase}}
+    project.name = name
     return
 end
 
-function set_decision_year!(project::P, year::Int64) where P <: Project{<: BuildPhase}
+function set_decision_year!(project::P, year::Int64) where {P <: Project{<: BuildPhase}}
     project.decision_year = year
     return
 end
 
-function set_construction_year!(project::P, year::Int64) where P <: Project{<: BuildPhase}
+function set_construction_year!(project::P, year::Int64) where {P <: Project{<: BuildPhase}}
     project.construction_year = year
     return
 end
 
-function set_retirement_year!(project::P, year) where P <: Project{<: BuildPhase}
+function set_retirement_year!(project::P, year) where {P <: Project{<: BuildPhase}}
     project.retirement_year = year
 end
 
-function set_end_life_year!(project::P, year::Int64) where P <: Project{<: BuildPhase}
+function set_end_life_year!(project::P, year::Int64) where {P <: Project{<: BuildPhase}}
     project.end_life_year = year
     return
 end
 
 function set_investment_cost!(project::P,
-                            investment_cost::Vector{Float64}) where P <: Project{<: BuildPhase}
+    investment_cost::Vector{Float64}) where {P <: Project{<: BuildPhase}}
     return
 end
 
 function set_investment_cost!(project::P,
-                             investment_cost::Vector{Float64}) where P <: Project{Option}
-   project.finance_data.investment_cost = investment_cost
+    investment_cost::Vector{Float64}) where {P <: Project{Option}}
+    project.finance_data.investment_cost = investment_cost
 end
 
 function set_effective_investment_cost!(project::P,
-                                      investment_cost::Float64) where P <: Project{<: BuildPhase}
+    investment_cost::Float64) where {P <: Project{<: BuildPhase}}
     project.finance_data.effective_investment_cost = investment_cost
 end
 
@@ -67,6 +89,6 @@ function get_project_preference_multiplier(project::Project)
     return get_preference_multiplier(get_finance_data(project))
 end
 
-function set_preference_multiplier!(project::Project, iteration_year::Int64, value:: Float64)
+function set_preference_multiplier!(project::Project, iteration_year::Int64, value::Float64)
     project.finance_data.preference_multiplier[iteration_year] = value
 end
