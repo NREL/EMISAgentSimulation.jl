@@ -33,6 +33,7 @@
 struct CaseDefinition
     base_dir::String
     sys_dir::String
+    timeseries_data_dir::String
     cem_solver::JuMP.MOI.OptimizerWithAttributes
     siip_solver::JuMP.MOI.OptimizerWithAttributes
     siip_market_clearing::Bool
@@ -61,40 +62,45 @@ struct CaseDefinition
     solver_name::String
 
     function CaseDefinition(base_dir,
-                            sys_dir,
-                            cem_solver,
-                            siip_solver,
-                            siip_market_clearing,
-                            start_year,
-                            total_horizon,
-                            rolling_horizon,
-                            simulation_years,
-                            num_rep_periods,
-                            da_resolution,
-                            rt_resolution,
-                            rps_target,
-                            markets,
-                            ordc_curved,
-                            reserve_penalty,
-                            derating_scale,
-                            mopr,
-                            vre_reserves,
-                            heterogeneity,
-                            forecast_type,
-                            info_symmetry,
-                            belief_update,
-                            uncertainty,
-                            risk_aversion,
-                            parallel_investors,
-                            parallel_scenarios,
-                            solver_name)
-
-        @assert total_horizon >= simulation_years
+        sys_dir,
+        timeseries_data_dir,
+        cem_solver,
+        siip_solver,
+        siip_market_clearing,
+        start_year,
+        total_horizon,
+        rolling_horizon,
+        simulation_years,
+        num_rep_periods,
+        da_resolution,
+        rt_resolution,
+        rps_target,
+        markets,
+        ordc_curved,
+        reserve_penalty,
+        derating_scale,
+        mopr,
+        vre_reserves,
+        heterogeneity,
+        forecast_type,
+        info_symmetry,
+        belief_update,
+        uncertainty,
+        risk_aversion,
+        parallel_investors,
+        parallel_scenarios,
+        solver_name)
 
         forecast_type = lowercase(forecast_type)
+
+        @assert total_horizon >= simulation_years
         @assert forecast_type == "perfect" || lowercase(forecast_type) == "imperfect"
-        @assert lowercase(rps_target) == "high" || lowercase(rps_target) == "mid" || lowercase(rps_target) == "low"
-        @assert lowercase(reserve_penalty) == "high" || lowercase(reserve_penalty) == "mid" || lowercase(reserve_penalty) == "low"
+        @assert lowercase(rps_target) == "high" || lowercase(rps_target) == "mid" ||
+                lowercase(rps_target) == "low"
+        @assert lowercase(reserve_penalty) == "high" ||
+                lowercase(reserve_penalty) == "mid" || lowercase(reserve_penalty) == "low"
+
+        @assert da_resolution >= rt_resolution
 
         if forecast_type == "perfect"
             @assert info_symmetry == true
@@ -103,100 +109,108 @@ struct CaseDefinition
             @assert risk_aversion == false
         end
 
-        @assert da_resolution >= rt_resolution
-        #=
-        if !(siip_market_clearing)
-            @assert da_resolution == rt_resolution
-        end
-        =#
         return new(base_dir,
-                   sys_dir,
-                   cem_solver,
-                   siip_solver, 
-                   siip_market_clearing,
-                   start_year,
-                   total_horizon,
-                   rolling_horizon,
-                   simulation_years,
-                   num_rep_periods,
-                   da_resolution,
-                   rt_resolution,
-                   rps_target,
-                   markets,
-                   ordc_curved,
-                   reserve_penalty,
-                   derating_scale,
-                   mopr,
-                   vre_reserves,
-                   heterogeneity,
-                   forecast_type,
-                   info_symmetry,
-                   belief_update,
-                   uncertainty,
-                   risk_aversion,
-                   parallel_investors,
-                   parallel_scenarios,
-                   solver_name)
+            sys_dir,
+            timeseries_data_dir,
+            cem_solver,
+            siip_solver,
+            siip_market_clearing,
+            start_year,
+            total_horizon,
+            rolling_horizon,
+            simulation_years,
+            num_rep_periods,
+            da_resolution,
+            rt_resolution,
+            rps_target,
+            markets,
+            ordc_curved,
+            reserve_penalty,
+            derating_scale,
+            mopr,
+            vre_reserves,
+            heterogeneity,
+            forecast_type,
+            info_symmetry,
+            belief_update,
+            uncertainty,
+            risk_aversion,
+            parallel_investors,
+            parallel_scenarios,
+            solver_name)
     end
 end
 
 function CaseDefinition(base_dir::String,
-                        sys_dir::String,
-                        cem_solver::JuMP.MOI.OptimizerWithAttributes,
-                        siip_solver::JuMP.MOI.OptimizerWithAttributes;                        
-                        siip_market_clearing::Bool = true,
-                        start_year::Int64 = 2020,
-                        total_horizon::Int64 = 20,
-                        rolling_horizon::Int64 = 10,
-                        simulation_years::Int64 = 10,
-                        num_rep_periods::Int64 = 12,
-                        da_resolution::Int64 = 60,
-                        rt_resolution::Int64 = 5,
-                        rps_target::String = "Mid",
-                        markets::Dict{Symbol, Bool} = Dict(:Energy => true, :Synchronous => true, :Primary => true, :Reg_Up => true, :Reg_Down => true,	:Flex_Up => true, :Flex_Down => true, :Capacity => true, :REC => true, :CarbonTax => true),
-                        ordc_curved::Bool = true,
-                        reserve_penalty::String = "Mid",
-                        derating_scale::Float64 = 1.0,
-                        mopr::Bool = false,
-                        vre_reserves::Bool = true,
-                        heterogeneity::Bool = false,
-                        forecast_type::String = "perfect",
-                        info_symmetry::Bool = true,
-                        belief_update::Bool = false,
-                        uncertainty::Bool = false,
-                        risk_aversion::Bool = false,
-                        parallel_investors::Bool = false,
-                        parallel_scenarios::Bool = false,
-                        solver_name::String)
+    sys_dir::String,
+    timeseries_data_dir::String,
+    cem_solver::JuMP.MOI.OptimizerWithAttributes,
+    siip_solver::JuMP.MOI.OptimizerWithAttributes;
+    siip_market_clearing::Bool = true,
+    start_year::Int64 = 2020,
+    total_horizon::Int64 = 20,
+    rolling_horizon::Int64 = 10,
+    simulation_years::Int64 = 10,
+    num_rep_periods::Int64 = 12,
+    da_resolution::Int64 = 60,
+    rt_resolution::Int64 = 5,
+    rps_target::String = "Mid",
+    markets::Dict{Symbol, Bool} = Dict(
+        :Energy => true,
+        :Synchronous => true,
+        :Primary => true,
+        :Reg_Up => true,
+        :Reg_Down => true,
+        :Flex_Up => true,
+        :Flex_Down => true,
+        :Capacity => true,
+        :REC => true,
+        :CarbonTax => true,
+    ),
+    ordc_curved::Bool = true,
+    reserve_penalty::String = "Mid",
+    derating_scale::Float64 = 1.0,
+    mopr::Bool = false,
+    vre_reserves::Bool = true,
+    heterogeneity::Bool = false,
+    forecast_type::String = "perfect",
+    info_symmetry::Bool = true,
+    belief_update::Bool = false,
+    uncertainty::Bool = false,
+    risk_aversion::Bool = false,
+    parallel_investors::Bool = false,
+    parallel_scenarios::Bool = false,
+    solver_name::String)
 
     CaseDefinition(base_dir,
-                   sys_dir,
-                   cem_solver,
-                   siip_solver, 
-                   siip_market_clearing,
-                   start_year,
-                   total_horizon,
-                   rolling_horizon,
-                   simulation_years,
-                   num_rep_periods,
-                   da_resolution,
-                   rt_resolution,
-                   rps_target,
-                   markets,
-                   ordc_curved,
-                   reserve_penalty,
-                   derating_scale,
-                   mopr,
-                   vre_reserves,
-                   heterogeneity,
-                   forecast_type,
-                   info_symmetry,
-                   belief_update,
-                   uncertainty,
-                   risk_aversion,
-                   parallel_investors,
-                   parallel_scenarios,
-                   solver_name)
+        sys_dir,
+        timeseries_data_dir,
+        cem_solver,
+        siip_solver,
+        siip_market_clearing,
+        start_year,
+        total_horizon,
+        rolling_horizon,
+        simulation_years,
+        num_rep_periods,
+        da_resolution,
+        rt_resolution,
+        rps_target,
+        markets,
+        ordc_curved,
+        reserve_penalty,
+        derating_scale,
+        mopr,
+        vre_reserves,
+        heterogeneity,
+        forecast_type,
+        info_symmetry,
+        belief_update,
+        uncertainty,
+        risk_aversion,
+        parallel_investors,
+        parallel_scenarios,
+        solver_name)
 end
 
 get_base_dir(case::CaseDefinition) = case.base_dir
@@ -227,6 +241,7 @@ get_risk_aversion(case::CaseDefinition) = case.risk_aversion
 get_parallel_investors(case::CaseDefinition) = case.parallel_investors
 get_parallel_scenarios(case::CaseDefinition) = case.parallel_scenarios
 get_solver_name(case::CaseDefinition) = case.solver_name
+get_timeseries_data_dir(case::CaseDefinition) = case.timeseries_data_dir
 
 function get_name(case::CaseDefinition)
     #=
@@ -306,11 +321,11 @@ function get_name(case::CaseDefinition)
     else
         inertia = "No_Inertia"
     end
-    
+
     solver_name = get_solver_name(case)
 
     case_name = "$(rps)_$(capacity)_$(ordc)_$(penalty)_$(carbon)_$(derating)_$(mopr)_$(vre_reserves)_$(inertia)_$(solver_name)"
-    
+
     return case_name
 end
 
