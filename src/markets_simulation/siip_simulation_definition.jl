@@ -40,6 +40,11 @@ function PSI.add_constraint_dual!(
     return
 end
 
+# StorageEnergyShortageVariable is a 1D scalar slack (no time axis) created by
+# EnergyTargetFeedforward.
+
+PSI.should_write_resulting_value(::Type{SSI.StorageEnergyShortageVariable}) = false
+
 function adjust_reserve_voll!(sys::PSY.System,
     problem::PSI.OperationModel,
     simulation_dir::String,
