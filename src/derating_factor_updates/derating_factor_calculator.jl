@@ -21,7 +21,6 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     active_projects::Vector{Project},
     derating_scale::Float64,
     marginal_cc::Bool)
-
     @info "Calculating derating data using top net load hour methodology - iteration year: $(iteration_year), scenario: $(scenario)"
     cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
 
@@ -168,7 +167,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     for battery in all_battery_existing
         stor_duration =
             Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-            # @info "Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
+        # @info "Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
         if haskey(existing_storage_duration_dict, stor_duration)
             push!(existing_storage_duration_dict[stor_duration], battery)
         else
@@ -180,7 +179,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     for battery in all_battery_options
         stor_duration =
             Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-            # @info "Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
+        # @info "Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
         if haskey(option_storage_duration_dict, stor_duration)
             push!(option_storage_duration_dict[stor_duration], battery)
         else
@@ -461,8 +460,20 @@ function calculate_derating_factors(
     ##TODO: AA remove debug code after validation
     @info "Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
     temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
-    PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
-    PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
+    PSY.to_json(
+        base_pras_system,
+        joinpath(
+            temp_dir,
+            "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
+        ),
+    )
+    PSY.to_json(
+        adjusted_base_system,
+        joinpath(
+            temp_dir,
+            "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
+        ),
+    )
 
     if marginal_cc
         for zone in zones
@@ -493,17 +504,22 @@ function calculate_derating_factors(
                     end
 
                     # augmented_pras_system = make_pras_system(augmented_sys;
-    #                     system_model = "Single-Node",
-    #                     aggregation = "Area",
-    #                     period_of_interest = system_period_of_interest,
-    #                     outage_flag = false,
-    #                     lump_pv_wind_gens = false,
-    #                     availability_flag = true,
-    #                     outage_csv_location = correlated_outage_csv_location)
+                    #                     system_model = "Single-Node",
+                    #                     aggregation = "Area",
+                    #                     period_of_interest = system_period_of_interest,
+                    #                     outage_flag = false,
+                    #                     lump_pv_wind_gens = false,
+                    #                     availability_flag = true,
+                    #                     outage_csv_location = correlated_outage_csv_location)
 
                     # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                    cc_result  =  PRAS.assess(adjusted_base_system,  augmented_sys,  methodology{ra_metric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
-                    cc_lower,  cc_upper  =  extrema(cc_result) 
+                    cc_result = PRAS.assess(
+                        adjusted_base_system,
+                        augmented_sys,
+                        methodology{ra_metric}(Int(ceil(max_cap)), "Region"),
+                        PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                    )
+                    cc_lower, cc_upper = extrema(cc_result)
                     cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
                     derating_factors[!, "new_$(type)_$(zone)"] .= cc_final
                 end
@@ -546,8 +562,13 @@ function calculate_derating_factors(
                 #                         availability_flag=true,
                 #                         outage_csv_location = correlated_outage_csv_location)
                 #  Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                cc_result  =  PRAS.assess(pruned_based_sys, augmented_sys, PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
-                cc_lower,  cc_upper  =  extrema(cc_result) 
+                cc_result = PRAS.assess(
+                    pruned_based_sys,
+                    augmented_sys,
+                    PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"),
+                    PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                )
+                cc_lower, cc_upper = extrema(cc_result)
                 cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
 
                 derating_factors[!, "existing_$(type)_$(zone)"] .= cc_final
@@ -566,7 +587,7 @@ function calculate_derating_factors(
     for battery in all_battery_existing
         stor_duration =
             Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-            @info "calculate_derating_factors - Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours"
+        @info "calculate_derating_factors - Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours"
         if haskey(existing_storage_duration_dict, stor_duration)
             push!(existing_storage_duration_dict[stor_duration], battery)
         else
@@ -578,7 +599,7 @@ function calculate_derating_factors(
     for battery in all_battery_options
         stor_duration =
             Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-            @info "calculate_derating_factors - Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours"
+        @info "calculate_derating_factors - Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours"
         if haskey(option_storage_duration_dict, stor_duration)
             push!(option_storage_duration_dict[stor_duration], battery)
         else
@@ -593,7 +614,7 @@ function calculate_derating_factors(
             remove_system_component!(pruned_based_sys, project)
             total_capacity += get_maxcap(project)
         end
-        
+
         # pruned_base_pras_system = make_pras_system(pruned_based_sys,
         #     system_model="Single-Node",
         #     aggregation="Area",
@@ -602,10 +623,15 @@ function calculate_derating_factors(
         #     lump_pv_wind_gens=false,
         #     availability_flag=true,
         #     outage_csv_location = correlated_outage_csv_location)
-        
-            # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-        cc_result  =  PRAS.assess(pruned_based_sys, augmented_sys, PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
-        cc_lower,  cc_upper  =  extrema(cc_result) 
+
+        # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
+        cc_result = PRAS.assess(
+            pruned_based_sys,
+            augmented_sys,
+            PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"),
+            PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+        )
+        cc_lower, cc_upper = extrema(cc_result)
         cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
         derating_factors[!, "existing_STOR_$(stor_duration)"] .= cc_final
     end
@@ -632,7 +658,7 @@ function calculate_derating_factors(
                     )
                 end
             end
-            
+
             # augmented_pras_system = make_pras_system(augmented_sys,
             # system_model="Single-Node",
             # aggregation="Area",
@@ -643,8 +669,13 @@ function calculate_derating_factors(
             # outage_csv_location = correlated_outage_csv_location)
 
             # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-            cc_result  =  PRAS.assess(adjusted_base_system,  augmented_sys,  methodology{ra_metric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
-            cc_lower,  cc_upper  =  extrema(cc_result) 
+            cc_result = PRAS.assess(
+                adjusted_base_system,
+                augmented_sys,
+                methodology{ra_metric}(Int(ceil(max_cap)), "Region"),
+                PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+            )
+            cc_lower, cc_upper = extrema(cc_result)
             cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
             derating_factors[!, "new_STOR_$(stor_duration)"] .= cc_final
         end
@@ -809,7 +840,7 @@ function update_derating_factor!(project::BatteryEMIS{Existing},
             "derating_dict.csv",
         ),
     )
-    
+
     derating_factor = derating_data[1, project_type]
     derating_factor = min(derating_factor * derating_scale, 1.0)
     for product in get_products(project)
@@ -866,7 +897,6 @@ function update_simulation_derating_data!(
     methodology::String = "ELCC",
     ra_metric::String = "LOLE",
     marginal_cc::Bool = true)
-    
     @info "Updating derating factors for scenario $(scenario) and iteration year $(iteration_year) using methodology $(methodology) and RA metric $(ra_metric). Marginal CC is set to $(marginal_cc). Derating scale is set to $(derating_scale)."
     data_dir = get_data_dir(get_case(simulation))
     active_projects = get_activeprojects(simulation)
