@@ -15,16 +15,18 @@ This function calculates the derating data for existing and new renewable genera
 based on top 100 net-load hour methodology.
 """
 function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulationData},
-                                simulation_dir::String,
-                                scenario::String,
-                                iteration_year::Int64,
-                                active_projects::Vector{Project},
-                                derating_scale::Float64,
-                                marginal_cc::Bool)
+    simulation_dir::String,
+    scenario::String,
+    iteration_year::Int64,
+    active_projects::Vector{Project},
+    derating_scale::Float64,
+    marginal_cc::Bool)
 
+    @info "Calculating derating data using top net load hour methodology - iteration year: $(iteration_year), scenario: $(scenario)"
     cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
 
-    renewable_existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
+    renewable_existing =
+        filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
     renewable_options = filter(p -> typeof(p) == RenewableGenEMIS{Option}, active_projects)
 
     zones = unique(get_zone.(get_tech.(renewable_existing)))
@@ -38,8 +40,32 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     availability_data = DataFrames.DataFrame()
 
     for sim_year in simulation_years
-        load_n_vg_data = vcat(load_n_vg_data, read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data_rt.csv")))
-        availability_data = vcat(availability_data, read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Availability", "REAL_TIME_availability.csv")))
+        load_n_vg_data = vcat(
+            load_n_vg_data,
+            read_data(
+                joinpath(
+                    simulation_dir,
+                    "timeseries_data_files",
+                    scenario,
+                    "sim_year_$(sim_year)",
+                    "Net Load Data",
+                    "load_n_vg_data_rt.csv",
+                ),
+            ),
+        )
+        availability_data = vcat(
+            availability_data,
+            read_data(
+                joinpath(
+                    simulation_dir,
+                    "timeseries_data_files",
+                    scenario,
+                    "sim_year_$(sim_year)",
+                    "Availability",
+                    "REAL_TIME_availability.csv",
+                ),
+            ),
+        )
     end
 
     num_hours = DataFrames.nrow(load_n_vg_data)
@@ -47,30 +73,40 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
 
     existing_vg_power = zeros(num_hours)
 
-    load = vec(sum(Matrix(load_n_vg_data[:, r"load"]), dims=2))
+    load = vec(sum(Matrix(load_n_vg_data[:, r"load"]); dims = 2))
 
     for g in renewable_existing
-        existing_vg_power += load_n_vg_data[!,get_name(g)]
+        existing_vg_power += load_n_vg_data[!, get_name(g)]
     end
 
     net_load_df = load_n_vg_data[:, 1:4]
     net_load_df[:, "net_load"] = load - existing_vg_power
 
-    net_load_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load", rev = true))
+    net_load_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load"; rev = true))
 
-    derating_factors = read_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario, "derating_dict.csv"))
+    derating_factors = read_data(
+        joinpath(
+            simulation_dir,
+            "markets_data",
+            "derating_data",
+            scenario,
+            "derating_dict.csv",
+        ),
+    )
 
     type_zone_max_cap = Dict{String, Float64}()
     for zone in zones
         for type in types
             type_zone_id = "$(type)_$(zone)"
             type_zone_max_cap[type_zone_id] = 0.0
-            net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] = deepcopy(net_load_df[:, "net_load"])
+            net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] =
+                deepcopy(net_load_df[:, "net_load"])
             for g in renewable_existing
                 gen_name = get_name(g)
                 tech = get_tech(g)
                 if "$(get_type(tech))_$(get_zone(tech))" == type_zone_id
-                    net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] += load_n_vg_data[:, gen_name]
+                    net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] +=
+                        load_n_vg_data[:, gen_name]
                     type_zone_max_cap[type_zone_id] += get_maxcap(g)
                 end
             end
@@ -80,10 +116,22 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     for zone in zones
         for type in types
             type_zone_id = "$(type)_$(zone)"
-            gen_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load_w/o_existing_$(type_zone_id)", rev = true))
+            gen_sorted_df = deepcopy(
+                DataFrames.sort(
+                    net_load_df,
+                    "net_load_w/o_existing_$(type_zone_id)";
+                    rev = true,
+                ),
+            )
 
-            load_reduction = gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] - gen_sorted_df[1:num_top_hours, "net_load"]
-            derating_factors[:, "existing_$(type_zone_id)"] .= min(sum(load_reduction) * derating_scale / type_zone_max_cap[type_zone_id] / num_top_hours, 1.0)
+            load_reduction =
+                gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] -
+                gen_sorted_df[1:num_top_hours, "net_load"]
+            derating_factors[:, "existing_$(type_zone_id)"] .= min(
+                sum(load_reduction) * derating_scale / type_zone_max_cap[type_zone_id] /
+                num_top_hours,
+                1.0,
+            )
         end
     end
 
@@ -93,26 +141,34 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
         gen_cap = get_maxcap(g)
 
-        net_load_df[:, "net_load_with_$(gen_name)"] =  deepcopy(net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * gen_cap)
-        gen_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)", rev = true))
+        net_load_df[:, "net_load_with_$(gen_name)"] = deepcopy(
+            net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * gen_cap,
+        )
+        gen_sorted_df =
+            deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)"; rev = true))
 
-        load_reduction = net_load_sorted_df[1:num_top_hours, "net_load"] - gen_sorted_df[1:num_top_hours, "net_load_with_$(gen_name)"]
+        load_reduction =
+            net_load_sorted_df[1:num_top_hours, "net_load"] -
+            gen_sorted_df[1:num_top_hours, "net_load_with_$(gen_name)"]
 
-        derating_factors[:, "new_$(type_zone_id)"] .= min(sum(load_reduction) * derating_scale / gen_cap / num_top_hours, 1.0)
+        derating_factors[:, "new_$(type_zone_id)"] .=
+            min(sum(load_reduction) * derating_scale / gen_cap / num_top_hours, 1.0)
     end
 
     # Storage CC script
     stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
     all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
     all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
-    
+
     # Define a dictionary to store batteries with their corresponding storage durations
-    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}() 
-    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}() 
+    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
+    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
 
     # Iterate over each existing battery
     for battery in all_battery_existing
-        stor_duration = Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+            # @info "Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
         if haskey(existing_storage_duration_dict, stor_duration)
             push!(existing_storage_duration_dict[stor_duration], battery)
         else
@@ -122,7 +178,9 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
 
     # Iterate over each option battery
     for battery in all_battery_options
-        stor_duration = Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+            # @info "Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
         if haskey(option_storage_duration_dict, stor_duration)
             push!(option_storage_duration_dict[stor_duration], battery)
         else
@@ -130,12 +188,17 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         end
     end
 
-    peak_reductions_existing = Dict(sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for sd in keys(existing_storage_duration_dict))  
-    init_CC = Dict(sd => derating_factors[1, "STOR_$sd"] for sd in keys(existing_storage_duration_dict))
-    println("initial CC is $(init_CC)")
-    println("peak reductions is $(peak_reductions_existing)")
+    peak_reductions_existing = Dict(
+        sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for
+        sd in keys(existing_storage_duration_dict)
+    )
+    init_CC = Dict(
+        sd => derating_factors[1, "STOR_$sd"] for
+        sd in keys(existing_storage_duration_dict)
+    )
+    # @info "initial CC is $(init_CC)"
+    # @info "peak reductions is $(peak_reductions_existing)"
 
-    
     function calculate_average_storage_cc(
         stor_duration::Int64,
         peak_reductions_existing::Dict{Int64, Float64},
@@ -143,23 +206,28 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         average_efficiency::Float64,
         net_load_df::DataFrame,
         num_hours::Int64,
-        stor_buffer_minutes::Int64
-        )
+        stor_buffer_minutes::Int64,
+    )
         inc = 1 #set to 1 for system-wide, but will need to be replaced with zonal level array if/when convert to zonal
 
         peak_reduction = peak_reductions_existing[stor_duration]
-        
-        max_demands = repeat([maximum(net_load_df[:,"net_load"]) - peak_reduction], num_hours)
+
+        max_demands =
+            repeat([maximum(net_load_df[:, "net_load"]) - peak_reduction], num_hours)
 
         batt_powers = repeat([peak_reduction], num_hours)
 
-        poss_charges = min.(batt_powers .* average_efficiency, (max_demands - net_load_df[:,"net_load"]) .* average_efficiency)
+        poss_charges = min.(
+            batt_powers .* average_efficiency,
+            (max_demands - net_load_df[:, "net_load"]) .* average_efficiency,
+        )
 
-        necessary_discharges = (max_demands - net_load_df[:,"net_load"])
+        necessary_discharges = (max_demands - net_load_df[:, "net_load"])
 
         poss_batt_changes = zeros(size(necessary_discharges)[1])
         for n in collect(1:1:size(necessary_discharges)[1])
-            poss_batt_changes[n] = elementwise_ifelse(necessary_discharges[n], poss_charges[n])
+            poss_batt_changes[n] =
+                elementwise_ifelse(necessary_discharges[n], poss_charges[n])
         end
 
         batt_e_level = zeros((inc, num_hours))
@@ -192,23 +260,30 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         average_efficiency::Float64,
         net_load_df::DataFrame,
         num_hours::Int64,
-        stor_buffer_minutes::Int64
-        )
+        stor_buffer_minutes::Int64,
+    )
         inc = 1 #set to 1 for system-wide, but will need to be replaced with zonal level array if/when convert to zon
 
         existing_peak_reduction = sum(values(peak_reductions_existing))
-        
-        max_demands = repeat([maximum(net_load_df[:,"net_load"]) - existing_peak_reduction], num_hours)
+
+        max_demands = repeat(
+            [maximum(net_load_df[:, "net_load"]) - existing_peak_reduction],
+            num_hours,
+        )
 
         batt_powers = repeat([peak_reduction_new], num_hours)
 
-        poss_charges = min.(batt_powers .* average_efficiency, (max_demands - net_load_df[:,"net_load"]) .* average_efficiency)
+        poss_charges = min.(
+            batt_powers .* average_efficiency,
+            (max_demands - net_load_df[:, "net_load"]) .* average_efficiency,
+        )
 
-        necessary_discharges = (max_demands - net_load_df[:,"net_load"])
+        necessary_discharges = (max_demands - net_load_df[:, "net_load"])
 
         poss_batt_changes = zeros(size(necessary_discharges)[1])
         for n in collect(1:1:size(necessary_discharges)[1])
-            poss_batt_changes[n] = elementwise_ifelse(necessary_discharges[n], poss_charges[n])
+            poss_batt_changes[n] =
+                elementwise_ifelse(necessary_discharges[n], poss_charges[n])
         end
 
         batt_e_level = zeros((inc, num_hours))
@@ -233,35 +308,65 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         return stor_CC
     end
 
-
     for (stor_duration, battery_existing) in existing_storage_duration_dict
         efficiencies = get_efficiency.(get_tech.(battery_existing))
-        average_efficiency = (mean([eff.in for eff in efficiencies]) + mean([eff.out for eff in efficiencies])) / 2
+        average_efficiency =
+            (
+                mean([eff.in for eff in efficiencies]) +
+                mean([eff.out for eff in efficiencies])
+            ) / 2
 
-        stor_CC = calculate_average_storage_cc(stor_duration, peak_reductions_existing, init_CC, average_efficiency, net_load_df, num_hours, stor_buffer_minutes)
-        
-        derating_factors[:, "existing_STOR_$(stor_duration)"] .= stor_CC 
+        stor_CC = calculate_average_storage_cc(
+            stor_duration,
+            peak_reductions_existing,
+            init_CC,
+            average_efficiency,
+            net_load_df,
+            num_hours,
+            stor_buffer_minutes,
+        )
+
+        derating_factors[:, "existing_STOR_$(stor_duration)"] .= stor_CC
     end
 
     if marginal_cc
         for (stor_duration, battery_option) in option_storage_duration_dict
             efficiencies = get_efficiency.(get_tech.(battery_option))
-            average_efficiency = (mean([eff.in for eff in efficiencies]) + mean([eff.out for eff in efficiencies])) / 2
+            average_efficiency =
+                (
+                    mean([eff.in for eff in efficiencies]) +
+                    mean([eff.out for eff in efficiencies])
+                ) / 2
             peak_reduction_new = sum(get_maxcap.(battery_option))
-            stor_CC = calculate_marginal_storage_cc(stor_duration, peak_reductions_existing, peak_reduction_new, init_CC, average_efficiency, net_load_df, num_hours, stor_buffer_minutes)
-            derating_factors[:, "new_STOR_$(stor_duration)"] .= stor_CC  
+            stor_CC = calculate_marginal_storage_cc(
+                stor_duration,
+                peak_reductions_existing,
+                peak_reduction_new,
+                init_CC,
+                average_efficiency,
+                net_load_df,
+                num_hours,
+                stor_buffer_minutes,
+            )
+            derating_factors[:, "new_STOR_$(stor_duration)"] .= stor_CC
         end
     else
         for (stor_duration, battery_option) in option_storage_duration_dict
             if "existing_STOR_$(stor_duration)" in names(derating_factors)
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=  derating_factors[:, "existing_STOR_$(stor_duration)"]
+                derating_factors[:, "new_STOR_$(stor_duration)"] .=
+                    derating_factors[:, "existing_STOR_$(stor_duration)"]
             else
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=  derating_factors[:, "STOR_$(stor_duration)"]
+                derating_factors[:, "new_STOR_$(stor_duration)"] .=
+                    derating_factors[:, "STOR_$(stor_duration)"]
             end
         end
     end
 
-    write_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario), "derating_dict.csv", derating_factors)
+    write_data(
+        joinpath(simulation_dir, "markets_data", "derating_data", scenario),
+        "derating_dict.csv",
+        derating_factors,
+    )
     return
 end
 
@@ -271,14 +376,13 @@ and storage based on PRAS outcomes.
 """
 
 function calculate_derating_factors(
-    simulation::Union{AgentSimulation,AgentSimulationData},
+    simulation::Union{AgentSimulation, AgentSimulationData},
     scenario::String,
     iteration_year::Int64,
     derating_scale::Float64,
     methodology::String,
     ra_metric::String,
     marginal_cc::Bool)
-
     if methodology == "ELCC"
         methodology = PRAS.ELCC
     elseif methodology == "EFC"
@@ -295,17 +399,24 @@ function calculate_derating_factors(
         @error "Resource Adequacy metric should be either LOLE or EUE"
     end
 
-
     simulation_dir = get_data_dir(get_case(simulation))
     simulation_years = get_total_horizon(get_case(simulation))
     outage_dir = get_outage_dir(get_case(simulation))
     rt_resolution = get_rt_resolution(get_case(simulation))
     zones = get_zones(simulation)
 
-    derating_factors = read_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario, "derating_dict.csv"))
+    derating_factors = read_data(
+        joinpath(
+            simulation_dir,
+            "markets_data",
+            "derating_data",
+            scenario,
+            "derating_dict.csv",
+        ),
+    )
 
     active_projects = get_activeprojects(simulation)
-    
+
     existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
     options = filter(p -> typeof(p) == RenewableGenEMIS{Option}, active_projects)
 
@@ -334,7 +445,7 @@ function calculate_derating_factors(
         rt_resolution,
         simulation)
 
-    system_period_of_interest = range(1, length = 8760 * 15)
+    system_period_of_interest = range(1; length = DEFAULT_HOURS_PER_YEAR * simulation_years)
     correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_2011.csv")
 
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
@@ -347,32 +458,48 @@ function calculate_derating_factors(
     #                             availability_flag=true,
     #                             outage_csv_location = correlated_outage_csv_location)
 
-    if marginal_cc
+    ##TODO: AA remove debug code after validation
+    @info "Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
+    temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
+    PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
+    PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
 
+    if marginal_cc
         for zone in zones
-            
             for type in new_types
                 println("$(type)_$(zone)")
-                idx = findfirst(x -> ((get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)), options)
+                idx = findfirst(
+                    x -> (
+                        (get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)
+                    ),
+                    options,
+                )
                 if !isnothing(idx)
-                    
                     augmented_sys = deepcopy(adjusted_base_system)
                     build_size = 4 # set to 4 considering that there are 4 investors, so if a project is viable, there could be 4 such units coming online together.
                     max_cap = get_maxcap(options[idx]) * build_size
                     for i in 1:build_size
                         new_project = deepcopy(options[idx])
                         set_name!(new_project, "$(get_name(new_project))_$i")
-                        add_capacity_market_project!(augmented_sys, new_project, simulation_dir, scenario, capacity_market_year, rt_resolution, simulation_years)
+                        add_capacity_market_project!(
+                            augmented_sys,
+                            new_project,
+                            simulation_dir,
+                            scenario,
+                            capacity_market_year,
+                            rt_resolution,
+                            simulation_years,
+                        )
                     end
-                    
-                    # augmented_pras_system = make_pras_system(augmented_sys,
-                    #                     system_model="Single-Node",
-                    #                     aggregation="Area",
-                    #                     period_of_interest = system_period_of_interest,
-                    #                     outage_flag=false,
-                    #                     lump_pv_wind_gens=false,
-                    #                     availability_flag=true,
-                    #                     outage_csv_location = correlated_outage_csv_location)
+
+                    # augmented_pras_system = make_pras_system(augmented_sys;
+    #                     system_model = "Single-Node",
+    #                     aggregation = "Area",
+    #                     period_of_interest = system_period_of_interest,
+    #                     outage_flag = false,
+    #                     lump_pv_wind_gens = false,
+    #                     availability_flag = true,
+    #                     outage_csv_location = correlated_outage_csv_location)
 
                     # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
                     cc_result  =  PRAS.assess(adjusted_base_system,  augmented_sys,  methodology{ra_metric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
@@ -382,9 +509,8 @@ function calculate_derating_factors(
                 end
             end
         end
-
     end
-    
+
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
     augmented_sys = deepcopy(adjusted_base_system)
     # augmented_pras_system = make_pras_system(augmented_sys,
@@ -400,7 +526,10 @@ function calculate_derating_factors(
         for type in existing_types
             pruned_based_sys = deepcopy(adjusted_base_system)
             total_capacity = 0.0
-            zone_tech_units = existing[findall(x -> ((get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)), existing)]
+            zone_tech_units = existing[findall(
+                x -> ((get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)),
+                existing,
+            )]
             if !isempty(zone_tech_units)
                 for project in zone_tech_units
                     remove_system_component!(pruned_based_sys, project)
@@ -425,18 +554,19 @@ function calculate_derating_factors(
             end
         end
     end
-        
-    
+
     all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
     all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
 
     # Define a dictionary to store batteries with their corresponding storage durations
-    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}() 
-    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}() 
+    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
+    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
 
     # Iterate over each existing battery
     for battery in all_battery_existing
-        stor_duration = Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+            @info "calculate_derating_factors - Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours"
         if haskey(existing_storage_duration_dict, stor_duration)
             push!(existing_storage_duration_dict[stor_duration], battery)
         else
@@ -446,7 +576,9 @@ function calculate_derating_factors(
 
     # Iterate over each option battery
     for battery in all_battery_options
-        stor_duration = Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+            @info "calculate_derating_factors - Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours"
         if haskey(option_storage_duration_dict, stor_duration)
             push!(option_storage_duration_dict[stor_duration], battery)
         else
@@ -489,7 +621,15 @@ function calculate_derating_factors(
                 if !(project_name in new_project_names)
                     push!(new_project_names, project_name)
                     max_cap += get_maxcap(project)
-                    add_capacity_market_project!(augmented_sys, new_project, simulation_dir, scenario, capacity_market_year,  rt_resolution, simulation_years)
+                    add_capacity_market_project!(
+                        augmented_sys,
+                        new_project,
+                        simulation_dir,
+                        scenario,
+                        capacity_market_year,
+                        rt_resolution,
+                        simulation_years,
+                    )
                 end
             end
             
@@ -508,45 +648,58 @@ function calculate_derating_factors(
             cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
             derating_factors[!, "new_STOR_$(stor_duration)"] .= cc_final
         end
-        
+
     else
         for (stor_duration, battery_options) in option_storage_duration_dict
             if "existing_STOR_$(stor_duration)" in names(derating_factors)
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=  derating_factors[:, "existing_STOR_$(stor_duration)"]
+                derating_factors[:, "new_STOR_$(stor_duration)"] .=
+                    derating_factors[:, "existing_STOR_$(stor_duration)"]
             else
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=  derating_factors[:, "STOR_$(stor_duration)"]
+                derating_factors[:, "new_STOR_$(stor_duration)"] .=
+                    derating_factors[:, "STOR_$(stor_duration)"]
             end
         end
     end
 
     # Overwrite file with new derating factors.
-    write_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario), "derating_dict.csv", derating_factors)
+    write_data(
+        joinpath(simulation_dir, "markets_data", "derating_data", scenario),
+        "derating_dict.csv",
+        derating_factors,
+    )
 end
-
 
 """
 This function does nothing is project is not of ThermalGenEMIS, HydroGenEMIS, RenewableGenEMIS or BatteryEMIS type.
 """
 function update_derating_factor!(project::P,
-                               simulation_dir::String,
-                               scenario::String,
-                               derating_scale::Float64,
-                               marginal_cc::Bool
-                               ) where P <: Project{<:BuildPhase}
+    simulation_dir::String,
+    scenario::String,
+    derating_scale::Float64,
+    marginal_cc::Bool,
+) where {P <: Project{<:BuildPhase}}
     return
 end
 
 """
 This function updates the derating factors of ThermalGenEMIS and HydroGenEMIS projects.
 """
-function update_derating_factor!(project::Union{ThermalGenEMIS{<:BuildPhase}, HydroGenEMIS{<:BuildPhase}},
-                               simulation_dir::String,
-                               scenario::String,
-                               derating_scale::Float64,
-                               marginal_cc::Bool
-                               )
-
-    derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario, "derating_dict.csv"))
+function update_derating_factor!(
+    project::Union{ThermalGenEMIS{<:BuildPhase}, HydroGenEMIS{<:BuildPhase}},
+    simulation_dir::String,
+    scenario::String,
+    derating_scale::Float64,
+    marginal_cc::Bool,
+)
+    derating_data = read_data(
+        joinpath(
+            simulation_dir,
+            "markets_data",
+            "derating_data",
+            scenario,
+            "derating_dict.csv",
+        ),
+    )
     derating_factor = derating_data[1, get_type(get_tech(project))]
     for product in get_products(project)
         set_derating!(product, scenario, derating_factor)
@@ -558,18 +711,25 @@ end
 This function updates the derating factors of existing RenewableGenEMIS projects.
 """
 function update_derating_factor!(project::RenewableGenEMIS{Existing},
-                               simulation_dir::String,
-                               scenario::String,
-                               derating_scale::Float64,
-                               marginal_cc::Bool
-                               )
-
-    derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario, "derating_dict.csv"))
+    simulation_dir::String,
+    scenario::String,
+    derating_scale::Float64,
+    marginal_cc::Bool,
+)
+    derating_data = read_data(
+        joinpath(
+            simulation_dir,
+            "markets_data",
+            "derating_data",
+            scenario,
+            "derating_dict.csv",
+        ),
+    )
     name = get_name(project)
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
 
-    if  in("existing_$(type_zone_id)", names(derating_data))
+    if in("existing_$(type_zone_id)", names(derating_data))
         derating_factor = derating_data[1, "existing_$(type_zone_id)"]
     else
         error("Derating data not found")
@@ -586,13 +746,20 @@ end
 This function updates the derating factors of new RenewableGenEMIS projects.
 """
 function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
-                               simulation_dir::String,
-                               scenario::String,
-                               derating_scale::Float64,
-                               marginal_cc::Bool
-                               )
-
-    derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario, "derating_dict.csv"))
+    simulation_dir::String,
+    scenario::String,
+    derating_scale::Float64,
+    marginal_cc::Bool,
+)
+    derating_data = read_data(
+        joinpath(
+            simulation_dir,
+            "markets_data",
+            "derating_data",
+            scenario,
+            "derating_dict.csv",
+        ),
+    )
     name = get_name(project)
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
@@ -622,16 +789,27 @@ end
 This function updates the derating factors of Existing BatteryEMIS projects.
 """
 function update_derating_factor!(project::BatteryEMIS{Existing},
-                               simulation_dir::String,
-                               scenario::String,
-                               derating_scale::Float64,
-                               marginal_cc::Bool
-                               )
+    simulation_dir::String,
+    scenario::String,
+    derating_scale::Float64,
+    marginal_cc::Bool,
+)
     tech = get_tech(project)
     duration = Int(round(get_storage_capacity(tech)[:max] / get_maxcap(project)))
     project_type = "existing_STOR_$(duration)"
 
-    derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario, "derating_dict.csv"))
+    # @info "Existing battery derating factor update: $(get_name(project)), storage_capacity $(get_storage_capacity(tech)[:max]), max_cap $(get_maxcap(project)), duration of $(duration) hours"
+
+    derating_data = read_data(
+        joinpath(
+            simulation_dir,
+            "markets_data",
+            "derating_data",
+            scenario,
+            "derating_dict.csv",
+        ),
+    )
+    
     derating_factor = derating_data[1, project_type]
     derating_factor = min(derating_factor * derating_scale, 1.0)
     for product in get_products(project)
@@ -644,13 +822,15 @@ end
 This function updates the derating factors of BatteryEMIS projects.
 """
 function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
-                               simulation_dir::String,
-                               scenario::String,
-                               derating_scale::Float64,
-                               marginal_cc::Bool
-                               )
+    simulation_dir::String,
+    scenario::String,
+    derating_scale::Float64,
+    marginal_cc::Bool,
+)
     tech = get_tech(project)
     duration = Int(round(get_storage_capacity(tech)[:max] / get_maxcap(project)))
+
+    # @info "BuildPhase battery derating factor update: $(get_name(project)), storage_capacity $(get_storage_capacity(tech)[:max]), max_cap $(get_maxcap(project)), duration of $(duration) hours"
 
     if marginal_cc
         project_type = "new_STOR_$(duration)"
@@ -658,7 +838,15 @@ function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
         project_type = "existing_STOR_$(duration)"
     end
 
-    derating_data = read_data(joinpath(simulation_dir, "markets_data", "derating_data", scenario, "derating_dict.csv"))
+    derating_data = read_data(
+        joinpath(
+            simulation_dir,
+            "markets_data",
+            "derating_data",
+            scenario,
+            "derating_dict.csv",
+        ),
+    )
     derating_factor = derating_data[1, project_type]
     derating_factor = min(derating_factor * derating_scale, 1.0)
     for product in get_products(project)
@@ -671,24 +859,40 @@ end
 This function updates the derating factors of all active projects in the simulation.
 """
 function update_simulation_derating_data!(
-    simulation::Union{AgentSimulation,AgentSimulationData},
+    simulation::Union{AgentSimulation, AgentSimulationData},
     scenario::String,
     iteration_year::Int64,
     derating_scale::Float64;
     methodology::String = "ELCC",
     ra_metric::String = "LOLE",
     marginal_cc::Bool = true)
-
+    
+    @info "Updating derating factors for scenario $(scenario) and iteration year $(iteration_year) using methodology $(methodology) and RA metric $(ra_metric). Marginal CC is set to $(marginal_cc). Derating scale is set to $(derating_scale)."
     data_dir = get_data_dir(get_case(simulation))
     active_projects = get_activeprojects(simulation)
 
     if methodology == "TopNetLoad"
-        calculate_derating_data(simulation, data_dir, scenario, iteration_year, active_projects, derating_scale, marginal_cc)
+        calculate_derating_data(
+            simulation,
+            data_dir,
+            scenario,
+            iteration_year,
+            active_projects,
+            derating_scale,
+            marginal_cc,
+        )
     else
-        calculate_derating_factors(simulation, scenario, iteration_year, derating_scale, methodology, ra_metric, marginal_cc)
+        calculate_derating_factors(
+            simulation,
+            scenario,
+            iteration_year,
+            derating_scale,
+            methodology,
+            ra_metric,
+            marginal_cc,
+        )
     end
-    
+
     return
 end
-
 

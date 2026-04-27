@@ -179,7 +179,7 @@ function PSY.PowerSystemTableData(
         directory,
         user_descriptor_file,
         descriptor_file,
-        generator_mapping_file,
+        generator_mapping_file;
         timeseries_metadata_file = timeseries_metadata_file,
     )
 end
@@ -240,7 +240,11 @@ function PSY.System(
         get(kwargs, :timeseries_metadata_file, getfield(data, :timeseries_metadata_file))
 
     if !isnothing(timeseries_metadata_file)
-        PSY.add_time_series!(sys, timeseries_metadata_file; resolution = time_series_resolution)
+        PSY.add_time_series!(
+            sys,
+            timeseries_metadata_file;
+            resolution = time_series_resolution,
+        )
     end
 
     #PSY.check!(sys)
@@ -253,7 +257,11 @@ end
 function PSY.make_generator(data::PSY.PowerSystemTableData, gen, cost_colnames, bus)
     generator = nothing
     gen_type =
-        PSY.get_generator_type(gen.fuel, get(gen, :unit_type, nothing), data.generator_mapping)
+        PSY.get_generator_type(
+            gen.fuel,
+            get(gen, :unit_type, nothing),
+            data.generator_mapping,
+        )
 
     if isnothing(gen_type)
         @error "Cannot recognize generator type" gen.name
@@ -307,7 +315,7 @@ function PSY.make_thermal_generator(data::PSY.PowerSystemTableData, gen, cost_co
     startup_cost, shutdown_cost = PSY.calculate_uc_cost(data, gen, fuel_cost)
     op_cost = PSY.ThermalGenerationCost(var_cost, fixed, startup_cost, shutdown_cost)
 
-    component = PSY.ThermalStandard(
+    component = PSY.ThermalStandard(;
         name = gen.name,
         available = gen.available,
         status = gen.status_at_start,
@@ -352,11 +360,16 @@ function PSY.make_thermal_generator_multistart(
     else
         no_load_cost = var_cost[1][1]
         var_cost =
-        PSY.VariableCost([(c - no_load_cost, pp - var_cost[1][2]) for (c, pp) in var_cost])
+            PSY.VariableCost([
+                (c - no_load_cost, pp - var_cost[1][2]) for (c, pp) in var_cost
+            ])
     end
     lag_hot =
-        isnothing(gen.hot_start_time) ? PSY.get_time_limits(thermal_gen).down :
-        gen.hot_start_time
+        if isnothing(gen.hot_start_time)
+            PSY.get_time_limits(thermal_gen).down
+        else
+            gen.hot_start_time
+        end
     lag_warm = isnothing(gen.warm_start_time) ? 0.0 : gen.warm_start_time
     lag_cold = isnothing(gen.cold_start_time) ? 0.0 : gen.cold_start_time
     startup_timelimits = (hot = lag_hot, warm = lag_warm, cold = lag_cold)
@@ -418,7 +431,13 @@ end
 ##############################################
 # PowerSystems2PRAS definition of make_hydro_generator()
 ##############################################
-function make_hydro_generator(gen_type, data::PSY.PowerSystemTableData, gen, cost_colnames, bus)
+function make_hydro_generator(
+    gen_type,
+    data::PSY.PowerSystemTableData,
+    gen,
+    cost_colnames,
+    bus,
+)
     @debug "Making HydroGen" gen.name
     active_power_limits =
         (min = gen.active_power_limits_min, max = gen.active_power_limits_max)
@@ -444,7 +463,7 @@ function make_hydro_generator(gen_type, data::PSY.PowerSystemTableData, gen, cos
         if gen_type == PSY.HydroTurbine
             @debug("Creating $(gen.name) as HydroTurbine")
 
-            hydro_gen = PSY.HydroTurbine(
+            hydro_gen = PSY.HydroTurbine(;
                 name = gen.name,
                 available = gen.available,
                 bus = bus,
@@ -460,7 +479,7 @@ function make_hydro_generator(gen_type, data::PSY.PowerSystemTableData, gen, cos
                 base_power = base_power,
             )
 
-            reservoir = PSY.HydroReservoir(
+            reservoir = PSY.HydroReservoir(;
                 name = "Reservoir_$(gen.name)",
                 storage_level_limits = (min = 0.0, max = storage.head.storage_capacity),
                 inflow = storage.head.input_active_power_limit_max,
@@ -475,21 +494,22 @@ function make_hydro_generator(gen_type, data::PSY.PowerSystemTableData, gen, cos
                 max = gen.pump_active_power_limits_max,
             )
             (pump_reactive_power, pump_reactive_power_limits) = PSY.make_reactive_params(
-                gen,
+                gen;
                 powerfield = :pump_reactive_power,
                 minfield = :pump_reactive_power_limits_min,
                 maxfield = :pump_reactive_power_limits_max,
             )
             pump_rating =
-            PSY.calculate_rating(pump_active_power_limits, pump_reactive_power_limits)
+                PSY.calculate_rating(pump_active_power_limits, pump_reactive_power_limits)
             pump_ramp_limits = PSY.make_ramplimits(
                 gen;
                 ramplimcol = :pump_ramp_limits,
                 rampupcol = :pump_ramp_up,
                 rampdncol = :pump_ramp_down,
             )
-            pump_time_limits = PSY.make_timelimits(gen, :pump_min_up_time, :pump_min_down_time)
-            hydro_gen = PSY.HydroPumpTurbine(
+            pump_time_limits =
+                PSY.make_timelimits(gen, :pump_min_up_time, :pump_min_down_time)
+            hydro_gen = PSY.HydroPumpTurbine(;
                 name = gen.name,
                 available = gen.available,
                 bus = bus,
@@ -512,7 +532,10 @@ function make_hydro_generator(gen_type, data::PSY.PowerSystemTableData, gen, cos
                 #     down = storage.head.storage_capacity,
                 # ),
                 # inflow = storage.head.input_active_power_limit_max,
-                outflow_limits = (min = 0.0, max = storage.tail.input_active_power_limit_max),
+                outflow_limits = (
+                    min = 0.0,
+                    max = storage.tail.input_active_power_limit_max,
+                ),
                 # initial_storage = (
                 #     up = storage.head.energy_level,
                 #     down = storage.tail.energy_level,
@@ -549,7 +572,7 @@ function make_hydro_generator(gen_type, data::PSY.PowerSystemTableData, gen, cos
         end
     elseif gen_type == PSY.HydroDispatch
         @debug("Creating $(gen.name) as HydroDispatch")
-        hydro_gen = PSY.HydroDispatch(
+        hydro_gen = PSY.HydroDispatch(;
             name = gen.name,
             available = gen.available,
             bus = bus,
@@ -596,7 +619,7 @@ function PSY.make_renewable_generator(
 
     if gen_type == PSY.RenewableDispatch
         @debug("Creating $(gen.name) as RenewableDispatch")
-        generator = PSY.RenewableDispatch(
+        generator = PSY.RenewableDispatch(;
             name = gen.name,
             available = gen.available,
             bus = bus,
@@ -611,7 +634,7 @@ function PSY.make_renewable_generator(
         )
     elseif gen_type == PSY.RenewableNonDispatch
         @debug("Creating $(gen.name) as RenewableNonDispatch")
-        generator = PSY.RenewableNonDispatch(
+        generator = PSY.RenewableNonDispatch(;
             name = gen.name,
             available = gen.available,
             bus = bus,
@@ -645,13 +668,16 @@ function PSY.make_storage(data::PSY.PowerSystemTableData, gen, storage, bus)
     )
     output_active_power_limits = (
         min = storage.output_active_power_limit_min,
-        max = isnothing(storage.output_active_power_limit_max) ?
-              gen.active_power_limits_max : storage.output_active_power_limit_max,
+        max = if isnothing(storage.output_active_power_limit_max)
+            gen.active_power_limits_max
+        else
+            storage.output_active_power_limit_max
+        end,
     )
     efficiency = (in = storage.input_efficiency, out = storage.output_efficiency)
     (reactive_power, reactive_power_limits) = PSY.make_reactive_params(storage)
 
-    battery = PSY.EnergyReservoirStorage(
+    battery = PSY.EnergyReservoirStorage(;
         name = gen.name,
         available = storage.available,
         bus = bus,
@@ -674,4 +700,3 @@ function PSY.make_storage(data::PSY.PowerSystemTableData, gen, storage, bus)
 
     return battery
 end
-

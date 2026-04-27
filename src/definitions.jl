@@ -15,3 +15,16 @@ const SERVICES_SLACK_COST = 1e5
 
 # Simulations constants
 const PENALTY_COST = 5000.0
+
+# PRAS constants
+const PRAS_N_SAMPLES = 100
+
+const SIM_START_DATE = Dates.DateTime("2018-01-01T00:00:00")
+const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
+
+# File pointers
+const TIMESERIES_DATA_DIR = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/NTP_TimeSeries_Data"
+const POINTER_FILE = Dict(
+    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"),
+   
+)

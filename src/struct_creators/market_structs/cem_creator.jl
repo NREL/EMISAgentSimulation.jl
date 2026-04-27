@@ -2,28 +2,31 @@
 This function creates the MarketClearingProblem struct for CEM.
 """
 function create_cem_mkt_clr_problem(investor_dir::String,
-                                    sys_data_dir::String,
-                                    market_names::Vector{Symbol},
-                                    carbon_tax::Vector{Float64},
-                                    reserve_products::Vector{String},
-                                    ordc_products::Vector{String},
-                                    rps_target::String,
-                                    reserve_penalty::String,
-                                    resource_adequacy::Dict{String, ResourceAdequacy},
-                                    irm_scalar::Float64,
-                                    expected_portfolio::Vector{<: Project{<: BuildPhase}},
-                                    zones::Vector{String},
-                                    lines::Vector{ZonalLine},
-                                    peak_load::Dict{String, Dict{Int64, Float64}},
-                                    rep_period_interval::Int64,
-                                    rep_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
-                                    avg_block_size::Int64,
-                                    fixed_block_size::Bool,
-                                    chron_weights::Dict{String, Dict{Int64, Matrix{Int64}}},
-                                    average_capital_cost_multiplier::Float64,
-                                    scenario::Scenario,
-                                    iteration_year::Int64,
-                                    yearly_horizon::Int64)
+    sys_data_dir::String,
+    market_names::Vector{Symbol},
+    carbon_tax::Vector{Float64},
+    reserve_products::Vector{String},
+    ordc_products::Vector{String},
+    rps_target::String,
+    reserve_penalty::String,
+    resource_adequacy::Dict{String, ResourceAdequacy},
+    irm_scalar::Float64,
+    expected_portfolio::Vector{<: Project{<: BuildPhase}},
+    zones::Vector{String},
+    lines::Vector{ZonalLine},
+    peak_load::Dict{String, Dict{Int64, Float64}},
+    rep_period_interval::Int64,
+    rep_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
+    avg_block_size::Int64,
+    fixed_block_size::Bool,
+    chron_weights::Dict{String, Dict{Int64, Matrix{Int64}}},
+    average_capital_cost_multiplier::Float64,
+    scenario::Scenario,
+    iteration_year::Int64,
+    yearly_horizon::Int64)
+
+    @info "Function create_cem_clr_problem"
+    @info "Creating CEM market clearing problem for $(investor_dir) in year $(iteration_year) with solver."
 
     num_invperiods = yearly_horizon
 
@@ -38,12 +41,12 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     average_load_growth = [Statistics.mean(load_growth[:, p]) for p in 1:num_invperiods] =#
 
     scenario_name = get_name(scenario)
-    carbon_tax_vector = carbon_tax[iteration_year:iteration_year + num_invperiods - 1]
+    carbon_tax_vector = carbon_tax[iteration_year:(iteration_year + num_invperiods - 1)]
 
     # Gather markets data-------------------------------------------------------------------------------
 
     ######################################### Create Energy Markets ####################################################
-    
+
     energy_mkt_params = read_data(joinpath(investor_dir, "markets_data", "Energy.csv"))
     price_cap_energy = AxisArrays.AxisArray(energy_mkt_params.price_cap * 1.0, zones)
     energy_markets = Vector{EnergyMarket}(undef, num_invperiods)
@@ -52,10 +55,20 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
     for p in 1:num_invperiods
         sim_year = iteration_year + p - 1
-        load_data = read_data(joinpath(sys_data_dir, "timeseries_data_files", scenario_name, "sim_year_$(sim_year)", "Load", "rep_load.csv"))
+        load_data = read_data(
+            joinpath(
+                sys_data_dir,
+                "timeseries_data_files",
+                scenario_name,
+                "sim_year_$(sim_year)",
+                "Load",
+                "rep_load.csv",
+            ),
+        )
         num_hours = DataFrames.nrow(load_data)
 
-        zonal_load = AxisArrays.AxisArray(zeros(length(zones), num_hours), zones, (1:num_hours))
+        zonal_load =
+            AxisArrays.AxisArray(zeros(length(zones), num_hours), zones, (1:num_hours))
 
         for (zone_num, zone) in enumerate(zones)
             for h in 1:num_hours
@@ -69,24 +82,53 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         # end
         #energy_annual_increment = AxisArrays.AxisArray(ones(length(zones), num_invperiods), zones, collect(1:num_invperiods))
 
-        energy_markets[p] = EnergyMarket(AxisArrays.AxisArray(zonal_load, zones, (1:num_hours)), price_cap_energy)
+        energy_markets[p] = EnergyMarket(
+            AxisArrays.AxisArray(zonal_load, zones, (1:num_hours)),
+            price_cap_energy,
+        )
     end
 
     ######################################### Create Reserve Markets ####################################################
 
     #average_annual_increment = ones(num_invperiods)
 
-    reserve_up_markets = Vector{Dict{String, ReserveUpMarket{num_hours}}}(undef, num_invperiods)
-    reserve_down_markets = Vector{Dict{String, ReserveDownMarket{num_hours}}}(undef, num_invperiods)
-    reserve_ordc_markets = Vector{Dict{String, ReserveORDCMarket{num_hours}}}(undef, num_invperiods)
+    reserve_up_markets =
+        Vector{Dict{String, ReserveUpMarket{num_hours}}}(undef, num_invperiods)
+    reserve_down_markets =
+        Vector{Dict{String, ReserveDownMarket{num_hours}}}(undef, num_invperiods)
+    reserve_ordc_markets =
+        Vector{Dict{String, ReserveORDCMarket{num_hours}}}(undef, num_invperiods)
 
     reserve_eligible_projects = Dict(product => String[] for product in reserve_products)
 
-    reserve_parameter_data = Dict(r => read_data(joinpath(investor_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "$(r).csv")) for r in reserve_products)
+    reserve_parameter_data = Dict(
+        r => read_data(
+            joinpath(
+                investor_dir,
+                "markets_data",
+                "$(reserve_penalty)_reserve_penalty",
+                "$(r).csv",
+            ),
+        ) for r in reserve_products
+    )
 
     for p in 1:num_invperiods
         sim_year = iteration_year + p - 1
-        reserve_timeseries_data = Dict(r => read_data(joinpath(sys_data_dir, "timeseries_data_files", scenario_name, "sim_year_$(sim_year)", "Reserves", "rep_$(r).csv"))[:, r] for r in reserve_products)
+        reserve_timeseries_data = Dict(
+            r => read_data(
+                joinpath(
+                    sys_data_dir,
+                    "timeseries_data_files",
+                    scenario_name,
+                    "sim_year_$(sim_year)",
+                    "Reserves",
+                    "rep_$(r).csv",
+                ),
+            )[
+                :,
+                r,
+            ] for r in reserve_products
+        )
 
         reserve_up_market = Dict{String, ReserveUpMarket{num_hours}}()
         reserve_down_market = Dict{String, ReserveDownMarket{num_hours}}()
@@ -97,23 +139,39 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         end =#
 
         for product in reserve_products
-
             if Symbol(product) in market_names
                 timeseries_data = reserve_timeseries_data[product]
                 parameter_data = reserve_parameter_data[product]
 
                 if product in ordc_products
-                    market = create_ordc_market(timeseries_data, parameter_data, reserve_eligible_projects[product])
+                    market = create_ordc_market(
+                        timeseries_data,
+                        parameter_data,
+                        reserve_eligible_projects[product],
+                    )
                     reserve_ordc_market[product] = market
                 else
                     direction = lowercase(parameter_data[1, "direction"])
                     price_cap = Float64(parameter_data[1, "price_cap"])
-                    zones = ["zone_$(n)" for n in split(parameter_data[1, "eligible_zones"], ";")]
+                    zones = [
+                        "zone_$(n)" for
+                        n in split(parameter_data[1, "eligible_zones"], ";")
+                    ]
                     if direction == "up"
-                        market = ReserveUpMarket(timeseries_data, price_cap, zones, reserve_eligible_projects[product])
+                        market = ReserveUpMarket(
+                            timeseries_data,
+                            price_cap,
+                            zones,
+                            reserve_eligible_projects[product],
+                        )
                         reserve_up_market[product] = market
                     elseif direction == "down"
-                        market = ReserveDownMarket(timeseries_data, price_cap, zones, reserve_eligible_projects[product])
+                        market = ReserveDownMarket(
+                            timeseries_data,
+                            price_cap,
+                            zones,
+                            reserve_eligible_projects[product],
+                        )
                         reserve_down_market[product] = market
                     end
                 end
@@ -130,7 +188,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     rec_market_bool = false
     inertia_market_bool = false
 
-   if in(:Capacity, market_names)
+    if in(:Capacity, market_names)
         capacity_market_bool = true
     end
 
@@ -142,7 +200,8 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
     capacity_mkt_param_file = joinpath(investor_dir, "markets_data", "Capacity.csv")
 
-    REC_mkt_params = read_data(joinpath(investor_dir, "markets_data", "REC_$(rps_target)_RPS.csv"))
+    REC_mkt_params =
+        read_data(joinpath(investor_dir, "markets_data", "REC_$(rps_target)_RPS.csv"))
     price_cap_rec = REC_mkt_params[1, "price_cap"]
     rec_req = REC_mkt_params[1, "rec_req"] * rec_market_bool
     rec_annual_increment = REC_mkt_params[1, "annual_increment"] * rec_market_bool
@@ -159,9 +218,17 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         inertia_market_bool = true
     end
 
-    inertia_mkt_params = read_data(joinpath(investor_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "Inertia.csv"))
+    inertia_mkt_params = read_data(
+        joinpath(
+            investor_dir,
+            "markets_data",
+            "$(reserve_penalty)_reserve_penalty",
+            "Inertia.csv",
+        ),
+    )
     price_cap_inertia = inertia_mkt_params[1, "price_cap"]
-    inertia_req_multiplier = inertia_mkt_params[1, "requirement_multiplier"] * inertia_market_bool
+    inertia_req_multiplier =
+        inertia_mkt_params[1, "requirement_multiplier"] * inertia_market_bool
 
     capacity_markets = Vector{CapacityMarket}(undef, num_invperiods)
     rec_markets = Vector{RECMarket}(undef, num_invperiods)
@@ -171,33 +238,69 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
     introduction_year = capacity_mkt_params["introduction_year"]
     discontinuation_year = capacity_mkt_params["discontinuation_year"]
-    capacity_active_years = [if iteration_year + i - 1 >= introduction_year && iteration_year + i - 1 < discontinuation_year 1 else 0 end for i in 1:num_invperiods]
-    
+    capacity_active_years = [
+        if iteration_year + i - 1 >= introduction_year &&
+           iteration_year + i - 1 < discontinuation_year
+            1
+        else
+            0
+        end for i in 1:num_invperiods
+    ]
+
     for p in 1:num_invperiods
         sim_year = iteration_year + p - 1
         system_peak_load = peak_load[scenario_name][sim_year]
 
         capacity_mkt_active = Bool(capacity_market_bool * capacity_active_years[p])
-        capacity_markets[p] = create_capacity_demand_curve(capacity_mkt_param_file, system_peak_load, irm_scalar, delta_irm, capacity_mkt_active)
-        rec_markets[p] = RECMarket(min(rec_req + rec_annual_increment * (p + iteration_year - 1), 1), price_cap_rec, !(iszero(rec_binding_array[p])))
-        inertia_markets[p] = InertiaMarket(system_peak_load * inertia_req_multiplier, price_cap_inertia)
+        capacity_markets[p] = create_capacity_demand_curve(
+            capacity_mkt_param_file,
+            system_peak_load,
+            irm_scalar,
+            delta_irm,
+            capacity_mkt_active,
+        )
+        rec_markets[p] = RECMarket(
+            min(rec_req + rec_annual_increment * (p + iteration_year - 1), 1),
+            price_cap_rec,
+            !(iszero(rec_binding_array[p])),
+        )
+        inertia_markets[p] =
+            InertiaMarket(system_peak_load * inertia_req_multiplier, price_cap_inertia)
     end
 
-    max_peak_loads = AxisArrays.AxisArray([maximum([maximum(market.demand[z, :]) for market in energy_markets]) for z in zones], zones)
+    max_peak_loads = AxisArrays.AxisArray(
+        [
+            maximum([maximum(market.demand[z, :]) for market in energy_markets]) for
+            z in zones
+        ],
+        zones,
+    )
 
     markets = MarketCollection.(capacity_markets,
-                                energy_markets,
-                                reserve_up_markets,
-                                reserve_down_markets,
-                                reserve_ordc_markets,
-                                rec_markets,
-                                inertia_markets)
+        energy_markets,
+        reserve_up_markets,
+        reserve_down_markets,
+        reserve_ordc_markets,
+        rec_markets,
+        inertia_markets)
     #-----------------------------------------------------------------------------------------------------------------------------
     availability_df_vec = DataFrames.DataFrame[]
 
     for p in 1:num_invperiods
         sim_year = iteration_year + p - 1
-        push!(availability_df_vec, read_data(joinpath(sys_data_dir, "timeseries_data_files", scenario_name, "sim_year_$(sim_year)", "Availability", "rep_DAY_AHEAD_availability.csv")))
+        push!(
+            availability_df_vec,
+            read_data(
+                joinpath(
+                    sys_data_dir,
+                    "timeseries_data_files",
+                    scenario_name,
+                    "sim_year_$(sim_year)",
+                    "Availability",
+                    "rep_DAY_AHEAD_availability.csv",
+                ),
+            ),
+        )
     end
 
     invested_portfolio = find_active_invested_projects(expected_portfolio)
@@ -211,19 +314,19 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         tech = get_tech(project)
         zone = get_zone(tech)
         cem_project = create_market_project(project,
-                                          price_cap_energy[zone],
-                                          max_peak_loads,
-                                          iteration_year,
-                                          num_hours,
-                                          num_invperiods,
-                                          availability_df_vec,
-                                          scenario_name)
+            price_cap_energy[zone],
+            max_peak_loads,
+            iteration_year,
+            num_hours,
+            num_invperiods,
+            availability_df_vec,
+            scenario_name)
 
         if !isnothing(cem_project)
             push!(cem_projects, cem_project)
         end
 
-        products =  get_products(project)
+        products = get_products(project)
         for product in products
             product_name = String(get_name(product))
             if product_name in reserve_products
@@ -236,20 +339,23 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     for option in option_portfolio
         tech = get_tech(option)
         zone = get_zone(tech)
-        similar_option = filter(p -> (get_type(tech) == p.tech_type && zone == p.zone), aggregated_options)
+        similar_option = filter(
+            p -> (get_type(tech) == p.tech_type && zone == p.zone),
+            aggregated_options,
+        )
 
         if length(similar_option) < 1
             aggregated_option = create_market_project(option,
-                                          price_cap_energy[zone],
-                                          max_peak_loads,
-                                          iteration_year,
-                                          num_hours,
-                                          num_invperiods,
-                                          availability_df_vec,
-                                          scenario_name)
+                price_cap_energy[zone],
+                max_peak_loads,
+                iteration_year,
+                num_hours,
+                num_invperiods,
+                availability_df_vec,
+                scenario_name)
             push!(aggregated_options, aggregated_option)
 
-            products =  get_products(option)
+            products = get_products(option)
             for product in products
                 product_name = String(get_name(product))
                 if product_name in reserve_products
@@ -257,7 +363,8 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                 end
             end
         else
-            investment_cost = get_investment_cost(get_finance_data(option))[iteration_year:iteration_year + num_invperiods - 1]
+            investment_cost =
+                get_investment_cost(get_finance_data(option))[iteration_year:(iteration_year + num_invperiods - 1)]
             for (i, cost) in enumerate(similar_option[1].expansion_cost)
                 if investment_cost[i] > cost
                     similar_option[1].expansion_cost[i] = investment_cost[i]
@@ -271,11 +378,10 @@ function create_cem_mkt_clr_problem(investor_dir::String,
 
             owner = get_ownedby(get_finance_data(option))
             if !in(owner, similar_option[1].ownedby)
-               similar_option[1].base_cost_units = similar_option[1].base_cost_units + 1
-               push!(similar_option[1].ownedby, owner)
+                similar_option[1].base_cost_units = similar_option[1].base_cost_units + 1
+                push!(similar_option[1].ownedby, owner)
             end
         end
-
     end
 
     append!(cem_projects, aggregated_options)
@@ -288,12 +394,12 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         push!(rep_hour_weight_cem, rep_hour_weight[scenario_name][sim_year])
         push!(chron_weights_cem, chron_weights[scenario_name][sim_year])
     end
-    
+
     @info "Creating MarketClearingProblem struct in cem_creator.jl"
     system = MarketClearingProblem(zones, lines, average_capital_cost_multiplier,
-                                  markets, carbon_tax_vector, cem_projects,
-                                  rep_period_interval, rep_hour_weight_cem, avg_block_size,
-                                  fixed_block_size, chron_weights_cem)
+        markets, carbon_tax_vector, cem_projects,
+        rep_period_interval, rep_hour_weight_cem, avg_block_size,
+        fixed_block_size, chron_weights_cem)
     @info "Finished creating MarketClearingProblem struct in cem_creator.jl"
 
     return system

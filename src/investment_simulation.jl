@@ -1,9 +1,15 @@
 
-function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int64, current_siip_sim, siip_system, current_year::Int64)
+function run_agent_simulation(
+    simulation::AgentSimulation,
+    current_siip_sim,
+    siip_system,
+    current_year::Int64,
+)
     case = get_case(simulation)
     total_horizon = get_total_horizon(case)
     rolling_horizon = get_rolling_horizon(case)
     step_size = get_step_size(case)
+    simulation_years = get_simulation_years(case)
 
     installed_capacity = zeros(simulation_years)
     capacity_forward_years = get_capacity_forward_years(simulation)
@@ -15,7 +21,8 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
             initial_existing_projects = vcat(get_existing.(get_investors(simulation))...)
 
             simulation_dir = get_data_dir(get_case(simulation))
-            capacity_mkt_param_file = joinpath(simulation_dir, "markets_data", "Capacity.csv")
+            capacity_mkt_param_file =
+                joinpath(simulation_dir, "markets_data", "Capacity.csv")
             capacity_mkt_params = read_data(capacity_mkt_param_file)[1, :]
             introduction_year = capacity_mkt_params["introduction_year"]
 
@@ -25,11 +32,17 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                 initial_capacity_prices = [70000.0, 80000.0]
             end
 
-            for y in 1:capacity_forward_years - 1
+            for y in 1:(capacity_forward_years - 1)
                 for project in initial_existing_projects
                     if get_end_life_year(project) >= y
                         for product in get_products(project)
-                            update_initial_capacity_revenues!(project, product, initial_capacity_prices, y, get_pcm_scenario(case))
+                            update_initial_capacity_revenues!(
+                                project,
+                                product,
+                                initial_capacity_prices,
+                                y,
+                                get_pcm_scenario(case),
+                            )
                         end
                     end
                 end
@@ -43,49 +56,87 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
     sys_PRAS = get_system_PRAS(simulation)
 
     investors = get_investors(simulation)
-
     average_capital_cost_multiplier = Statistics.mean(get_cap_cost_multiplier.(investors))
-
     clean_energy_percentage_vector = zeros(simulation_years)
 
-    for iteration_year = current_year:step_size:simulation_years
-
+    for iteration_year in current_year:step_size:simulation_years
+        t_start = time()
         yearly_horizon = min(total_horizon - iteration_year + 1, rolling_horizon)
 
-        @info "Year $(iteration_year)"
+        @info "Starting iteration year $(iteration_year) @ $(Dates.now())"
         set_iteration_year!(simulation, iteration_year)
 
         active_projects = deepcopy(get_activeprojects(simulation))
 
         installed_capacity = update_installed_cap!(installed_capacity,
-                                                   active_projects,
-                                                   iteration_year,
-                                                   simulation_years)
+            active_projects,
+            iteration_year,
+            simulation_years)
 
         scenario_names = String.(get_all_scenario_names(get_data_dir(case)))
-
         simulation_dir = get_data_dir(get_case(simulation))
 
         # save existing net load csv file for potential checkpoint re-runs
         for scenario in scenario_names
-            pre_update_da_net_load = joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Net Load Data", "load_n_vg_data_pre_update.csv")
-            pre_update_rt_net_load = joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Net Load Data", "load_n_vg_data_rt_pre_update.csv")
-            post_update_da_net_load = joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Net Load Data", "load_n_vg_data.csv")
-            post_update_rt_net_load = joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Net Load Data", "load_n_vg_data_rt.csv")
+            pre_update_da_net_load = joinpath(
+                simulation_dir,
+                "timeseries_data_files",
+                scenario,
+                "sim_year_$(iteration_year)",
+                "Net Load Data",
+                "load_n_vg_data_pre_update.csv",
+            )
+            pre_update_rt_net_load = joinpath(
+                simulation_dir,
+                "timeseries_data_files",
+                scenario,
+                "sim_year_$(iteration_year)",
+                "Net Load Data",
+                "load_n_vg_data_rt_pre_update.csv",
+            )
+            post_update_da_net_load = joinpath(
+                simulation_dir,
+                "timeseries_data_files",
+                scenario,
+                "sim_year_$(iteration_year)",
+                "Net Load Data",
+                "load_n_vg_data.csv",
+            )
+            post_update_rt_net_load = joinpath(
+                simulation_dir,
+                "timeseries_data_files",
+                scenario,
+                "sim_year_$(iteration_year)",
+                "Net Load Data",
+                "load_n_vg_data_rt.csv",
+            )
             if isfile(pre_update_da_net_load)
-                cp(pre_update_da_net_load, post_update_da_net_load, force=true)
-                cp(pre_update_rt_net_load, post_update_rt_net_load, force=true)
+                cp(pre_update_da_net_load, post_update_da_net_load; force = true)
+                cp(pre_update_rt_net_load, post_update_rt_net_load; force = true)
             else
-                cp(post_update_da_net_load, pre_update_da_net_load, force=true)
-                cp(post_update_rt_net_load, pre_update_rt_net_load, force=true)
+                cp(post_update_da_net_load, pre_update_da_net_load; force = true)
+                cp(post_update_rt_net_load, pre_update_rt_net_load; force = true)
             end
         end
 
         if current_year == 1
             for scenario in scenario_names
-                derating_factors = read_data(joinpath(get_data_dir(case), "markets_data", "derating_data", scenario, "derating_dict.csv"))
+                derating_factors = read_data(
+                    joinpath(
+                        get_data_dir(case),
+                        "markets_data",
+                        "derating_data",
+                        scenario,
+                        "derating_dict.csv",
+                    ),
+                )
 
-                output_file = joinpath(get_results_dir(simulation), "derating_data", scenario, "derating_data_year_$(iteration_year).jld2")
+                output_file = joinpath(
+                    get_results_dir(simulation),
+                    "derating_data",
+                    scenario,
+                    "derating_data_year_$(iteration_year).jld2",
+                )
 
                 FileIO.save(output_file, "derating_factors", derating_factors)
             end
@@ -97,16 +148,17 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         iteration_years, simulation_years_list, data_dirs,
         rt_resolutions, results_dirs,
         outage_dirs = repeat_arguments(num_scenarios, sys_PRAS, active_projects,
-        capacity_forward_years, get_resource_adequacy(simulation),
-        get_peak_load(simulation), get_static_capacity_market(case),
-        iteration_year, simulation_years, get_data_dir(case), get_rt_resolution(case),
-        get_results_dir(simulation), get_outage_dir(case))
+            capacity_forward_years, get_resource_adequacy(simulation),
+            get_peak_load(simulation), get_static_capacity_market(case),
+            iteration_year, simulation_years, get_data_dir(case),
+            get_rt_resolution(case),
+            get_results_dir(simulation), get_outage_dir(case))
 
         @info "Resource adequacies: $(resource_adequacies)"
 
         # Parallelize the processing of scenarios using Distributed.pmap
         # @time resource_adequacy_tuples = Distributed.pmap(parallelize_update_delta_irm!, zip(scenario_names, sys_PRAS_list, active_projects_list, capacity_forward_years_list, resource_adequacies, peak_loads, static_capacity_bools, iteration_years, simulation_years_list, data_dirs, rt_resolutions, results_dirs, outage_dirs))
-        
+
         resource_adequacy_tuples = []
         for scenario in scenario_names
             @info "Updating resource adequacy for scenario: $scenario"
@@ -115,7 +167,10 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                 active_projects,
                 capacity_forward_years,
                 get_resource_adequacy(simulation)[scenario],
-                get_peak_load(simulation)[scenario][min(iteration_year + capacity_forward_years - 1, simulation_years)],
+                get_peak_load(simulation)[scenario][min(
+                    iteration_year + capacity_forward_years - 1,
+                    simulation_years,
+                )],
                 get_static_capacity_market(case),
                 scenario,
                 iteration_year,
@@ -123,50 +178,52 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
                 get_rt_resolution(case),
                 get_results_dir(simulation),
                 get_outage_dir(case),
-                simulation_years
+                simulation_years,
             )
             @info "Resource adequacy for scenario $scenario: $resource_adequacy"
             push!(resource_adequacy_tuples, (scenario, resource_adequacy))
         end
 
         @info "Setting resource adequacy for all scenarios in the simulation"
-        set_resource_adequacy!(simulation, Dict(key => value for (key, value) in resource_adequacy_tuples))
+        set_resource_adequacy!(
+            simulation,
+            Dict(key => value for (key, value) in resource_adequacy_tuples),
+        )
 
         @info "Creating investor predictions for all investors based on updated resource adequacy and other market data"
         create_investor_predictions(investors,
-                                    active_projects,
-                                    iteration_year,
-                                    yearly_horizon,
-                                    get_data_dir(case),
-                                    get_results_dir(simulation),
-                                    average_capital_cost_multiplier,
-                                    get_zones(simulation),
-                                    get_lines(simulation),
-                                    get_peak_load(simulation),
-                                    get_rps_target(case),
-                                    get_reserve_penalty(case),
-                                    get_resource_adequacy(simulation),
-                                    get_irm_scalar(case),
-                                    get_solver(case),
-                                    get_parallel_investors(case),
-                                    get_parallel_scenarios(case)
-                                    )
+            active_projects,
+            iteration_year,
+            yearly_horizon,
+            get_data_dir(case),
+            get_results_dir(simulation),
+            average_capital_cost_multiplier,
+            get_zones(simulation),
+            get_lines(simulation),
+            get_peak_load(simulation),
+            get_rps_target(case),
+            get_reserve_penalty(case),
+            get_resource_adequacy(simulation),
+            get_irm_scalar(case),
+            get_solver(case),
+            get_parallel_investors(case),
+            get_parallel_scenarios(case),
+        )
 
         for investor in investors
             run_investor_iteration(investor,
-                                    active_projects,
-                                    iteration_year,
-                                    yearly_horizon,
-                                    simulation_years,
-                                    capacity_forward_years,
-                                    sys_MDs,
-                                    sys_UCs,
-                                    sys_EDs,
-                                    sys_PRAS,
-                                    case,
-                                    scenario_names
-                                    )
-
+                active_projects,
+                iteration_year,
+                yearly_horizon,
+                simulation_years,
+                capacity_forward_years,
+                sys_MDs,
+                sys_UCs,
+                sys_EDs,
+                sys_PRAS,
+                case,
+                scenario_names,
+            )
         end
 
         @info "Getting all existing projects to calculate realized profits for energy and REC markets."
@@ -179,24 +236,44 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         for project in get_activeprojects(simulation)
             end_life_year = get_end_life_year(project)
             construction_year = get_construction_year(project)
-            if end_life_year >= capacity_market_year && construction_year <= capacity_market_year
+            if end_life_year >= capacity_market_year &&
+               construction_year <= capacity_market_year
                 push!(capacity_market_projects, project)
             end
 
             # Update variable operation cost based on annual carbon tax for SIIP market clearing
             @info "Updating variable operation"
-            update_operation_cost!(project, sys_MDs[iteration_year], (get_carbon_tax(simulation)), iteration_year)
-            update_operation_cost!(project, sys_UCs[iteration_year], (get_carbon_tax(simulation)), iteration_year)
-            update_operation_cost!(project, sys_EDs[iteration_year], (get_carbon_tax(simulation)), iteration_year)      
+            update_operation_cost!(
+                project,
+                sys_MDs[iteration_year],
+                (get_carbon_tax(simulation)),
+                iteration_year,
+            )
+            update_operation_cost!(
+                project,
+                sys_UCs[iteration_year],
+                (get_carbon_tax(simulation)),
+                iteration_year,
+            )
+            update_operation_cost!(
+                project,
+                sys_EDs[iteration_year],
+                (get_carbon_tax(simulation)),
+                iteration_year,
+            )
             for scenario in keys(sys_PRAS)
-                update_operation_cost!(project, sys_PRAS[scenario], (get_carbon_tax(simulation)), iteration_year)
+                update_operation_cost!(
+                    project,
+                    sys_PRAS[scenario],
+                    (get_carbon_tax(simulation)),
+                    iteration_year,
+                )
             end
-
         end
         installed_capacity = update_installed_cap!(installed_capacity,
-                                                   all_existing_projects,
-                                                   iteration_year,
-                                                   simulation_years)
+            all_existing_projects,
+            iteration_year,
+            simulation_years)
 
         @info "Current Installed Capacity = $(round(installed_capacity[iteration_year])) MW"
 
@@ -224,54 +301,84 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         rec_accepted_bids,
         clean_energy_percentage_vector[iteration_year],
         cet_achieved_ratio = create_realized_marketdata(simulation,
-                            sys_MDs[iteration_year],
-                            sys_UCs[iteration_year],
-                            sys_EDs[iteration_year],
-                            markets,
-                            get_rps_target(case),
-                            get_reserve_penalty(case),
-                            get_ordc_curved(case),
-                            all_existing_projects,
-                            capacity_market_projects,
-                            capacity_forward_years,
-                            iteration_year,
-                            simulation_years,
-                            get_solver(case),
-                            get_results_dir(simulation),
-                            current_siip_sim,
-                            siip_system)
-
+            sys_MDs[iteration_year],
+            sys_UCs[iteration_year],
+            sys_EDs[iteration_year],
+            markets,
+            get_rps_target(case),
+            get_reserve_penalty(case),
+            get_ordc_curved(case),
+            all_existing_projects,
+            capacity_market_projects,
+            capacity_forward_years,
+            iteration_year,
+            simulation_years,
+            get_solver(case),
+            get_results_dir(simulation),
+            current_siip_sim,
+            siip_system)
 
         existing_project_types = unique(get_type.(get_tech.(all_existing_projects)))
-        rt_products = String.(split(read_data(joinpath(get_data_dir(case), "markets_data", "reserve_products.csv"))[1,"rt_products"], "; "))
+        rt_products = String.(
+            split(
+                read_data(
+                    joinpath(get_data_dir(case), "markets_data", "reserve_products.csv"),
+                )[
+                    1,
+                    "rt_products",
+                ],
+                "; ",
+            ),
+        )
 
         if iteration_year < simulation_years
-
             update_rec_correction_factors!(get_activeprojects(simulation),
-                                        realized_capacity_factors_ed,
-                                        get_rt_resolution(case),
-                                        iteration_year,
-                                        step_size)
+                realized_capacity_factors_ed,
+                get_rt_resolution(case),
+                iteration_year,
+                step_size)
 
             if get_markets(simulation)[:CarbonTax]
                 max_carbon_tax_increment = get_max_carbon_tax_increase(case)
                 if cet_achieved_ratio == 0.0
                     delta_carbon_tax = max_carbon_tax_increment
                 else
-                    delta_carbon_tax = max_carbon_tax_increment * max(0.0, (1 - cet_achieved_ratio))
+                    delta_carbon_tax =
+                        max_carbon_tax_increment * max(0.0, (1 - cet_achieved_ratio))
                 end
-                new_carbon_tax = max((get_carbon_tax(simulation)[iteration_year] + delta_carbon_tax), get_carbon_tax(simulation)[iteration_year + step_size])
+                new_carbon_tax = max(
+                    (get_carbon_tax(simulation)[iteration_year] + delta_carbon_tax),
+                    get_carbon_tax(simulation)[iteration_year + step_size],
+                )
                 simulation.carbon_tax[iteration_year + step_size] = new_carbon_tax
             end
         end
 
         for scenario in keys(sys_PRAS)
-            ra_metrics, shortfall = calculate_RA_metrics(deepcopy(sys_PRAS[scenario]),false,get_results_dir(simulation), get_outage_dir(case), iteration_year)
-            FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_$(scenario)_year$(iteration_year).jld2"), "shortfall_data", shortfall)
-            println(ra_metrics)
-            set_metrics!(get_resource_adequacy(simulation)[scenario], iteration_year, ra_metrics)
+            ra_metrics, shortfall = calculate_RA_metrics(
+                deepcopy(sys_PRAS[scenario]),
+                false,
+                get_results_dir(simulation),
+                get_outage_dir(case),
+                iteration_year,
+                simulation_years = simulation_years,
+            )
+            FileIO.save(
+                joinpath(
+                    get_results_dir(simulation),
+                    "shortfall_data_$(scenario)_year$(iteration_year).jld2",
+                ),
+                "shortfall_data",
+                shortfall,
+            )
+            @info "RA Metrics for scenario $scenario in year $iteration_year: $ra_metrics"
+            set_metrics!(
+                get_resource_adequacy(simulation)[scenario],
+                iteration_year,
+                ra_metrics,
+            )
         end
-       
+
         #Update forecasts and realized profits of all existing projects for each investor.
 
         for investor in get_investors(simulation)
@@ -282,86 +389,123 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
             projects = get_projects(investor)
             for (i, project) in enumerate(projects)
-                @info "$(i): Updating realized profits for $(get_name(project))"
+                # @info "$(i): Updating realized profits for $(get_name(project))"
                 update_realized_profits!(project,
-                                         realized_market_prices,
-                                         realized_capacity_factors_md,
-                                         realized_capacity_factors_uc,
-                                         realized_capacity_factors_ed,
-                                         realized_reserve_perc_md,
-                                         realized_reserve_perc_uc,
-                                         realized_reserve_perc_ed,
-                                         realized_inertia_perc,
-                                         capacity_accepted_bids,
-                                         rec_accepted_bids,
-                                         get_hour_weight(simulation),
-                                         iteration_year,
-                                         capacity_forward_years,
-                                         get_carbon_tax(simulation)[iteration_year],
-                                         get_da_resolution(case),
-                                         get_rt_resolution(case),
-                                         rt_products,
-                                         get_pcm_scenario(case))
+                    realized_market_prices,
+                    realized_capacity_factors_md,
+                    realized_capacity_factors_uc,
+                    realized_capacity_factors_ed,
+                    realized_reserve_perc_md,
+                    realized_reserve_perc_uc,
+                    realized_reserve_perc_ed,
+                    realized_inertia_perc,
+                    capacity_accepted_bids,
+                    rec_accepted_bids,
+                    get_hour_weight(simulation),
+                    iteration_year,
+                    capacity_forward_years,
+                    get_carbon_tax(simulation)[iteration_year],
+                    get_da_resolution(case),
+                    get_rt_resolution(case),
+                    rt_products,
+                    get_pcm_scenario(case))
 
                 update_annual_cashflow!(project, iteration_year)
 
                 retire_old!(projects,
-                            i,
-                            project,
-                            sys_MDs,
-                            sys_UCs,
-                            sys_EDs,
-                            sys_PRAS,
-                            get_data_dir(case),
-                            iteration_year,
-                            step_size,
-                            scenario_names,
-                            total_horizon)
-
+                    i,
+                    project,
+                    sys_MDs,
+                    sys_UCs,
+                    sys_EDs,
+                    sys_PRAS,
+                    get_data_dir(case),
+                    iteration_year,
+                    step_size,
+                    scenario_names,
+                    total_horizon)
             end
 
             update_portfolio_preference_multipliers!(investor, iteration_year)
-
         end
 
         # simulations, iteration_years, derating_scales, methodologies, ra_metric_list, marginal_cc_switches =  repeat_arguments(num_scenarios, simulation, iteration_year, get_derating_scale(case), get_accreditation_methodology(case), get_accreditation_metric(case), get_marginal_cc_switch(case))
-        
         # @time Distributed.pmap(parallelize_update_derating_data, zip(scenario_names, simulations, iteration_years, derating_scales, methodologies, ra_metric_list, marginal_cc_switches))
 
         @info "Updating derating data for all scenarios in the simulation based on updated resource adequacy and market conditions"
-        update_simulation_derating_data!(
-            simulation,
-            scenario_1,
-            iteration_year,
-            get_derating_scale(case),
-            methodology = get_accreditation_methodology(case),
-            ra_metric = get_accreditation_metric(case),
-            marginal_cc = get_marginal_cc_switch(case)
-        )
+        for scenario in scenario_names
+            @info "Updating derating data for scenario: $scenario"
+            update_simulation_derating_data!(
+                simulation,
+                scenario,
+                iteration_year,
+                get_derating_scale(case);
+                methodology = get_accreditation_methodology(case),
+                ra_metric = get_accreditation_metric(case),
+                marginal_cc = get_marginal_cc_switch(case),
+                )   
+        end
 
         for scenario in scenario_names
-            derating_factors = read_data(joinpath(get_data_dir(case), "markets_data", "derating_data", scenario, "derating_dict.csv"))
+            derating_factors = read_data(
+                joinpath(
+                    get_data_dir(case),
+                    "markets_data",
+                    "derating_data",
+                    scenario,
+                    "derating_dict.csv",
+                ),
+            )
 
-            output_file = joinpath(get_results_dir(simulation), "derating_data", scenario, "derating_data_year_$(iteration_year+step_size).jld2")
+            output_file = joinpath(
+                get_results_dir(simulation),
+                "derating_data",
+                scenario,
+                "derating_data_year_$(iteration_year+step_size).jld2",
+            )
 
             FileIO.save(output_file, "derating_factors", derating_factors)
         end
-    
+
         active_projects = get_activeprojects(simulation)
 
         for project in active_projects
             for scenario in scenario_names
-                update_derating_factor!(project, get_data_dir(case), scenario, get_derating_scale(case), get_marginal_cc_switch(case))
+                update_derating_factor!(
+                    project,
+                    get_data_dir(case),
+                    scenario,
+                    get_derating_scale(case),
+                    get_marginal_cc_switch(case),
+                )
             end
         end
 
         # reserve_ts_scaling_factor = calculate_reserve_scaling_factor(simulation)
         reserve_ts_scaling(simulation, iteration_year, step_size)
 
-        @info "COMPLETED YEAR $(iteration_year)"
-        FileIO.save(joinpath(get_results_dir(simulation), "simulation_data_year$(iteration_year).jld2"), "simulation_data", simulation)
-        FileIO.save(joinpath(get_results_dir(simulation), "clean_energy_percentage_year$(iteration_year).jld2"), "clean_energy_percentage", clean_energy_percentage_vector)
+        @info "COMPLETED ITERATION YEAR $(iteration_year)"
+        FileIO.save(
+            joinpath(
+                get_results_dir(simulation),
+                "simulation_data_year$(iteration_year).jld2",
+            ),
+            "simulation_data",
+            simulation,
+        )
+        FileIO.save(
+            joinpath(
+                get_results_dir(simulation),
+                "clean_energy_percentage_year$(iteration_year).jld2",
+            ),
+            "clean_energy_percentage",
+            clean_energy_percentage_vector,
+        )
         # FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
+        t_end = time()
+        iteration_time_hours = round((t_end - t_start) / 3600, digits=2)
+        @info "Iteration year $(iteration_year) took $(iteration_time_hours) hours: @ $(Dates.now())"
+
     end
 
     final_portfolio = vcat(get_existing.(get_investors(simulation))...)
@@ -372,8 +516,17 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
     end
 
     @info "Saving final simulation data and clean energy percentage vector"
-    FileIO.save(joinpath(get_results_dir(simulation), "clean_energy_percentage.jld2"), "clean_energy_percentage", clean_energy_percentage_vector)
-    FileIO.save(joinpath(get_results_dir(simulation), "simulation_data.jld2"), "simulation_data", simulation)
+    FileIO.save(
+        joinpath(get_results_dir(simulation), "clean_energy_percentage.jld2"),
+        "clean_energy_percentage",
+        clean_energy_percentage_vector,
+    )
+    FileIO.save(
+        joinpath(get_results_dir(simulation), "simulation_data.jld2"),
+        "simulation_data",
+        simulation,
+    )
+
 
     @info "SIMULATION COMPLETED!"
     return

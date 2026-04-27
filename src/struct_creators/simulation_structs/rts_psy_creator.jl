@@ -30,11 +30,11 @@ function specify_pruned_units()
     return pruned_unit
 end
 
-
 function create_rts_sys(rts_dir::String,
                         base_power::Float64,
                         simulation_dir::String,
                         scratch_dir::String,
+                        timeseries_data_dir::String,
                         scenarios::Vector{String},
                         pcm_scenario::String,
                         simulation_years::Int64,
@@ -49,8 +49,13 @@ function create_rts_sys(rts_dir::String,
                         outage_dir::Union{Nothing, String}=nothing,
                         )
 
-    ntp_ts_data_dir = joinpath(rts_dir, "..", "..", "Feb2024_ERCOT_2011_MARKET_Test_NGUO_LDES", "NTP_TimeSeries_Data", "input_processing")
+    ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
+    ntp_ts_data_dir = POINTER_FILE[:NTPS_TS_DATA_DIR]
     runchecks = false
+
+    ##TODO: revert back to original system after checking storage capacities
+    initial_Sienna_system_name = "DA_sys_zonal_with_storage_capacities.json"
+    # initial_Sienna_system_name = "DA_sys_zonal.json"
 
     sys_MDs = Vector{PSY.System}()
     sys_UCs = Vector{PSY.System}()
@@ -77,7 +82,7 @@ function create_rts_sys(rts_dir::String,
         if !(isfile(MD_sys_filename) && isfile(MD_num_forecast_filename))
             @info "Simulation year $(sim_year): MD json file doesn't exist, creating PSY system."
             dir_exists(dirname(MD_sys_filename))         
-            sys_MD_initial = PSY.System(joinpath(rts_dir,"DA_sys_zonal.json"), time_series_directory = scratch_dir);
+            sys_MD_initial = PSY.System(joinpath(rts_dir, initial_Sienna_system_name), time_series_directory = scratch_dir);
             # create MD system
             create_sys_w_updated_ts(
                 ntp_ts_data_dir,
@@ -105,7 +110,7 @@ function create_rts_sys(rts_dir::String,
         if !(isfile(UC_filename))
             @info "Simulation year $(sim_year): UC json file doesn't exist, creating PSY system." 
             dir_exists(dirname(UC_filename))   
-            sys_UC_initial = PSY.System(joinpath(rts_dir, "DA_sys_zonal.json"), time_series_directory = scratch_dir);
+            sys_UC_initial = PSY.System(joinpath(rts_dir, initial_Sienna_system_name), time_series_directory = scratch_dir);
             create_sys_w_updated_ts(
                 ntp_ts_data_dir,
                 sys_UC_initial,
@@ -124,6 +129,7 @@ function create_rts_sys(rts_dir::String,
                 outage_dir,
             )
         end
+
         sys_UC = PSY.System(UC_filename, time_series_directory = scratch_dir, runchecks = runchecks)
         fix_multistart_cost_curves!(sys_UC)
         push!(sys_UCs, sys_UC);
@@ -143,7 +149,7 @@ function create_rts_sys(rts_dir::String,
             if !isfile(ED_filename)
                 @info "Simulation year $(sim_year): ED json file doesn't exist, creating PSY system." 
                 dir_exists(dirname(ED_filename))   
-                sys_ED_initial = PSY.System(joinpath(rts_dir,"DA_sys_zonal.json"), time_series_directory = scratch_dir);
+                sys_ED_initial = PSY.System(joinpath(rts_dir, initial_Sienna_system_name), time_series_directory = scratch_dir);
                 create_sys_w_updated_ts(
                     ntp_ts_data_dir,
                     sys_ED_initial,
@@ -162,6 +168,7 @@ function create_rts_sys(rts_dir::String,
                     outage_dir,
                 )
             end
+
             sys_ED = PSY.System(ED_filename, time_series_directory = scratch_dir, runchecks = runchecks)
             fix_multistart_cost_curves!(sys_ED)
             push!(sys_EDs_dict[scenario], sys_ED);
@@ -205,11 +212,10 @@ function create_rts_sys(rts_dir::String,
     end
 
     sys_PRAS = Dict{String, PSY.System}()
-
     for scenario in scenarios
         PRAS_filename = joinpath(rts_dir, "constructed_systems", scenario, "sim_year_1", "PRAS_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
         if !isfile(PRAS_filename)
-            @info "Simulation year $(sim_year): PRAS json file doesn't exist, creating PSY system."
+            @info "Scenario $(scenario): PRAS json file doesn't exist, creating PSY system."
             create_PRAS_sys_json(sys_EDs_dict[scenario], PRAS_filename)
         end
         sys_PRAS[scenario] = PSY.System(PRAS_filename, time_series_directory = scratch_dir, runchecks = runchecks)
@@ -247,10 +253,10 @@ function create_sys_w_updated_ts(
     #--------------------------------------------
     # Calculate load scaling factor: scale 2021 load to 75 GW
     #--------------------------------------------
-    loadscaler_profile_rt=DataFrame(CSV.File(joinpath(data_dir, "load_actuals_processed", "sup3rcc_ecearth3_load_gwh_ercot_$(scenario)_e2021_w2021_cst.csv"))) #in GW
-    loadscaler_profile_da=DataFrame(CSV.File(joinpath(data_dir, "load_forecasts_processed","preds_20210101_$(scenario)_365days.csv")))
-    loadscaler_peak_da=maximum(sum(eachcol(select(loadscaler_profile_da, Not([:Column1])))))
-    loadscaler_peak_rt=maximum(sum(eachcol(select(loadscaler_profile_rt, Not([:year, :timestamp])))))
+    loadscaler_profile_rt = DataFrame(CSV.File(joinpath(data_dir, "load_actuals_processed", "sup3rcc_ecearth3_load_gwh_ercot_$(scenario)_e2021_w2021_cst.csv"))) #in GW
+    loadscaler_profile_da = DataFrame(CSV.File(joinpath(data_dir, "load_forecasts_processed", "preds_20210101_$(scenario)_365days.csv")))
+    loadscaler_peak_da = maximum(sum(eachcol(select(loadscaler_profile_da, Not([:Column1])))))
+    loadscaler_peak_rt = maximum(sum(eachcol(select(loadscaler_profile_rt, Not([:year, :timestamp])))))
     loadscaler_da = loadscaler_peak_da/loadscaler_base
     loadscaler_rt = loadscaler_peak_rt/loadscaler_base
 
@@ -290,8 +296,8 @@ function create_sys_w_updated_ts(
     timestep = StepRange(start_datetime_MD, sys_MD_res * interval, finish_datetime_MD);
     first_stage_total = Int((finish_datetime_MD - start_datetime_MD) / sys_MD_res + 1)
     additional_timestep = Int(horizon - (first_stage_total-(interval*(length(timestep)-1))) + (first_stage_total - DEFAULT_HOURS_PER_YEAR))
-    dates = range(DateTime("2018-01-01T00:00:00"), step = sys_MD_res, length = DEFAULT_HOURS_PER_YEAR + additional_timestep)
-
+    dates = range(SIM_START_DATE, step = sys_MD_res, length = DEFAULT_HOURS_PER_YEAR + additional_timestep)
+    # @info "Line 294 - Constructing time series with timestep length: $(length(timestep)) and additional timestep: $(additional_timestep)."
     for component in get_components(x -> has_time_series(x, Deterministic), HydroDispatch, sys_MD)
         forecast = get_time_series(Deterministic, component, "max_active_power")
 
@@ -300,7 +306,6 @@ function create_sys_w_updated_ts(
             append!(reconstruct_single_ts, value[1:sys_MD_initial_interval])
         end
         append!(reconstruct_single_ts, reconstruct_single_ts[1:additional_timestep])
-
         data = TS.TimeArray(dates, reconstruct_single_ts)
         single_time_series = SingleTimeSeries("max_active_power", data)
 
@@ -322,7 +327,7 @@ function create_sys_w_updated_ts(
             push!(revisedts, datetimeindex => rtseries)
         end
 
-        # conver to deterministic time series
+        # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
             name="max_active_power",
             data=revisedts,
@@ -390,7 +395,7 @@ function create_sys_w_updated_ts(
             push!(revisedts, datetimeindex => rtseries)
         end
 
-        # conver to deterministic time series
+        # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
             name="max_active_power",
             data=revisedts,
@@ -438,14 +443,14 @@ function create_sys_w_updated_ts(
         for t in 1:length(timestep)
             rtseries = Vector{Float64}()
             datetimeindex = timestep[t]
-            if t < 8760/interval
+            if t < DEFAULT_HOURS_PER_YEAR/interval
                 rtseries = newtsdata[(interval*(t-1)+1):(interval*(t-1)+horizon)]
-            elseif t == ceil(Int, 8760/interval)
-                rtseries = [newtsdata[(interval*(t-1)+1):8760];newtsdata[1:horizon-(8760-(interval*(t-1)))]]
+            elseif t == ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)
+                rtseries = [newtsdata[(interval*(t-1)+1):DEFAULT_HOURS_PER_YEAR];newtsdata[1:horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(t-1)))]]
             else
                 # simply use the end of the previous timeseries as the new start
-                new_start = horizon-(8760-(interval*(ceil(Int, 8760/interval)-1)))
-                rtseries = newtsdata[new_start+(t-ceil(Int, 8760/interval)-1)*interval+1:new_start+(t-ceil(Int, 8760/interval)-1)*interval+horizon]
+                new_start = horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)))
+                rtseries = newtsdata[new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+1:new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+horizon]
             end
             push!(revisedts, datetimeindex => rtseries)
         end
@@ -475,8 +480,8 @@ function create_sys_w_updated_ts(
         regup_ts = DataFrame(CSV.File(joinpath(data_dir,"regulation_reserves",scenario, "RT_regUp_$(scenario)_gmlc$(loadyear).csv"))) #in MW; previous command: regup_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regUp_baseline_gmlc$(weatheryear).csv")))
     end
 
-    regdown_ts= select!(regdown_ts, Not(:DATETIME))
-    regup_ts= select!(regup_ts, Not(:DATETIME))
+    regdown_ts = select!(regdown_ts, Not(:DATETIME))
+    regup_ts = select!(regup_ts, Not(:DATETIME))
     regdown_ts[!,"RegDown"] = sum(eachcol(regdown_ts))
     regup_ts[!,"RegUp"] = sum(eachcol(regup_ts))
     reg_profile = DataFrame(REG_DN = regdown_ts[!,"RegDown"], REG_UP = regup_ts[!,"RegUp"])
@@ -494,19 +499,19 @@ function create_sys_w_updated_ts(
         for t in 1:length(timestep)
             rtseries = Vector{Float64}()
             datetimeindex = timestep[t]
-            if t < 8760/interval
+            if t < DEFAULT_HOURS_PER_YEAR/interval
                 rtseries = newtsdata[(interval*(t-1)+1):(interval*(t-1)+horizon)]
-            elseif t == ceil(Int, 8760/interval)
-                rtseries = [newtsdata[(interval*(t-1)+1):8760];newtsdata[1:horizon-(8760-(interval*(t-1)))]]
+            elseif t == ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)
+                rtseries = [newtsdata[(interval*(t-1)+1):DEFAULT_HOURS_PER_YEAR];newtsdata[1:horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(t-1)))]]
             else
                 # simply use the end of the previous timeseries as the new start
-                new_start = horizon-(8760-(interval*(ceil(Int, 8760/interval)-1)))
-                rtseries = newtsdata[new_start+(t-ceil(Int, 8760/interval)-1)*interval+1:new_start+(t-ceil(Int, 8760/interval)-1)*interval+horizon]
+                new_start = horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)))
+                rtseries = newtsdata[new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+1:new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+horizon]
             end
             push!(revisedts, datetimeindex => rtseries)
         end
 
-        # conver to deterministic time series
+        # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
             name="requirement",
             data=revisedts,
@@ -604,7 +609,7 @@ function create_PRAS_sys_json(
     sys_PRAS_res = PSY.get_time_series_resolutions(sys_PRAS)[1]
     sys_PRAS_interval = Int(PSY.get_forecast_interval(sys_PRAS).value / sys_PRAS_res.value)
     sys_PRAS_horizon = Int(PSY.get_forecast_horizon(sys_PRAS).value / sys_PRAS_res.value)
-    finish_datetime_PRAS = start_datetime_PRAS + Dates.Hour(8760 * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
+    finish_datetime_PRAS = start_datetime_PRAS + Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
     
     timestep = StepRange(start_datetime_PRAS, sys_PRAS_res * sys_PRAS_interval, finish_datetime_PRAS);
 
@@ -626,8 +631,10 @@ function create_PRAS_sys_json(
                     end
                 end
             end
-            append!(reconstruct_single_ts, reconstruct_single_ts[1:sys_PRAS_horizon - 1])
-            dates = range(DateTime("2018-01-01T00:00:00"), step = sys_PRAS_res, length = length(timestep) + sys_PRAS_horizon - 1)
+            # append!(reconstruct_single_ts, reconstruct_single_ts[1:sys_PRAS_horizon - 1])
+            # dates = range(DateTime("2018-01-01T00:00:00"), step = sys_PRAS_res, length = length(timestep) + sys_PRAS_horizon - 1)
+            dates = range(SIM_START_DATE, step = sys_PRAS_res, length = length(timestep))
+            # @info "Line 633 - Reconstructing time series for component $(name) with length: $(length(reconstruct_single_ts))."
             data = TS.TimeArray(dates, reconstruct_single_ts)
             single_time_series = SingleTimeSeries("max_active_power", data)
             add_time_series!(sys_PRAS, component_PRAS, single_time_series)
@@ -648,8 +655,10 @@ function create_PRAS_sys_json(
                 end
             end
         end
-        append!(reconstruct_single_ts, reconstruct_single_ts[1:sys_PRAS_horizon - 1])
-        dates = range(DateTime("2018-01-01T00:00:00"), step = sys_PRAS_res, length = length(timestep) + sys_PRAS_horizon - 1)
+        # append!(reconstruct_single_ts, reconstruct_single_ts[1:sys_PRAS_horizon - 1])
+        # dates = range(DateTime("2018-01-01T00:00:00"), step = sys_PRAS_res, length = length(timestep) + sys_PRAS_horizon - 1)
+        dates = range(SIM_START_DATE, step = sys_PRAS_res, length = length(timestep))
+        # @info "Line 644 - Creating time series for service $(name) with length: $(length(reconstruct_single_ts))."
         data = TS.TimeArray(dates, reconstruct_single_ts)
         single_time_series = SingleTimeSeries("requirement", data)
         add_time_series!(sys_PRAS, service_PRAS, single_time_series)
@@ -661,15 +670,17 @@ function create_PRAS_sys_json(
         for component in devices
             revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
             newtsdata = values(get_time_series(SingleTimeSeries, component, "max_active_power").data)
+            # @info "Line 668 - Processing component $(PSY.get_name(component)) with original time series length: $(length(newtsdata))."
 
     
-            for t in 1:length(timestep)
+            for t in 1:length(timestep)-1
                 rtseries=Vector{Float64}()
                 datetimeindex = timestep[t]
                 rtseries = newtsdata[(sys_PRAS_interval * (t - 1) + 1):(sys_PRAS_interval * ( t - 1) + sys_PRAS_horizon)]
                 push!(revisedts, datetimeindex => rtseries)
             end
     
+            # @info "Line 677 - Processing component $(PSY.get_name(component)) with revised time series length: $(length(revisedts))."
             # convert to deterministic time series
             revisedts_deterministic = PSY.Deterministic(;
                 name="max_active_power",
@@ -686,14 +697,15 @@ function create_PRAS_sys_json(
         revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
         newtsdata = values(get_time_series(SingleTimeSeries, service, "requirement").data)
 
-        for t in 1:length(timestep)
+        for t in 1:length(timestep)-1
             rtseries=Vector{Float64}()
             datetimeindex = timestep[t]
             rtseries = newtsdata[(sys_PRAS_interval * (t - 1) + 1):(sys_PRAS_interval * ( t - 1) + sys_PRAS_horizon)]
             push!(revisedts, datetimeindex => rtseries)
         end
 
-        # conver to deterministic time series
+        # @info "Line 701 - Processing service $(PSY.get_name(service)) with revised time series length: $(length(revisedts))."
+        # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
             name="requirement",
             data=revisedts,
@@ -704,9 +716,7 @@ function create_PRAS_sys_json(
         add_time_series!(sys_PRAS, service, revisedts_deterministic)
     end
 
-    # remove_time_series!(sys_PRAS, SingleTimeSeries)
-    remove_time_series!(sys_PRAS, Deterministic)
-    
+    remove_time_series!(sys_PRAS, Deterministic)    
     to_json(sys_PRAS, output_file, force=true)
 
     return
@@ -721,7 +731,7 @@ function create_PRAS_sys_NY_json(
     first_ts_temp_PRAS = first(PSY.get_time_series_multiple(sys_PRAS))
     start_datetime_PRAS = PSY.IS.get_initial_timestamp(first_ts_temp_PRAS)
     sys_PRAS_res = PSY.get_time_series_resolutions(sys_PRAS)[1]
-    finish_datetime_PRAS = start_datetime_PRAS + Dates.Hour(8760 * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
+    finish_datetime_PRAS = start_datetime_PRAS + Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
     timestep = StepRange(start_datetime_PRAS, sys_PRAS_res, finish_datetime_PRAS);
 
     ts_objects = Dict{String, Any}()
@@ -771,6 +781,7 @@ function fix_multistart_cost_curves!(sys::PSY.System)
             points = PSY.get_points(curve)
             if points[end].x < pmax_mw
                 @warn "$(PSY.get_name(unit)): PiecewisePointCurve ends at $(points[end].x) MW < Pmax $(pmax_mw) MW — extending"
+                @info "Original points: $(points)"
                 slope = points[end].x > 0 ? points[end].y / points[end].x : 1.0
                 new_points = vcat(points, [(x = pmax_mw, y = pmax_mw * slope)])
                 new_curve = PSY.PiecewisePointCurve(new_points)
@@ -784,7 +795,9 @@ function fix_multistart_cost_curves!(sys::PSY.System)
             x_coords = PSY.get_x_coords(curve)
             if x_coords[end] < pmax_mw
                 @warn "$(PSY.get_name(unit)): PiecewiseIncrementalCurve ends at $(x_coords[end]) MW < Pmax $(pmax_mw) MW — extending"
+                @info "Original x coords: $(x_coords)"
                 slopes = PSY.get_slopes(curve)
+                @info "Original slopes: $(slopes)"
                 new_x = vcat(x_coords, pmax_mw)
                 new_slopes = vcat(slopes, slopes[end])  # extend with last slope
                 new_curve = PSY.PiecewiseIncrementalCurve(
