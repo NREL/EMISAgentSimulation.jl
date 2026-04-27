@@ -276,7 +276,7 @@ function calculate_derating_factors(
     iteration_year::Int64,
     derating_scale::Float64,
     methodology::String,
-    ra_matric::String,
+    ra_metric::String,
     marginal_cc::Bool)
 
     if methodology == "ELCC"
@@ -287,10 +287,10 @@ function calculate_derating_factors(
         @error "Capacity Accreditation methodology should be either ELCC, EFC or TopNetLoad"
     end
 
-    if ra_matric == "LOLE"
-        ra_matric = PRAS.LOLE
-    elseif ra_matric == "EUE"
-        ra_matric = PRAS.EUE
+    if ra_metric == "LOLE"
+        ra_metric = PRAS.LOLE
+    elseif ra_metric == "EUE"
+        ra_metric = PRAS.EUE
     else
         @error "Resource Adequacy metric should be either LOLE or EUE"
     end
@@ -338,14 +338,14 @@ function calculate_derating_factors(
     correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_2011.csv")
 
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
-    base_pras_system = make_pras_system(adjusted_base_system,
-                                system_model="Single-Node",
-                                aggregation="Area",
-                                period_of_interest = system_period_of_interest,
-                                outage_flag=false,
-                                lump_pv_wind_gens=false,
-                                availability_flag=true,
-                                outage_csv_location = correlated_outage_csv_location)
+    # base_pras_system = make_pras_system(adjusted_base_system,
+    #                             system_model="Single-Node",
+    #                             aggregation="Area",
+    #                             period_of_interest = system_period_of_interest,
+    #                             outage_flag=false,
+    #                             lump_pv_wind_gens=false,
+    #                             availability_flag=true,
+    #                             outage_csv_location = correlated_outage_csv_location)
 
     if marginal_cc
 
@@ -365,17 +365,17 @@ function calculate_derating_factors(
                         add_capacity_market_project!(augmented_sys, new_project, simulation_dir, scenario, capacity_market_year, rt_resolution, simulation_years)
                     end
                     
-                    augmented_pras_system = make_pras_system(augmented_sys,
-                                        system_model="Single-Node",
-                                        aggregation="Area",
-                                        period_of_interest = system_period_of_interest,
-                                        outage_flag=false,
-                                        lump_pv_wind_gens=false,
-                                        availability_flag=true,
-                                        outage_csv_location = correlated_outage_csv_location)
+                    # augmented_pras_system = make_pras_system(augmented_sys,
+                    #                     system_model="Single-Node",
+                    #                     aggregation="Area",
+                    #                     period_of_interest = system_period_of_interest,
+                    #                     outage_flag=false,
+                    #                     lump_pv_wind_gens=false,
+                    #                     availability_flag=true,
+                    #                     outage_csv_location = correlated_outage_csv_location)
 
                     # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                    cc_result  =  PRAS.assess(base_pras_system,  augmented_pras_system,  methodology{ra_matric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
+                    cc_result  =  PRAS.assess(adjusted_base_system,  augmented_sys,  methodology{ra_metric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
                     cc_lower,  cc_upper  =  extrema(cc_result) 
                     cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
                     derating_factors[!, "new_$(type)_$(zone)"] .= cc_final
@@ -387,14 +387,14 @@ function calculate_derating_factors(
     
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
     augmented_sys = deepcopy(adjusted_base_system)
-    augmented_pras_system = make_pras_system(augmented_sys,
-                                    system_model="Single-Node",
-                                    aggregation="Area",
-                                    period_of_interest = system_period_of_interest,
-                                    outage_flag=false,
-                                    lump_pv_wind_gens=false,
-                                    availability_flag=true,
-                                    outage_csv_location = correlated_outage_csv_location)
+    # augmented_pras_system = make_pras_system(augmented_sys,
+    #                                 system_model="Single-Node",
+    #                                 aggregation="Area",
+    #                                 period_of_interest = system_period_of_interest,
+    #                                 outage_flag=false,
+    #                                 lump_pv_wind_gens=false,
+    #                                 availability_flag=true,
+    #                                 outage_csv_location = correlated_outage_csv_location)
 
     for zone in zones
         for type in existing_types
@@ -408,16 +408,16 @@ function calculate_derating_factors(
                 end
 
                 @assert total_capacity > 0
-                pruned_base_pras_system = make_pras_system(pruned_based_sys,
-                                        system_model="Single-Node",
-                                        aggregation="Area",
-                                        period_of_interest = system_period_of_interest,
-                                        outage_flag=false,
-                                        lump_pv_wind_gens=false,
-                                        availability_flag=true,
-                                        outage_csv_location = correlated_outage_csv_location)
+                # pruned_base_pras_system = make_pras_system(pruned_based_sys,
+                #                         system_model="Single-Node",
+                #                         aggregation="Area",
+                #                         period_of_interest = system_period_of_interest,
+                #                         outage_flag=false,
+                #                         lump_pv_wind_gens=false,
+                #                         availability_flag=true,
+                #                         outage_csv_location = correlated_outage_csv_location)
                 #  Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                cc_result  =  PRAS.assess(pruned_base_pras_system, augmented_pras_system, PRAS.ELCC{ra_matric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
+                cc_result  =  PRAS.assess(pruned_based_sys, augmented_sys, PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
                 cc_lower,  cc_upper  =  extrema(cc_result) 
                 cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
 
@@ -462,17 +462,17 @@ function calculate_derating_factors(
             total_capacity += get_maxcap(project)
         end
         
-        pruned_base_pras_system = make_pras_system(pruned_based_sys,
-            system_model="Single-Node",
-            aggregation="Area",
-            period_of_interest = system_period_of_interest,
-            outage_flag=false,
-            lump_pv_wind_gens=false,
-            availability_flag=true,
-            outage_csv_location = correlated_outage_csv_location)
+        # pruned_base_pras_system = make_pras_system(pruned_based_sys,
+        #     system_model="Single-Node",
+        #     aggregation="Area",
+        #     period_of_interest = system_period_of_interest,
+        #     outage_flag=false,
+        #     lump_pv_wind_gens=false,
+        #     availability_flag=true,
+        #     outage_csv_location = correlated_outage_csv_location)
         
             # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-        cc_result  =  PRAS.assess(pruned_base_pras_system, augmented_pras_system, PRAS.ELCC{ra_matric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
+        cc_result  =  PRAS.assess(pruned_based_sys, augmented_sys, PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
         cc_lower,  cc_upper  =  extrema(cc_result) 
         cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
         derating_factors[!, "existing_STOR_$(stor_duration)"] .= cc_final
@@ -493,17 +493,17 @@ function calculate_derating_factors(
                 end
             end
             
-            augmented_pras_system = make_pras_system(augmented_sys,
-            system_model="Single-Node",
-            aggregation="Area",
-            period_of_interest = system_period_of_interest,
-            outage_flag=false,
-            lump_pv_wind_gens=false,
-            availability_flag=true,
-            outage_csv_location = correlated_outage_csv_location)
+            # augmented_pras_system = make_pras_system(augmented_sys,
+            # system_model="Single-Node",
+            # aggregation="Area",
+            # period_of_interest = system_period_of_interest,
+            # outage_flag=false,
+            # lump_pv_wind_gens=false,
+            # availability_flag=true,
+            # outage_csv_location = correlated_outage_csv_location)
 
             # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-            cc_result  =  PRAS.assess(base_pras_system,  augmented_pras_system,  methodology{ra_matric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
+            cc_result  =  PRAS.assess(adjusted_base_system,  augmented_sys,  methodology{ra_metric}(Int(ceil(max_cap)), "Region"), PRAS.SequentialMonteCarlo(samples = 10, seed = 42))
             cc_lower,  cc_upper  =  extrema(cc_result) 
             cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
             derating_factors[!, "new_STOR_$(stor_duration)"] .= cc_final
