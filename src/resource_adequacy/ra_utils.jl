@@ -453,6 +453,9 @@ function create_base_system(initial_system::PSY.System,
     simulation::Union{AgentSimulation, AgentSimulationData})
     capacity_market_year = iteration_year + capacity_forward_years - 1
 
+    case = get_case(simulation)
+    simulation_years = get_simulation_years(case)
+
     capacity_market_system = create_capacity_mkt_system(initial_system,
         active_projects,
         capacity_forward_years,
@@ -460,7 +463,7 @@ function create_base_system(initial_system::PSY.System,
         iteration_year,
         simulation_dir,
         rt_resolution,
-        get_total_horizon(get_case(simulation)))
+        get_total_horizon(case))
 
     ra_targets = get_targets(resource_adequacy)
 
@@ -535,7 +538,7 @@ function create_base_system(initial_system::PSY.System,
                             scenario,
                             capacity_market_year,
                             rt_resolution,
-                            get_total_horizon(get_case(simulation)),
+                            get_total_horizon(case),
                         )
                         count += 1
                     end
