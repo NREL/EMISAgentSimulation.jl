@@ -204,7 +204,7 @@ function add_device_forecast_PRAS!(sys::PSY.System,
     availability_raw_rt::Vector{Float64},
     rt_resolution::Int64,
     simulation_years::Int64
-) where {D <: PSY.RenewableGen}
+) where {D <: Union{PSY.RenewableGen, PSY.RenewableDispatch}}
     start_datetime = SIM_START_DATE
     timestamp = range(start_datetime; step = Hour(1), length = DEFAULT_HOURS_PER_YEAR * simulation_years)
     value_ts = availability_raw_rt
