@@ -69,7 +69,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     end
 
     num_hours = DataFrames.nrow(load_n_vg_data)
-    num_top_hours = cap_mkt_params.num_top_hours[1] * length(simulation_years)
+    num_top_hours = cap_mkt_params.num_top_hours[1] * simulation_years
 
     existing_vg_power = zeros(num_hours)
 
