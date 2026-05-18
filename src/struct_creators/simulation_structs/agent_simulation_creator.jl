@@ -188,9 +188,9 @@ function gather_data(case::CaseDefinition)
         convert_thermal_fast_start!(sys_UCs[y])
         convert_thermal_fast_start!(sys_EDs[y])
         
-        add_psy_ordc!(data_dir, markets_dict, sys_MDs[y], "MD", pcm_scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
-        add_psy_ordc!(data_dir, markets_dict, sys_UCs[y], "UC", pcm_scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
-        add_psy_ordc!(data_dir, markets_dict, sys_EDs[y], "ED", pcm_scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
+        add_psy_ordc!(data_dir, markets_dict, sys_MDs[y], "MD", pcm_scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case), get_ordc_curved(case))
+        add_psy_ordc!(data_dir, markets_dict, sys_UCs[y], "UC", pcm_scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case), get_ordc_curved(case))
+        add_psy_ordc!(data_dir, markets_dict, sys_EDs[y], "ED", pcm_scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case), get_ordc_curved(case))
 
         if markets_dict[:Inertia]
             add_psy_inertia!(data_dir, sys_MDs[y], "MD", get_reserve_penalty(case), system_peak_load)
@@ -208,7 +208,7 @@ function gather_data(case::CaseDefinition)
     for scenario in scenarios
         #convert_thermal_clean_energy!(sys_PRAS[scenario])
         convert_thermal_fast_start!(sys_PRAS[scenario])
-        add_psy_ordc!(data_dir, markets_dict, sys_PRAS[scenario], "PRAS", scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case))
+        add_psy_ordc!(data_dir, markets_dict, sys_PRAS[scenario], "PRAS", scenario, 1, get_da_resolution(case), get_rt_resolution(case), get_reserve_penalty(case), get_ordc_curved(case))
 
         if markets_dict[:Inertia]
             add_psy_inertia!(data_dir, sys_PRAS[scenario], "PRAS", get_reserve_penalty(case), system_peak_load)

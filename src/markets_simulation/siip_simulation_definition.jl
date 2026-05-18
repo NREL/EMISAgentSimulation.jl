@@ -354,6 +354,43 @@ function update_realized_reserve_perc!(device::PSY.Device,
 end
 
 """
+This function returns realized static reserve provision percentages from PSI Simulation.
+"""
+function update_realized_reserve_perc!(device::PSY.Device,
+                                        service::PSY.StaticReserve{PSY.ReserveUp},
+                                        results_ed::Dict{String, DataFrames.DataFrame},
+                                        results_uc::Dict{String, DataFrames.DataFrame},
+                                        results_md::Union{Nothing, Dict{String, DataFrames.DataFrame}},
+                                        reserve_perc_md::Dict{String, Dict{String, Array{Float64, 2}}},
+                                        reserve_perc_uc::Dict{String, Dict{String, Array{Float64, 2}}},
+                                        reserve_perc_ed::Dict{String, Dict{String, Array{Float64, 2}}},
+                                        inertia_perc::Dict{String, Array{Float64, 2}},
+                                        rt_products::Vector{SubString{String}},
+                                        da_products::Vector{SubString{String}},
+                                        md_products::Vector{SubString{String}},
+                                        base_power::Float64,
+                                        md_market_bool::Bool,)
+
+    service_name = PSY.get_name(service)
+
+    reserve_provision_ed = results_ed["ActivePowerReserveVariable__StaticReserve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
+    reserve_perc_value_ed = reserve_provision_ed / get_device_size(device) / base_power
+    reserve_perc_ed[get_name(device)][service_name][1, :] = reserve_perc_value_ed
+
+    reserve_provision_uc = results_uc["ActivePowerReserveVariable__StaticReserve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
+    reserve_perc_value_uc = reserve_provision_uc / get_device_size(device) / base_power
+    reserve_perc_uc[get_name(device)][service_name][1, :] = reserve_perc_value_uc
+
+    if md_market_bool == true
+        reserve_provision_md = results_md["ActivePowerReserveVariable__StaticReserve__ReserveUp__$(service_name)"][:, Symbol(get_name(device))]
+        reserve_perc_value_md = reserve_provision_md / get_device_size(device) / base_power
+        reserve_perc_md[get_name(device)][service_name][1, :] = reserve_perc_value_md
+    end
+
+    return
+end
+
+"""
 This function returns realized reserve down provision percentages from PSI Simulation.
 """
 function update_realized_reserve_perc!(device::PSY.Device,
@@ -458,7 +495,7 @@ This function creates the Unit Commitment template for PSI Simulation.
 """
 #TODO: Update needed
 
-function create_md_template(inertia_product)
+function create_md_template(inertia_product, ordc_curved::Bool)
 
     if !(isempty(inertia_product))
 
@@ -509,27 +546,6 @@ function create_md_template(inertia_product)
                 duals = [PSI.RequirementConstraint],
             )
         )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Synchronous",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Primary",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-
         # PSI.set_service_model!(
         #     template,
         #     PSI.ServiceModel(
@@ -598,27 +614,6 @@ function create_md_template(inertia_product)
                 duals = [PSI.RequirementConstraint],
             )
         )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Synchronous",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Primary",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-
         # PSI.set_service_model!(
         #     template,
         #     PSI.ServiceModel(
@@ -631,10 +626,54 @@ function create_md_template(inertia_product)
         # )
     end
 
+    if ordc_curved
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.ReserveDemandCurve{PSY.ReserveUp},
+                PSI.StepwiseCostReserve,
+                "Synchronous",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.ReserveDemandCurve{PSY.ReserveUp},
+                PSI.StepwiseCostReserve,
+                "Primary",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
+    else
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.StaticReserve{PSY.ReserveUp},
+                PSI.RangeReserve,
+                "Synchronous",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.StaticReserve{PSY.ReserveUp},
+                PSI.RangeReserve,
+                "Primary",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
+    end
+
     return template
 end
 
-function create_uc_template(inertia_product)
+function create_uc_template(inertia_product, ordc_curved::Bool)
 
     if !(isempty(inertia_product))
 
@@ -675,26 +714,6 @@ function create_uc_template(inertia_product)
                 PSY.VariableReserve{PSY.ReserveDown},
                 PSI.RangeReserve,
                 "Reg_Down",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Synchronous",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Primary",
                 use_slacks=true,
                 duals = [PSI.RequirementConstraint],
             )
@@ -761,6 +780,19 @@ function create_uc_template(inertia_product)
                 duals = [PSI.RequirementConstraint],
             )
         )
+        # PSI.set_service_model!(
+        #     template,
+        #     PSI.ServiceModel(
+        #         PSY.VariableReserve{PSY.ReserveUp},
+        #         EMISEx.CleanEnergyReserve,
+        #         "Clean_Energy",
+        #         use_slacks=true,
+        #         duals = [PSI.RequirementConstraint],
+        #     )
+        # )
+    end
+
+    if ordc_curved
         PSI.set_service_model!(
             template,
             PSI.ServiceModel(
@@ -781,16 +813,27 @@ function create_uc_template(inertia_product)
                 duals = [PSI.RequirementConstraint],
             )
         )
-        # PSI.set_service_model!(
-        #     template,
-        #     PSI.ServiceModel(
-        #         PSY.VariableReserve{PSY.ReserveUp},
-        #         EMISEx.CleanEnergyReserve,
-        #         "Clean_Energy",
-        #         use_slacks=true,
-        #         duals = [PSI.RequirementConstraint],
-        #     )
-        # )
+    else
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.StaticReserve{PSY.ReserveUp},
+                PSI.RangeReserve,
+                "Synchronous",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.StaticReserve{PSY.ReserveUp},
+                PSI.RangeReserve,
+                "Primary",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
     end
 
     return template
@@ -800,7 +843,7 @@ end
 This function creates the Economic Dispatch template for PSI Simulation.
 """
 #TODO: Update needed
-function create_ed_template(inertia_product)
+function create_ed_template(inertia_product, ordc_curved::Bool)
 
     if !(isempty(inertia_product))
         template = PSI.ProblemTemplate(
@@ -841,26 +884,6 @@ function create_ed_template(inertia_product)
                 PSY.VariableReserve{PSY.ReserveDown},
                 PSI.RangeReserve,
                 "Reg_Down",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Synchronous",
-                use_slacks=true,
-                duals = [PSI.RequirementConstraint],
-            )
-        )
-        PSI.set_service_model!(
-            template,
-            PSI.ServiceModel(
-                PSY.ReserveDemandCurve{PSY.ReserveUp},
-                PSI.StepwiseCostReserve,
-                "Primary",
                 use_slacks=true,
                 duals = [PSI.RequirementConstraint],
             )
@@ -918,6 +941,9 @@ function create_ed_template(inertia_product)
                 duals = [PSI.RequirementConstraint],
             )
         )
+    end
+
+    if ordc_curved
         PSI.set_service_model!(
             template,
             PSI.ServiceModel(
@@ -933,6 +959,27 @@ function create_ed_template(inertia_product)
             PSI.ServiceModel(
                 PSY.ReserveDemandCurve{PSY.ReserveUp},
                 PSI.StepwiseCostReserve,
+                "Primary",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
+    else
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.StaticReserve{PSY.ReserveUp},
+                PSI.RangeReserve,
+                "Synchronous",
+                use_slacks=true,
+                duals = [PSI.RequirementConstraint],
+            )
+        )
+        PSI.set_service_model!(
+            template,
+            PSI.ServiceModel(
+                PSY.StaticReserve{PSY.ReserveUp},
+                PSI.RangeReserve,
                 "Primary",
                 use_slacks=true,
                 duals = [PSI.RequirementConstraint],
@@ -1046,6 +1093,7 @@ function create_simulation( sys_MD::PSY.System,
                             solver::JuMP.MOI.OptimizerWithAttributes,
                             current_siip_sim,
                             md_market_bool::Bool,
+                            ordc_curved::Bool,
                             siip_system;
                             kwargs...)
 
@@ -1061,14 +1109,14 @@ function create_simulation( sys_MD::PSY.System,
 
     inertia_product = collect(PSY.get_components_by_name(PSY.Service, sys_ED, "Inertia"))
 
-    template_uc = create_uc_template(inertia_product)
-    template_ed = create_ed_template(inertia_product)
+    template_uc = create_uc_template(inertia_product, ordc_curved)
+    template_ed = create_ed_template(inertia_product, ordc_curved)
     uc_problem = create_problem(template_uc, sys_UC, "UC", solver, inertia_product)
     ed_problem = create_problem(template_ed, sys_ED, "ED", solver, inertia_product)
 
     if md_market_bool == true
 
-        template_md = create_md_template(inertia_product)
+        template_md = create_md_template(inertia_product, ordc_curved)
         md_problem = create_problem(template_md, sys_MD, "MD", solver, inertia_product)
 
         if isempty(inertia_product)
@@ -1098,8 +1146,6 @@ function create_simulation( sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = 5000.0,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
@@ -1147,8 +1193,6 @@ function create_simulation( sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = 5000.0,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
@@ -1199,8 +1243,6 @@ function create_simulation( sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = 5000.0,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
@@ -1239,8 +1281,6 @@ function create_simulation( sys_MD::PSY.System,
                         target_period = 2,
                         penalty_cost = 5000.0,
                     ),
-                ],
-                "ED" => [
                     PSI.SemiContinuousFeedforward(
                         component_type = PSY.ThermalStandard,
                         source = PSI.OnVariable,
@@ -1435,6 +1475,12 @@ function create_simulation( sys_MD::PSY.System,
             replace!(reserve_price_ed[name], NaN => 0.0)
             scale_voll(reserve_price_ed[name], rt_resolution)
             #println(reserve_price[name])
+        elseif typeof(service) == PSY.StaticReserve{PSY.ReserveUp}
+            reserve_price_ed[name][1, :] = abs.(round.(dual_values_ed["RequirementConstraint__StaticReserve__ReserveUp__$(name)"][:, Symbol("$(name)")], digits = 5)) / base_power
+            replace!(reserve_price_ed[name], NaN => 0.0)
+            scale_voll(reserve_price_ed[name], rt_resolution)
+            reserve_voll[name][1, :] = abs.(round.(result_variables_ed["ReserveRequirementSlack__StaticReserve__ReserveUp__$(name)"][:, Symbol("ReserveRequirementSlack__StaticReserve__ReserveUp__$(name)")], digits = 5)) / base_power
+            #println(reserve_price[name])
         elseif typeof(service) == PSY.VariableReserve{PSY.ReserveDown}
             reserve_price_ed[name][1, :] = abs.(round.(dual_values_ed["RequirementConstraint__VariableReserve__ReserveDown__$(name)"][:, Symbol("$(name)")], digits = 5)) / base_power
             replace!(reserve_price_ed[name], NaN => 0.0)
@@ -1466,6 +1512,12 @@ function create_simulation( sys_MD::PSY.System,
             replace!(reserve_price_uc[name], NaN => 0.0)
             scale_voll(reserve_price_uc[name], da_resolution)
             #println(reserve_price[name])
+        elseif typeof(service) == PSY.StaticReserve{PSY.ReserveUp}
+            reserve_price_uc[name][1, :] = abs.(round.(dual_values_uc["RequirementConstraint__StaticReserve__ReserveUp__$(name)"][:, Symbol("$(name)")], digits = 5)) / base_power
+            replace!(reserve_price_uc[name], NaN => 0.0)
+            scale_voll(reserve_price_uc[name], da_resolution)
+            reserve_voll_uc[name][1, :] = abs.(round.(result_variables_uc["ReserveRequirementSlack__StaticReserve__ReserveUp__$(name)"][:, Symbol("ReserveRequirementSlack__StaticReserve__ReserveUp__$(name)")], digits = 5)) / base_power
+            #println(reserve_price[name])
         elseif typeof(service) == PSY.VariableReserve{PSY.ReserveDown}
             reserve_price_uc[name][1, :] = abs.(round.(dual_values_uc["RequirementConstraint__VariableReserve__ReserveDown__$(name)"][:, Symbol("$(name)")], digits = 5)) / base_power
             replace!(reserve_price_uc[name], NaN => 0.0)
@@ -1477,7 +1529,7 @@ function create_simulation( sys_MD::PSY.System,
     end
 
     if md_market_bool == true
-        for service in get_system_services(sys_MD)
+        for service in c(sys_MD)
             name = PSY.get_name(service)
             # TODO: need to replace "only_da_products"
             # if name in only_da_products
@@ -1499,6 +1551,12 @@ function create_simulation( sys_MD::PSY.System,
                 reserve_price_md[name][1, :] = abs.(round.(dual_values_md["RequirementConstraint__ReserveDemandCurve__ReserveUp__$(name)"][:, Symbol("$(name)")], digits = 5)) / base_power
                 replace!(reserve_price_md[name], NaN => 0.0)
                 scale_voll(reserve_price_md[name], da_resolution)
+                #println(reserve_price[name])
+            elseif typeof(service) == PSY.StaticReserve{PSY.ReserveUp}
+                reserve_price_md[name][1, :] = abs.(round.(dual_values_md["RequirementConstraint__StaticReserve__ReserveUp__$(name)"][:, Symbol("$(name)")], digits = 5)) / base_power
+                replace!(reserve_price_md[name], NaN => 0.0)
+                scale_voll(reserve_price_md[name], da_resolution)
+                reserve_voll_md[name][1, :] = abs.(round.(result_variables_md["ReserveRequirementSlack__StaticReserve__ReserveUp__$(name)"][:, Symbol("ReserveRequirementSlack__StaticReserve__ReserveUp__$(name)")], digits = 5)) / base_power
                 #println(reserve_price[name])
             elseif typeof(service) == PSY.VariableReserve{PSY.ReserveDown}
                 reserve_price_md[name][1, :] = abs.(round.(dual_values_md["RequirementConstraint__VariableReserve__ReserveDown__$(name)"][:, Symbol("$(name)")], digits = 5)) / base_power

@@ -251,7 +251,8 @@ function add_psy_ordc!(simulation_dir::String,
              iteration_year::Int64,
              da_resolution::Int64,
              rt_resolution::Int64,
-             reserve_penalty::String)
+             reserve_penalty::String,
+             ordc_curved::Bool)
     return
 end
 
@@ -263,7 +264,8 @@ function add_psy_ordc!(simulation_dir::String,
              iteration_year::Int64,
              da_resolution::Int64,
              rt_resolution::Int64,
-             reserve_penalty::String
+             reserve_penalty::String,
+             ordc_curved::Bool
             )
 
     products = split(read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[1,"ordc_products"], "; ")
@@ -286,12 +288,30 @@ function add_psy_ordc!(simulation_dir::String,
             eligible_categories = product_data[1, "eligible categories"]
 
             ####### Adding ORDC reserve
-            reserve = PSY.ReserveDemandCurve{PSY.ReserveUp}(
-                nothing,    #InfrastructureSystems.TimeSeriesKey
-                product,
-                true,
-                product_data[1, "timescale (min)"] * 60,
-            )
+            # Read and process the ORDC CSV once; reused for MRR extraction (static case) and time series (curved case)
+            ordc_csv_path = type == "ED" ?
+                joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Reserves", "$(product)_REAL_TIME.csv") :
+                joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Reserves", "$(product).csv")
+            product_ts_raw = read_data(ordc_csv_path)[:, product]
+            product_data_ts = process_ordc_data_for_siip(product_ts_raw)
+            base_power = PSY.get_base_power(sys)
+            if !ordc_curved
+                # For the flat 2-point ORDC, the single processed tuple per timestep is (cost, MRR_MW)
+                mrr = product_data_ts[1][1][2]
+                reserve = PSY.StaticReserve{PSY.ReserveUp}(
+                    product,
+                    true,
+                    product_data[1, "timescale (min)"] * 60,
+                    mrr / base_power,
+                )
+            else
+                reserve = PSY.ReserveDemandCurve{PSY.ReserveUp}(
+                    nothing,    #InfrastructureSystems.TimeSeriesKey
+                    product,
+                    true,
+                    product_data[1, "timescale (min)"] * 60,
+                )
+            end
 
                 PSY.add_service!(sys, reserve, PSY.get_components(PSY.ThermalStandard, sys))
 
@@ -329,14 +349,7 @@ function add_psy_ordc!(simulation_dir::String,
                 #     )))
 
                 # time_stamps = StepRange(start_datetime, Dates.Hour(1), finish_datetime);
-                if type == "ED"
-                    product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Reserves", "$(product)_REAL_TIME.csv"))[:, product]
-                elseif type in ["UC", "MD"]
-                    product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(iteration_year)", "Reserves", "$(product).csv"))[:, product]
-                end
-
-                if type in ["MD", "UC", "ED"]
-                    product_data_ts = process_ordc_data_for_siip(product_ts_raw)
+                if ordc_curved && type in ["MD", "UC", "ED"]
                     product_data_ts = [product_data_ts;product_data_ts[1:additional_timestep]]
                     forecast = PSY.SingleTimeSeries("variable_cost", TimeSeries.TimeArray(time_stamps, product_data_ts))
                     PSY.add_time_series!(sys, reserve, forecast)
