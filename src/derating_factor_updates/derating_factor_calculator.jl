@@ -39,7 +39,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     load_n_vg_data = DataFrames.DataFrame()
     availability_data = DataFrames.DataFrame()
 
-    for sim_year in simulation_years
+    for sim_year in 1:simulation_years
         load_n_vg_data = vcat(
             load_n_vg_data,
             read_data(
@@ -424,13 +424,9 @@ function calculate_derating_factors(
     new_types = unique(get_type.(get_tech.(options)))
 
     capacity_forward_years = get_capacity_forward_years(simulation)
-
     capacity_market_year = iteration_year + capacity_forward_years - 1
-
     resource_adequacy = get_resource_adequacy(simulation)
-
     sys_PRAS = get_system_PRAS(simulation)[scenario]
-
     base_sys = deepcopy(sys_PRAS)
 
     # create adjusted base system (by iteratively adding or removing generators) such that it meets the RA targets
@@ -446,7 +442,8 @@ function calculate_derating_factors(
         simulation)
 
     system_period_of_interest = range(1; length = DEFAULT_HOURS_PER_YEAR * simulation_years)
-    correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_2011.csv")
+    # correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_2011.csv")
+    correlated_outage_csv_location = outage_dir
 
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
     base_pras_system = make_pras_system(adjusted_base_system;
@@ -456,11 +453,12 @@ function calculate_derating_factors(
         outage_flag = false,
         lump_pv_wind_gens = false,
         availability_flag = true,
-        outage_csv_location = correlated_outage_csv_location)
+        outage_csv_location = correlated_outage_csv_location,
+        outage_ts_flag = true)
 
     ##TODO: AA remove debug code after validation
-    @info "Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
+    temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
+    @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
     PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
     PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
 
@@ -499,7 +497,8 @@ function calculate_derating_factors(
                         outage_flag = false,
                         lump_pv_wind_gens = false,
                         availability_flag = true,
-                        outage_csv_location = correlated_outage_csv_location)
+                        outage_csv_location = correlated_outage_csv_location,
+                        outage_ts_flag = true)
 
                     # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
                     cc_result = PRAS.assess(
@@ -525,7 +524,8 @@ function calculate_derating_factors(
         outage_flag = false,
         lump_pv_wind_gens = false,
         availability_flag = true,
-        outage_csv_location = correlated_outage_csv_location)
+        outage_csv_location = correlated_outage_csv_location,
+        outage_ts_flag = true)
 
     for zone in zones
         for type in existing_types
@@ -549,7 +549,9 @@ function calculate_derating_factors(
                     outage_flag = false,
                     lump_pv_wind_gens = false,
                     availability_flag = true,
-                    outage_csv_location = correlated_outage_csv_location)
+                    outage_csv_location = correlated_outage_csv_location,
+                    outage_ts_flag = true)
+
                 #  Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
                 cc_result = PRAS.assess(
                     pruned_base_pras_system,
@@ -611,7 +613,8 @@ function calculate_derating_factors(
             outage_flag = false,
             lump_pv_wind_gens = false,
             availability_flag = true,
-            outage_csv_location = correlated_outage_csv_location)
+            outage_csv_location = correlated_outage_csv_location,
+            outage_ts_flag = true)
 
         # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
         cc_result = PRAS.assess(
@@ -655,7 +658,8 @@ function calculate_derating_factors(
                 outage_flag = false,
                 lump_pv_wind_gens = false,
                 availability_flag = true,
-                outage_csv_location = correlated_outage_csv_location)
+                outage_csv_location = correlated_outage_csv_location,
+                outage_ts_flag = true)
 
             # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
             cc_result = PRAS.assess(
