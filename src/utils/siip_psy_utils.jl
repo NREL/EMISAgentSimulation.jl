@@ -298,7 +298,8 @@ function update_PSY_timeseries!(sys_UC::Nothing,
                                pcm_scenario::String,
                                iteration_year::Int64,
                                da_resolution::Int64,
-                               rt_resolution::Int64)
+                               rt_resolution::Int64,
+                               ordc_curved::Bool)
     return
 end
 
@@ -314,7 +315,8 @@ function update_PSY_timeseries!(
                                pcm_scenario::String,
                                iteration_year::Int64,
                                da_resolution::Int64,
-                               rt_resolution::Int64)
+                               rt_resolution::Int64,
+                               ordc_curved::Bool)
 
     total_active_power = 0.0
 
@@ -344,20 +346,24 @@ function update_PSY_timeseries!(
 
             @warn "UPDATE ORDC TIMESERIES REMOVAL BASED ON NEW SIENNA SYSTEM"
 
-            PSY.remove_time_series!(sys, PSY.Deterministic, service, "variable_cost")
+            if ordc_curved
+                if "variable_cost" in PSY.get_time_series_names(PSY.Deterministic, service)
+                    PSY.remove_time_series!(sys, PSY.Deterministic, service, "variable_cost")
+                end
 
-            time_stamps = StepRange(start_datetime, Dates.Hour(1), finish_datetime);
-            if type == "ED"
-                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name)_REAL_TIME.csv"))[:, service_name]
-            else
-                product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name).csv"))[:, service_name]
+                time_stamps = StepRange(start_datetime, Dates.Hour(1), finish_datetime);
+                if type == "ED"
+                    product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name)_REAL_TIME.csv"))[:, service_name]
+                else
+                    product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name).csv"))[:, service_name]
+                end
+                # product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(service_name)_$(iteration_year - 1).csv"))[:, service_name]
+                product_data_ts = process_ordc_data_for_siip(product_ts_raw)
+                product_data_ts = [product_data_ts;product_data_ts[1:additional_timestep]]
+                data = Dict(time_stamps[i] => product_data_ts[i:(i + sys_horizon - 1)] for i in 1:Int(sys_interval/sys_resolution):(length(time_stamps)-sys_horizon + 1))
+                forecast = PSY.Deterministic("variable_cost", data, Dates.Minute(da_resolution))
+                PSY.add_time_series!(sys, service, forecast)
             end
-            # product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", "Reserves", "$(service_name)_$(iteration_year - 1).csv"))[:, service_name]
-            product_data_ts = process_ordc_data_for_siip(product_ts_raw)
-            product_data_ts = [product_data_ts;product_data_ts[1:additional_timestep]]
-            data = Dict(time_stamps[i] => product_data_ts[i:(i + sys_horizon - 1)] for i in 1:Int(sys_interval/sys_resolution):(length(time_stamps)-sys_horizon + 1))
-            forecast = PSY.Deterministic("variable_cost", data, Dates.Minute(da_resolution))
-            PSY.add_time_series!(sys, service, forecast)
         elseif service_name == "Clean_Energy"
             @warn "Service is clean energy"
         else

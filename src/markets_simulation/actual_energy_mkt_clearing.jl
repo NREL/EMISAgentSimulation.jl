@@ -57,9 +57,9 @@ function energy_mkt_clearing(sys_MD::PSY.System,
                              siip_system)
 
     @warn "Uncomment the update_PSY_timeseries function calls"
-    update_PSY_timeseries!(simulation, sys_MD, rec_requirement, simulation_dir, "MD", pcm_scenario, iteration_year, da_resolution, rt_resolution)
-    update_PSY_timeseries!(simulation, sys_UC, rec_requirement, simulation_dir, "UC", pcm_scenario, iteration_year, da_resolution, rt_resolution)
-    update_PSY_timeseries!(simulation, sys_ED, rec_requirement, simulation_dir, "ED", pcm_scenario, iteration_year, da_resolution, rt_resolution) 
+    update_PSY_timeseries!(simulation, sys_MD, rec_requirement, simulation_dir, "MD", pcm_scenario, iteration_year, da_resolution, rt_resolution, ordc_curved)
+    update_PSY_timeseries!(simulation, sys_UC, rec_requirement, simulation_dir, "UC", pcm_scenario, iteration_year, da_resolution, rt_resolution, ordc_curved)
+    update_PSY_timeseries!(simulation, sys_ED, rec_requirement, simulation_dir, "ED", pcm_scenario, iteration_year, da_resolution, rt_resolution, ordc_curved) 
     # TODO: need to update outage timeseries for MD as well
     # update_PSY_outage_timeseries!(sys_UC, sys_ED,get_results_dir(simulation),base_dir,iteration_year)
 
