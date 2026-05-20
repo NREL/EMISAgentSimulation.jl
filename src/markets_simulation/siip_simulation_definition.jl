@@ -1529,7 +1529,7 @@ function create_simulation( sys_MD::PSY.System,
     end
 
     if md_market_bool == true
-        for service in c(sys_MD)
+        for service in get_system_services(sys_MD)
             name = PSY.get_name(service)
             # TODO: need to replace "only_da_products"
             # if name in only_da_products
