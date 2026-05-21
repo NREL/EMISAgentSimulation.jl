@@ -449,6 +449,9 @@ function calculate_derating_factors(
         PSY.Area,
         false)
 
+    # Compute regional load shares once; reused in all PRAS assess calls below.
+    regional_load_shares = collect(get_regional_load_shares(base_pras_system))
+
     ##TODO: AA remove debug code after validation
     # @info "Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
     # temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
@@ -503,8 +506,8 @@ function calculate_derating_factors(
                     cc_result = PRAS.assess(
                         base_pras_system,
                         augmented_pras_system,
-                        methodology{ra_metric}(Int(ceil(max_cap)), "Region"),
-                        PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                        methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
+                        PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
                     )
                     cc_lower, cc_upper = extrema(cc_result)
                     cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
@@ -542,8 +545,8 @@ function calculate_derating_factors(
                 cc_result = PRAS.assess(
                     pruned_base_pras_system,
                     augmented_pras_system,
-                    PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"),
-                    PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                    PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
+                    PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
                 )
                 cc_lower, cc_upper = extrema(cc_result)
                 cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
@@ -600,8 +603,8 @@ function calculate_derating_factors(
         cc_result = PRAS.assess(
             pruned_base_pras_system,
             augmented_pras_system,
-            PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), "Region"),
-            PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+            PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
+            PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
         )
         cc_lower, cc_upper = extrema(cc_result)
         cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
@@ -639,8 +642,8 @@ function calculate_derating_factors(
             cc_result = PRAS.assess(
                 base_pras_system,
                 augmented_pras_system,
-                methodology{ra_metric}(Int(ceil(max_cap)), "Region"),
-                PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
+                PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
             )
             cc_lower, cc_upper = extrema(cc_result)
             cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)

@@ -18,6 +18,7 @@ const PENALTY_COST = 5000.0
 
 # PRAS constants
 const PRAS_N_SAMPLES = 100
+const PRAS_MONTE_CARLO_SEED = 42
 
 # Outage constants
 const NOMINAL_GEN_OUTAGE_PROBABILITY = 0.04
