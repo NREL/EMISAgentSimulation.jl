@@ -458,22 +458,22 @@ function calculate_derating_factors(
     #                             outage_csv_location = correlated_outage_csv_location)
 
     ##TODO: AA remove debug code after validation
-    @info "Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
-    PSY.to_json(
-        base_pras_system,
-        joinpath(
-            temp_dir,
-            "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
-        ),
-    )
-    PSY.to_json(
-        adjusted_base_system,
-        joinpath(
-            temp_dir,
-            "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
-        ),
-    )
+    # @info "Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
+    # temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
+    # PSY.to_json(
+    #     base_pras_system,
+    #     joinpath(
+    #         temp_dir,
+    #         "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
+    #     ),
+    # )
+    # PSY.to_json(
+    #     adjusted_base_system,
+    #     joinpath(
+    #         temp_dir,
+    #         "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
+    #     ),
+    # )
 
     if marginal_cc
         for zone in zones
