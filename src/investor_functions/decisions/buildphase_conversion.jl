@@ -156,6 +156,9 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
             PSY.add_component!(sys_MDs[y], PSY_project_MD_iteration_year)
             PSY.add_component!(sys_UCs[y], PSY_project_UC_iteration_year)
             PSY.add_component!(sys_EDs[y], PSY_project_ED_iteration_year)
+            add_nominal_outage_to_component!(sys_MDs[y], PSY_project_MD_iteration_year)
+            add_nominal_outage_to_component!(sys_UCs[y], PSY_project_UC_iteration_year)
+            add_nominal_outage_to_component!(sys_EDs[y], PSY_project_ED_iteration_year)
         end
 
         for y in iteration_year:simulation_years
@@ -168,6 +171,7 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
         for scenario in keys(sys_PRAS)        
             PSY.add_component!(sys_PRAS[scenario], PSY_project_PRAS)
+            add_nominal_outage_to_component!(sys_PRAS[scenario], PSY_project_PRAS)
         end
 
         for scenario in keys(sys_PRAS)

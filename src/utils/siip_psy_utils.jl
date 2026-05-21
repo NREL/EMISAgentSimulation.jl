@@ -642,6 +642,29 @@ function transform_psy_timeseries!(sys_MD::PSY.System,
     return
 end
 
+"""
+Add a nominal `GeometricDistributionForcedOutage` supplemental attribute to a single
+PSY component. Uses `NOMINAL_STORAGE_OUTAGE_PROBABILITY` for storage, otherwise
+`NOMINAL_GEN_OUTAGE_PROBABILITY`. No time series attached — for runtime additions
+of new/option projects that are not present in the outage CSV.
+Skips silently if the component already has the attribute.
+"""
+function add_nominal_outage_to_component!(sys::PSY.System, component::PSY.Component)
+    if !isempty(
+        collect(PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, component)),
+    )
+        return
+    end
+    prob = component isa PSY.Storage ? NOMINAL_STORAGE_OUTAGE_PROBABILITY :
+           NOMINAL_GEN_OUTAGE_PROBABILITY
+    attr = PSY.GeometricDistributionForcedOutage(;
+        mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
+        outage_transition_probability = prob,
+    )
+    PSY.add_supplemental_attribute!(sys, component, attr)
+    return
+end
+
 function add_psy_inertia!(simulation_dir::String,
     sys::Nothing,
     reserve_penalty::String,

@@ -137,6 +137,7 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
 
     PSY_project = create_PSY_generator(project, capacity_market_system)
     PSY.add_component!(capacity_market_system, PSY_project)
+    add_nominal_outage_to_component!(capacity_market_system, PSY_project)
 
     for product in get_products(project)
         add_device_services!(capacity_market_system, PSY_project, product)

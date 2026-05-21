@@ -328,7 +328,7 @@ function add_outages_to_system!(
         gen_name = PSY.get_name(gen)
 
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
             outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
@@ -366,7 +366,7 @@ function add_outages_to_system!(
     # Renewable generators: fixed nominal, supplemental attribute only
     for gen in PSY.get_components(PSY.RenewableGen, sys)
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
             outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
@@ -375,7 +375,7 @@ function add_outages_to_system!(
     # Hydro generators: fixed nominal, supplemental attribute only
     for gen in PSY.get_components(PSY.HydroGen, sys)
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
             outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
@@ -384,7 +384,7 @@ function add_outages_to_system!(
     # Storage: fixed nominal (zero outage probability), supplemental attribute only
     for gen in PSY.get_components(PSY.Storage, sys)
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
             outage_transition_probability = NOMINAL_STORAGE_OUTAGE_PROBABILITY,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)

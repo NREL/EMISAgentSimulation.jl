@@ -1,7 +1,7 @@
 name = "EMISAgentSimulation"
 uuid = "31190161-dc2b-4b0d-b10a-53550de1824a"
-authors = ["manwar2 "]
 version = "0.1.0"
+authors = ["manwar2 "]
 
 [deps]
 AxisArrays = "39de3d68-74b9-583c-8d2d-e117c070f3a9"
@@ -44,3 +44,19 @@ TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 XLSX = "fdbf4ff8-1666-58a4-91e7-1b58723a45e0"
 Xpress = "9e70acf3-d6c9-5be6-b5bd-4e2c73e3e054"
+
+[compat]
+DataFrames = "1"
+HydroPowerSimulations = "0.12"
+InfrastructureSystems = "3"
+JuMP = "1"
+MathOptInterface = "1"
+PRAS = "0.8"
+PRASCapacityCredits = "0.8"
+PRASCore = "0.8"
+PRASFiles = "0.8"
+PowerSimulations = "0.31.0"
+PowerSystems = "5"
+SiennaPRASInterface = "1"
+StorageSystemsSimulations = "0.13"
+TimeSeries = "0.25"
