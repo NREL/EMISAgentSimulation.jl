@@ -510,6 +510,65 @@ function create_investment_data(size::Float64,
 end
 
 """
+Helper function to calculate the heat rate curve for a project based on
+its CSV data and the system base power.
+"""
+function _build_heat_rate_curve(projectdata, project_size)
+    output_point_fields = String[]
+    heat_rate_fields = String[]
+    fields = names(projectdata)
+    project_scale = 1e3
+
+    for field in fields
+        if occursin("Output_pct_", field)
+            push!(output_point_fields, field)
+        elseif occursin("HR_", field)
+            push!(heat_rate_fields, field)
+        end
+    end
+
+    @assert length(output_point_fields) > 0
+    cost_colnames = zip(heat_rate_fields, output_point_fields)
+
+    heat_rate = [(projectdata[hr], projectdata[mw]) for (hr, mw) in cost_colnames]
+
+    heat_rate = unique([
+        (tryparse(Float64, string(c[1])), tryparse(Float64, string(c[2])))
+        for c in heat_rate if !in("NA", c)
+    ])
+
+    if length(heat_rate) > 1
+        heat_rate[2:end] = [
+            (
+                heat_rate[i][1] *
+                (heat_rate[i][2] - heat_rate[i - 1][2]),
+                heat_rate[i][2],
+            ) for i in 2:length(heat_rate)
+        ]
+        heat_rate[1] =
+            (heat_rate[1][1] * heat_rate[1][2], heat_rate[1][2])
+
+        fixed = max(
+            0.0,
+            heat_rate[1][1] -
+            (heat_rate[2][1] / (heat_rate[2][2] - heat_rate[1][2]) * heat_rate[1][2]),
+        )
+        heat_rate[1] = (heat_rate[1][1] / project_scale, heat_rate[1][2] * project_size)
+        for i in 2:length(heat_rate)
+            heat_rate[i] =
+                (heat_rate[i - 1][1] + heat_rate[i][1] / project_scale, heat_rate[i][2] * project_size)
+        end
+        pushfirst!(heat_rate, (fixed / project_scale, 0.0))
+    elseif length(heat_rate) == 1
+        # if there is only one point, use it to determine the constant $/MW cost
+        heat_rate = (heat_rate[1][1] * heat_rate[1][2] / project_scale, heat_rate[1][2] * project_size)
+    else
+        heat_rate = [(0.0, 0.0)]
+    end
+    return heat_rate
+end
+
+"""
 This function creates the Tech struct for projects
 based only on the CSV data.
 """
@@ -557,60 +616,9 @@ function create_tech_type(name::String,
         up_down_time = nothing
     end
 
-    if type == "ST" || type == "CT" || type == "CC" || type == "NU_ST" || type == "GT" ||
-       type == "RE_CT"
-        output_point_fields = String[]
-        heat_rate_fields = String[]
-        fields = names(projectdata)
-
-        for field in fields
-            if occursin("Output_pct_", field)
-                push!(output_point_fields, field)
-            elseif occursin("HR_", field)
-                push!(heat_rate_fields, field)
-            end
-        end
-
-        @assert length(output_point_fields) > 0
-        cost_colnames = zip(heat_rate_fields, output_point_fields)
-
-        heat_rate = [(projectdata[hr], projectdata[mw]) for (hr, mw) in cost_colnames]
-
-        heat_rate = unique([
-            (tryparse(Float64, string(c[1])), tryparse(Float64, string(c[2])))
-            for c in heat_rate if !in("NA", c)
-        ])
-
-        if length(heat_rate) > 1
-            heat_rate[2:end] = [
-                (
-                    heat_rate[i][1] *
-                    (heat_rate[i][2] - heat_rate[i - 1][2]),
-                    heat_rate[i][2],
-                ) for i in 2:length(heat_rate)
-            ]
-            heat_rate[1] =
-                (heat_rate[1][1] * heat_rate[1][2], heat_rate[1][2])
-
-            fixed = max(
-                0.0,
-                heat_rate[1][1] -
-                (heat_rate[2][1] / (heat_rate[2][2] - heat_rate[1][2]) * heat_rate[1][2]),
-            )
-            heat_rate[1] = (heat_rate[1][1] / 1000.0, heat_rate[1][2] * size)
-            for i in 2:length(heat_rate)
-                heat_rate[i] =
-                    (heat_rate[i - 1][1] + heat_rate[i][1] / 1000.0, heat_rate[i][2] * size)
-            end
-            pushfirst!(heat_rate, (fixed / 1000.0, 0.0))
-        elseif length(heat_rate) == 1
-            # if there is only one point, use it to determine the constant $/MW cost
-            heat_rate = (heat_rate[1][1] * heat_rate[1][2] / 1000.0, heat_rate[1][2] * size)
-            fixed = 0.0
-        else
-            heat_rate = [(0.0, 0.0)]
-            fixed = 0.0
-        end
+    if type in ["ST", "CT", "CC", "NU_ST", "GT", "RE_CT"]
+        heat_rate = _build_heat_rate_curve(projectdata, size)
+        
         tech = ThermalTech(type,
             projectdata["Fuel"],
             active_power_limits,
@@ -632,7 +640,7 @@ function create_tech_type(name::String,
             end_life_year,
             products,
             finance_data)
-    elseif type == "WT" || type == "PVe"
+    elseif type in ["WT", "PVe"]
         tech = RenewableTech(type,
             active_power_limits,
             ramp_limits,
@@ -671,7 +679,7 @@ function create_tech_type(name::String,
             products,
             finance_data)
 
-    elseif type == "BA" || type == "LDES"
+    elseif type in ["BA", "LDES"]
         storage_capacity = parse(Float64, projectdata["Duration Hr"]) * size
         tech = BatteryTech(type,
             (min = 0.0, max = parse(Float64, projectdata["Input Power Rating pu"]) * size),
@@ -744,59 +752,8 @@ function create_tech_type(name::String,
 
     FOR = projectdata["FOR"]
     MTTR = projectdata["MTTR Hr"]
-
-    output_point_fields = String[]
-    heat_rate_fields = String[]
-    fields = names(projectdata)
-
-    for field in fields
-        if occursin("Output_pct_", field)
-            push!(output_point_fields, field)
-        elseif occursin("HR_", field)
-            push!(heat_rate_fields, field)
-        end
-    end
-
-    @assert length(output_point_fields) > 0
-    cost_colnames = zip(heat_rate_fields, output_point_fields)
-
-    heat_rate = [(projectdata[hr], projectdata[mw]) for (hr, mw) in cost_colnames]
-
-    heat_rate = unique([
-        (tryparse(Float64, string(c[1])), tryparse(Float64, string(c[2])))
-        for c in heat_rate if !in("NA", c)
-    ])
-    if length(heat_rate) > 1
-        heat_rate[2:end] = [
-            (
-                heat_rate[i][1] *
-                (heat_rate[i][2] - heat_rate[i - 1][2]),
-                heat_rate[i][2],
-            ) for i in 2:length(heat_rate)
-        ]
-        heat_rate[1] =
-            (heat_rate[1][1] * heat_rate[1][2], heat_rate[1][2])
-
-        fixed = max(
-            0.0,
-            heat_rate[1][1] -
-            (heat_rate[2][1] / (heat_rate[2][2] - heat_rate[1][2]) * heat_rate[1][2]),
-        )
-        heat_rate[1] = (heat_rate[1][1] / 1000.0, heat_rate[1][2] * size)
-        for i in 2:length(heat_rate)
-            heat_rate[i] =
-                (heat_rate[i - 1][1] + heat_rate[i][1] / 1000.0, heat_rate[i][2] * size)
-        end
-        pushfirst!(heat_rate, (fixed / 1000.0, 0.0))
-    elseif length(heat_rate) == 1
-        # if there is only one point, use it to determine the constant $/MW cost
-        heat_rate = (heat_rate[1][1] * heat_rate[1][2] / 1000.0, heat_rate[1][2] * size)
-        fixed = 0.0
-    else
-        heat_rate = [(0.0, 0.0)]
-        fixed = 0.0
-    end
-
+    heat_rate = _build_heat_rate_curve(projectdata, size)
+    
     tech = ThermalTech(prime_mover,
         fuel,
         (min = min_cap, max = size),
