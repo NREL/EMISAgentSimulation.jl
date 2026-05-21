@@ -1,4 +1,7 @@
-function prune_system_devices!(sys::PSY.System, prune_dict::Dict{Type{<:PSY.Component}, Array{AbstractString}})
+function prune_system_devices!(
+    sys::PSY.System,
+    prune_dict::Dict{Type{<:PSY.Component}, Array{AbstractString}},
+)
     for (type, device_names) in prune_dict
         for name in device_names
             device = PSY.get_component(type, sys, name)
@@ -13,16 +16,23 @@ Use this function to specify which devices to remove from the RTS at the start o
 """
 function specify_pruned_units()
     pruned_unit = Dict{Type{<:PSY.Component}, Array{AbstractString}}()
-    pruned_unit[PSY.ThermalStandard] = ["115_STEAM_1", "115_STEAM_2", "315_STEAM_1", "315_STEAM_2", "315_STEAM_3", "315_STEAM_4", "315_STEAM_5",
-                                         "101_CT_1", "101_CT_2", "102_CT_1", "102_CT_2",
-                                         "201_CT_1", "201_CT_2", "202_CT_1", "202_CT_2",
-                                         "301_CT_1", "301_CT_2", "302_CT_1", "302_CT_2",
-                                         "207_CT_1", "307_CT_1", "101_STEAM_4",
-                                         "123_STEAM_3", "223_STEAM_1", "223_STEAM_3"]
-    pruned_unit[PSY.RenewableNonDispatch] = ["308_RTPV_1", "313_RTPV_1", "313_RTPV_2", "313_RTPV_3", "313_RTPV_4", "313_RTPV_5", "313_RTPV_6", "313_RTPV_7",
-                                        "313_RTPV_8", "313_RTPV_9", "313_RTPV_10", "313_RTPV_11", "313_RTPV_12", "320_RTPV_1", "320_RTPV_2", "320_RTPV_3",
-                                        "313_RTPV_13", "320_RTPV_4", "320_RTPV_5", "118_RTPV_1", "118_RTPV_2", "118_RTPV_3", "118_RTPV_4", "118_RTPV_5",
-                                        "118_RTPV_6", "320_RTPV_6", "118_RTPV_7", "118_RTPV_8", "118_RTPV_9", "118_RTPV_10", "213_RTPV_1"]
+    pruned_unit[PSY.ThermalStandard] =
+        ["115_STEAM_1", "115_STEAM_2", "315_STEAM_1", "315_STEAM_2", "315_STEAM_3",
+            "315_STEAM_4", "315_STEAM_5",
+            "101_CT_1", "101_CT_2", "102_CT_1", "102_CT_2",
+            "201_CT_1", "201_CT_2", "202_CT_1", "202_CT_2",
+            "301_CT_1", "301_CT_2", "302_CT_1", "302_CT_2",
+            "207_CT_1", "307_CT_1", "101_STEAM_4",
+            "123_STEAM_3", "223_STEAM_1", "223_STEAM_3"]
+    pruned_unit[PSY.RenewableNonDispatch] =
+        ["308_RTPV_1", "313_RTPV_1", "313_RTPV_2", "313_RTPV_3", "313_RTPV_4", "313_RTPV_5",
+            "313_RTPV_6", "313_RTPV_7",
+            "313_RTPV_8", "313_RTPV_9", "313_RTPV_10", "313_RTPV_11", "313_RTPV_12",
+            "320_RTPV_1", "320_RTPV_2", "320_RTPV_3",
+            "313_RTPV_13", "320_RTPV_4", "320_RTPV_5", "118_RTPV_1", "118_RTPV_2",
+            "118_RTPV_3", "118_RTPV_4", "118_RTPV_5",
+            "118_RTPV_6", "320_RTPV_6", "118_RTPV_7", "118_RTPV_8", "118_RTPV_9",
+            "118_RTPV_10", "213_RTPV_1"]
     pruned_unit[PSY.RenewableDispatch] = ["309_WIND_1", "212_CSP_1"]
     pruned_unit[PSY.Generator] = ["114_SYNC_COND_1", "314_SYNC_COND_1", "214_SYNC_COND_1"]
     pruned_unit[PSY.EnergyReservoirStorage] = ["313_STORAGE_1"]
@@ -31,24 +41,23 @@ function specify_pruned_units()
 end
 
 function create_rts_sys(rts_dir::String,
-                        base_power::Float64,
-                        simulation_dir::String,
-                        scratch_dir::String,
-                        timeseries_data_dir::String,
-                        scenarios::Vector{String},
-                        pcm_scenario::String,
-                        simulation_years::Int64,
-                        da_resolution::Int64,
-                        rt_resolution::Int64,
-                        MD_horizon::Int64,
-                        MD_interval::Int64,
-                        UC_horizon::Int64,
-                        UC_interval::Int64,
-                        ED_horizon::Int64,
-                        ED_interval::Int64,
-                        outage_dir::Union{Nothing, String}=nothing,
-                        )
-
+    base_power::Float64,
+    simulation_dir::String,
+    scratch_dir::String,
+    timeseries_data_dir::String,
+    scenarios::Vector{String},
+    pcm_scenario::String,
+    simulation_years::Int64,
+    da_resolution::Int64,
+    rt_resolution::Int64,
+    MD_horizon::Int64,
+    MD_interval::Int64,
+    UC_horizon::Int64,
+    UC_interval::Int64,
+    ED_horizon::Int64,
+    ED_interval::Int64,
+    outage_dir::Union{Nothing, String} = nothing,
+)
     ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
     ntp_ts_data_dir = POINTER_FILE[:NTPS_TS_DATA_DIR]
     runchecks = false
@@ -73,16 +82,31 @@ function create_rts_sys(rts_dir::String,
     end
 
     for sim_year in 1:simulation_years
-        MD_sys_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario, "sim_year_$(sim_year)", "MD_sys_EMIS_$(MD_horizon)hor_$(MD_interval)int.json")
-        MD_num_forecast_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario, "sim_year_$(sim_year)", "MD_num_forecast_$(MD_horizon)hor_$(MD_interval)int.txt")
+        MD_sys_filename = joinpath(
+            rts_dir,
+            "constructed_systems",
+            pcm_scenario,
+            "sim_year_$(sim_year)",
+            "MD_sys_EMIS_$(MD_horizon)hor_$(MD_interval)int.json",
+        )
+        MD_num_forecast_filename = joinpath(
+            rts_dir,
+            "constructed_systems",
+            pcm_scenario,
+            "sim_year_$(sim_year)",
+            "MD_num_forecast_$(MD_horizon)hor_$(MD_interval)int.txt",
+        )
 
         loadyear = DEFAULT_LOAD_YEAR + sim_year
         weatheryear = loadyear
 
         if !(isfile(MD_sys_filename) && isfile(MD_num_forecast_filename))
             @info "Simulation year $(sim_year): MD json file doesn't exist, creating PSY system."
-            dir_exists(dirname(MD_sys_filename))         
-            sys_MD_initial = PSY.System(joinpath(rts_dir, initial_Sienna_system_name), time_series_directory = scratch_dir);
+            dir_exists(dirname(MD_sys_filename))
+            sys_MD_initial = PSY.System(
+                joinpath(rts_dir, initial_Sienna_system_name);
+                time_series_directory = scratch_dir,
+            );
             # create MD system
             create_sys_w_updated_ts(
                 ntp_ts_data_dir,
@@ -102,15 +126,28 @@ function create_rts_sys(rts_dir::String,
                 outage_dir,
             )
         end
-        sys_MD = PSY.System(MD_sys_filename, time_series_directory = scratch_dir, runchecks = runchecks)
-        fix_multistart_cost_curves!(sys_MD)        
+        sys_MD = PSY.System(
+            MD_sys_filename;
+            time_series_directory = scratch_dir,
+            runchecks = runchecks,
+        )
+        fix_multistart_cost_curves!(sys_MD)
         push!(sys_MDs, sys_MD);
 
-        UC_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario, "sim_year_$(sim_year)", "DA_sys_EMIS_$(UC_horizon)hor_$(UC_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
+        UC_filename = joinpath(
+            rts_dir,
+            "constructed_systems",
+            pcm_scenario,
+            "sim_year_$(sim_year)",
+            "DA_sys_EMIS_$(UC_horizon)hor_$(UC_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json",
+        )
         if !(isfile(UC_filename))
-            @info "Simulation year $(sim_year): UC json file doesn't exist, creating PSY system." 
-            dir_exists(dirname(UC_filename))   
-            sys_UC_initial = PSY.System(joinpath(rts_dir, initial_Sienna_system_name), time_series_directory = scratch_dir);
+            @info "Simulation year $(sim_year): UC json file doesn't exist, creating PSY system."
+            dir_exists(dirname(UC_filename))
+            sys_UC_initial = PSY.System(
+                joinpath(rts_dir, initial_Sienna_system_name);
+                time_series_directory = scratch_dir,
+            );
             create_sys_w_updated_ts(
                 ntp_ts_data_dir,
                 sys_UC_initial,
@@ -130,7 +167,11 @@ function create_rts_sys(rts_dir::String,
             )
         end
 
-        sys_UC = PSY.System(UC_filename, time_series_directory = scratch_dir, runchecks = runchecks)
+        sys_UC = PSY.System(
+            UC_filename;
+            time_series_directory = scratch_dir,
+            runchecks = runchecks,
+        )
         fix_multistart_cost_curves!(sys_UC)
         push!(sys_UCs, sys_UC);
 
@@ -145,11 +186,20 @@ function create_rts_sys(rts_dir::String,
                 "Not a pre-defined scenario."
             end
 
-            ED_filename = joinpath(rts_dir, "constructed_systems", scenario, "sim_year_$(sim_year)", "RT_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
+            ED_filename = joinpath(
+                rts_dir,
+                "constructed_systems",
+                scenario,
+                "sim_year_$(sim_year)",
+                "RT_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json",
+            )
             if !isfile(ED_filename)
-                @info "Simulation year $(sim_year): ED json file doesn't exist, creating PSY system." 
-                dir_exists(dirname(ED_filename))   
-                sys_ED_initial = PSY.System(joinpath(rts_dir, initial_Sienna_system_name), time_series_directory = scratch_dir);
+                @info "Simulation year $(sim_year): ED json file doesn't exist, creating PSY system."
+                dir_exists(dirname(ED_filename))
+                sys_ED_initial = PSY.System(
+                    joinpath(rts_dir, initial_Sienna_system_name);
+                    time_series_directory = scratch_dir,
+                );
                 create_sys_w_updated_ts(
                     ntp_ts_data_dir,
                     sys_ED_initial,
@@ -169,14 +219,18 @@ function create_rts_sys(rts_dir::String,
                 )
             end
 
-            sys_ED = PSY.System(ED_filename, time_series_directory = scratch_dir, runchecks = runchecks)
+            sys_ED = PSY.System(
+                ED_filename;
+                time_series_directory = scratch_dir,
+                runchecks = runchecks,
+            )
             fix_multistart_cost_curves!(sys_ED)
             push!(sys_EDs_dict[scenario], sys_ED);
         end
         sys_EDs = sys_EDs_dict[pcm_scenario]
 
         # ERCOT specific items
-        removegen_name = ["AUSTIN_1","AUSTIN_2"]
+        removegen_name = ["AUSTIN_1", "AUSTIN_2"]
         for sys in [sys_MDs[sim_year], sys_UCs[sim_year], sys_EDs[sim_year]]
             for d in PSY.get_components(PSY.Generator, sys)
                 if d.name in removegen_name
@@ -184,44 +238,62 @@ function create_rts_sys(rts_dir::String,
                 end
             end
         end
-    
+
         for sys in [sys_MDs[sim_year], sys_UCs[sim_year], sys_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserve,sys,"SPIN")
-            PSY.remove_component!(sys,d)
+            d = PSY.get_component(PSY.VariableReserve, sys, "SPIN")
+            PSY.remove_component!(sys, d)
         end
-    
+
         for sys in [sys_MDs[sim_year], sys_UCs[sim_year], sys_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserveNonSpinning,sys,"NONSPIN")
-            PSY.remove_component!(sys,d)
+            d = PSY.get_component(PSY.VariableReserveNonSpinning, sys, "NONSPIN")
+            PSY.remove_component!(sys, d)
         end
-    
+
         for sys in [sys_MDs[sim_year], sys_UCs[sim_year], sys_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserve,sys,"REG_DN")
-            PSY.set_name!(sys,d,"Reg_Down")
+            d = PSY.get_component(PSY.VariableReserve, sys, "REG_DN")
+            PSY.set_name!(sys, d, "Reg_Down")
         end
-    
+
         for sys in [sys_MDs[sim_year], sys_UCs[sim_year], sys_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserve,sys,"REG_UP")
-            PSY.set_name!(sys,d,"Reg_Up")
+            d = PSY.get_component(PSY.VariableReserve, sys, "REG_UP")
+            PSY.set_name!(sys, d, "Reg_Up")
         end
-    
+
         PSY.set_units_base_system!(sys_MDs[sim_year], PSY.IS.UnitSystem.DEVICE_BASE)
         PSY.set_units_base_system!(sys_UCs[sim_year], PSY.IS.UnitSystem.DEVICE_BASE)
         PSY.set_units_base_system!(sys_EDs[sim_year], PSY.IS.UnitSystem.DEVICE_BASE)
-               
     end
 
     sys_PRAS = Dict{String, PSY.System}()
     for scenario in scenarios
-        PRAS_filename = joinpath(rts_dir, "constructed_systems", scenario, "sim_year_1", "PRAS_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
+        PRAS_filename = joinpath(
+            rts_dir,
+            "constructed_systems",
+            scenario,
+            "sim_year_1",
+            "PRAS_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json",
+        )
         if !isfile(PRAS_filename)
             @info "Scenario $(scenario): PRAS json file doesn't exist, creating PSY system."
-            create_PRAS_sys_json(sys_EDs_dict[scenario], PRAS_filename)
+            create_PRAS_sys_json(sys_EDs_dict[scenario], PRAS_filename, outage_dir)
         end
-        sys_PRAS[scenario] = PSY.System(PRAS_filename, time_series_directory = scratch_dir, runchecks = runchecks)
+        sys_PRAS[scenario] = PSY.System(
+            PRAS_filename;
+            time_series_directory = scratch_dir,
+            runchecks = runchecks,
+        )
     end
-    
-    return sys_MDs, sys_UCs, sys_EDs, sys_PRAS, MD_horizon, MD_interval, UC_horizon, UC_interval, ED_horizon, ED_interval
+
+    return sys_MDs,
+    sys_UCs,
+    sys_EDs,
+    sys_PRAS,
+    MD_horizon,
+    MD_interval,
+    UC_horizon,
+    UC_interval,
+    ED_horizon,
+    ED_interval
 end
 
 function remove_vre_gens!(sys::PSY.System)
@@ -230,6 +302,95 @@ function remove_vre_gens!(sys::PSY.System)
             PSY.remove_component!(sys, gen)
         end
     end
+end
+
+function add_outages_to_system!(
+    sys::PSY.System,
+    outages_dir::Union{Nothing, String},
+    dates,
+)
+    if outages_dir === nothing
+        @info "No outages CSV provided — using nominal outage values for all generators."
+        outages_data = nothing
+    else
+        outages_data = DataFrame(CSV.File(outages_dir))
+        n_csv_rows = size(outages_data, 1)
+        n_timesteps = length(dates)
+        if n_csv_rows < n_timesteps
+            error(
+                "Outage CSV has $(n_csv_rows) rows but system requires $(n_timesteps) timesteps.",
+            )
+        end
+    end
+
+    # Thermal generators: GeometricDistributionForcedOutage + λ/μ time series
+    for gen in PSY.get_components(PSY_THERMAL_GENERATORS, sys)
+        gen_name = PSY.get_name(gen)
+
+        transition_data = PSY.GeometricDistributionForcedOutage(;
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
+        )
+        PSY.add_supplemental_attribute!(sys, gen, transition_data)
+
+        if outages_data !== nothing && gen_name in names(outages_data)
+            @info "Adding outage time series for thermal generator $(gen_name)."
+            λ_μ = SPI.rate_to_probability.(
+                outages_data[1:length(dates), gen_name],
+                DEFAULT_THERMAL_MTTR_HOURS,
+            )
+            supp_attr = first(
+                PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, gen),
+            )
+            PSY.add_time_series!(
+                sys,
+                supp_attr,
+                PSY.SingleTimeSeries(
+                    "outage_probability",
+                    TS.TimeArray(collect(dates), first.(λ_μ)),
+                ),
+            )
+            PSY.add_time_series!(
+                sys,
+                supp_attr,
+                PSY.SingleTimeSeries(
+                    "recovery_probability",
+                    TS.TimeArray(collect(dates), last.(λ_μ)),
+                ),
+            )
+        else
+            @info "No outage CSV data for thermal generator $(gen_name) — using nominal scalar values only."
+        end
+    end
+
+    # Renewable generators: fixed nominal, supplemental attribute only
+    for gen in PSY.get_components(PSY.RenewableGen, sys)
+        transition_data = PSY.GeometricDistributionForcedOutage(;
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
+        )
+        PSY.add_supplemental_attribute!(sys, gen, transition_data)
+    end
+
+    # Hydro generators: fixed nominal, supplemental attribute only
+    for gen in PSY.get_components(PSY.HydroGen, sys)
+        transition_data = PSY.GeometricDistributionForcedOutage(;
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
+        )
+        PSY.add_supplemental_attribute!(sys, gen, transition_data)
+    end
+
+    # Storage: fixed nominal (zero outage probability), supplemental attribute only
+    for gen in PSY.get_components(PSY.Storage, sys)
+        transition_data = PSY.GeometricDistributionForcedOutage(;
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = NOMINAL_STORAGE_OUTAGE_PROBABILITY,
+        )
+        PSY.add_supplemental_attribute!(sys, gen, transition_data)
+    end
+
+    return
 end
 
 function create_sys_w_updated_ts(
@@ -243,20 +404,38 @@ function create_sys_w_updated_ts(
     horizon::Int64, # hours
     interval::Int64, # hours
     output_file::String,
-    first_stage::Bool=false,
-    first_stage_horizon::Union{Nothing, Integer}=nothing, # hour (only need input if first_stage is false)
-    first_stage_interval::Union{Nothing, Integer}=nothing, # hour (only need input if first_stage is false)
-    first_stage_number_of_forecast_filename::Union{Nothing, String}=nothing, # (only need input if first_stage is false)
-    outages_dir::Union{Nothing, String}=nothing,
+    first_stage::Bool = false,
+    first_stage_horizon::Union{Nothing, Integer} = nothing, # hour (only need input if first_stage is false)
+    first_stage_interval::Union{Nothing, Integer} = nothing, # hour (only need input if first_stage is false)
+    first_stage_number_of_forecast_filename::Union{Nothing, String} = nothing, # (only need input if first_stage is false)
+    outages_dir::Union{Nothing, String} = nothing,
 )
 
     #--------------------------------------------
     # Calculate load scaling factor: scale 2021 load to 75 GW
     #--------------------------------------------
-    loadscaler_profile_rt = DataFrame(CSV.File(joinpath(data_dir, "load_actuals_processed", "sup3rcc_ecearth3_load_gwh_ercot_$(scenario)_e2021_w2021_cst.csv"))) #in GW
-    loadscaler_profile_da = DataFrame(CSV.File(joinpath(data_dir, "load_forecasts_processed", "preds_20210101_$(scenario)_365days.csv")))
-    loadscaler_peak_da = maximum(sum(eachcol(select(loadscaler_profile_da, Not([:Column1])))))
-    loadscaler_peak_rt = maximum(sum(eachcol(select(loadscaler_profile_rt, Not([:year, :timestamp])))))
+    loadscaler_profile_rt = DataFrame(
+        CSV.File(
+            joinpath(
+                data_dir,
+                "load_actuals_processed",
+                "sup3rcc_ecearth3_load_gwh_ercot_$(scenario)_e2021_w2021_cst.csv",
+            ),
+        ),
+    ) #in GW
+    loadscaler_profile_da = DataFrame(
+        CSV.File(
+            joinpath(
+                data_dir,
+                "load_forecasts_processed",
+                "preds_20210101_$(scenario)_365days.csv",
+            ),
+        ),
+    )
+    loadscaler_peak_da =
+        maximum(sum(eachcol(select(loadscaler_profile_da, Not([:Column1])))))
+    loadscaler_peak_rt =
+        maximum(sum(eachcol(select(loadscaler_profile_rt, Not([:year, :timestamp])))))
     loadscaler_da = loadscaler_peak_da/loadscaler_base
     loadscaler_rt = loadscaler_peak_rt/loadscaler_base
 
@@ -279,26 +458,42 @@ function create_sys_w_updated_ts(
     # start_datetime_MD = PSY.IS.get_initial_timestamp(first_ts_temp_MD)
     start_datetime_MD = PSY.get_forecast_initial_timestamp(sys_MD)
     sys_MD_res = PSY.get_time_series_resolutions(sys_MD)[1]
-    sys_MD_initial_interval = Int(PSY.get_forecast_interval(sys_MD).value / sys_MD_res.value)
+    sys_MD_initial_interval =
+        Int(PSY.get_forecast_interval(sys_MD).value / sys_MD_res.value)
 
     # if not the first stage, I think finish_datetime_MD needs to be first stage's number_of_forecast * interval + (horizon - interval) -- all from first stage (need to pass down these parameters)
     if first_stage == true
-        finish_datetime_MD = start_datetime_MD + Dates.Hour((DEFAULT_HOURS_PER_YEAR - 1) * sys_MD_res)
+        finish_datetime_MD =
+            start_datetime_MD + Dates.Hour((DEFAULT_HOURS_PER_YEAR - 1) * sys_MD_res)
     else
         first_stage_number_of_forecast = 0
         open(first_stage_number_of_forecast_filename, "r") do file
             first_stage_number_of_forecast = parse(Int, readline(file))
         end
-        finish_datetime_MD = start_datetime_MD + Dates.Hour((first_stage_number_of_forecast * first_stage_interval + (first_stage_horizon - first_stage_interval) - 1) *sys_MD_res)
+        finish_datetime_MD =
+            start_datetime_MD + Dates.Hour(
+                (
+                    first_stage_number_of_forecast * first_stage_interval +
+                    (first_stage_horizon - first_stage_interval) - 1
+                ) * sys_MD_res,
+            )
     end
-    
+
     # timestep here indicate how many MD periods are being constructed
     timestep = StepRange(start_datetime_MD, sys_MD_res * interval, finish_datetime_MD);
     first_stage_total = Int((finish_datetime_MD - start_datetime_MD) / sys_MD_res + 1)
-    additional_timestep = Int(horizon - (first_stage_total-(interval*(length(timestep)-1))) + (first_stage_total - DEFAULT_HOURS_PER_YEAR))
-    dates = range(SIM_START_DATE, step = sys_MD_res, length = DEFAULT_HOURS_PER_YEAR + additional_timestep)
+    additional_timestep = Int(
+        horizon - (first_stage_total-(interval*(length(timestep)-1))) +
+        (first_stage_total - DEFAULT_HOURS_PER_YEAR),
+    )
+    dates = range(
+        SIM_START_DATE;
+        step = sys_MD_res,
+        length = DEFAULT_HOURS_PER_YEAR + additional_timestep,
+    )
     # @info "Line 294 - Constructing time series with timestep length: $(length(timestep)) and additional timestep: $(additional_timestep)."
-    for component in get_components(x -> has_time_series(x, Deterministic), HydroDispatch, sys_MD)
+    for component in
+        get_components(x -> has_time_series(x, Deterministic), HydroDispatch, sys_MD)
         forecast = get_time_series(Deterministic, component, "max_active_power")
 
         reconstruct_single_ts = Float64[]
@@ -315,24 +510,25 @@ function create_sys_w_updated_ts(
     remove_time_series!(sys_MD, Deterministic)
     remove_time_series!(sys_MD, DeterministicSingleTimeSeries)
 
-    for component in get_components(x -> has_time_series(x, SingleTimeSeries), HydroDispatch, sys_MD)
-
-        revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
-        newtsdata = values(get_time_series(SingleTimeSeries, component, "max_active_power").data)
+    for component in
+        get_components(x -> has_time_series(x, SingleTimeSeries), HydroDispatch, sys_MD)
+        revisedts = DataStructures.SortedDict{DateTime, Vector{Float64}}()
+        newtsdata =
+            values(get_time_series(SingleTimeSeries, component, "max_active_power").data)
 
         for t in 1:length(timestep)
             rtseries=Vector{Float64}()
             datetimeindex = timestep[t]
-            rtseries = newtsdata[(interval*(t-1)+1):(interval*(t-1)+horizon)]
+            rtseries = newtsdata[(interval * (t - 1) + 1):(interval * (t - 1) + horizon)]
             push!(revisedts, datetimeindex => rtseries)
         end
 
         # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
-            name="max_active_power",
-            data=revisedts,
-            resolution=Dates.Hour(1),
-            scaling_factor_multiplier=get_max_active_power
+            name = "max_active_power",
+            data = revisedts,
+            resolution = Dates.Hour(1),
+            scaling_factor_multiplier = get_max_active_power,
         )
 
         add_time_series!(sys_MD, component, revisedts_deterministic)
@@ -355,11 +551,15 @@ function create_sys_w_updated_ts(
 
     # remove_time_series!(sys_MD, Deterministic)
 
-    for d in get_components(x -> get_prime_mover_type(x) in [PrimeMovers.PVe, PrimeMovers.WT], Generator, sys_MD)
+    for d in get_components(
+        x -> get_prime_mover_type(x) in [PrimeMovers.PVe, PrimeMovers.WT],
+        Generator,
+        sys_MD,
+    )
         # println("Processing generator: $(get_name(d))")
         #create dictionary
         # revisedts = Dict{DateTime, Array{Float64}}()
-        revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
+        revisedts = DataStructures.SortedDict{DateTime, Vector{Float64}}()
 
         # tstype = "1dayahead" ## actuals/, 1dayahead/, intraday/
         if market_stage == "dayahead"
@@ -374,9 +574,20 @@ function create_sys_w_updated_ts(
         else
             technology = "upv"  # utility pv 
         end
-        
-        profile = DataFrame(CSV.File(joinpath(data_dir, "plant_profiles_processed", "$(tstype)/ercot_$(technology)_build-$(weatheryear)_cst.csv")))
-        newtsdata = profile[!, namemapping[in([PSY.get_name(d)]).(namemapping.jsonname), :csvname][1]]
+
+        profile = DataFrame(
+            CSV.File(
+                joinpath(
+                    data_dir,
+                    "plant_profiles_processed",
+                    "$(tstype)/ercot_$(technology)_build-$(weatheryear)_cst.csv",
+                ),
+            ),
+        )
+        newtsdata = profile[
+            !,
+            namemapping[in([PSY.get_name(d)]).(namemapping.jsonname), :csvname][1],
+        ]
         basepower = get_rating(d)
         newtsdata = newtsdata ./ basepower
 
@@ -384,23 +595,38 @@ function create_sys_w_updated_ts(
             rtseries = Vector{Float64}()
             datetimeindex = timestep[t]
             if t < DEFAULT_HOURS_PER_YEAR/interval
-                rtseries = newtsdata[(interval*(t-1)+1):(interval*(t-1)+horizon)]
+                rtseries =
+                    newtsdata[(interval * (t - 1) + 1):(interval * (t - 1) + horizon)]
             elseif t == ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)
-                rtseries = [newtsdata[(interval*(t-1)+1):DEFAULT_HOURS_PER_YEAR];newtsdata[1:horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(t-1)))]]
+                rtseries = [
+                    newtsdata[(interval * (t - 1) + 1):DEFAULT_HOURS_PER_YEAR];
+                    newtsdata[1:(horizon - (DEFAULT_HOURS_PER_YEAR - (interval * (t - 1))))]
+                ]
             else
                 # simply use the end of the previous timeseries as the new start
-                new_start = horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)))
-                rtseries = newtsdata[new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+1:new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+horizon]
+                new_start =
+                    horizon-(
+                        DEFAULT_HOURS_PER_YEAR-(
+                            interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)
+                        )
+                    )
+                rtseries = newtsdata[(new_start + (t - ceil(
+                    Int,
+                    DEFAULT_HOURS_PER_YEAR / interval,
+                ) - 1) * interval + 1):(new_start + (t - ceil(
+                    Int,
+                    DEFAULT_HOURS_PER_YEAR / interval,
+                ) - 1) * interval + horizon)]
             end
             push!(revisedts, datetimeindex => rtseries)
         end
 
         # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
-            name="max_active_power",
-            data=revisedts,
-            resolution=Dates.Hour(1),
-            scaling_factor_multiplier=get_max_active_power
+            name = "max_active_power",
+            data = revisedts,
+            resolution = Dates.Hour(1),
+            scaling_factor_multiplier = get_max_active_power,
         )
 
         # remove old time series
@@ -413,10 +639,26 @@ function create_sys_w_updated_ts(
     # Load Forecasts !!!!!!!!!!!!! CHECK SYSTEM BASE !!!!!!!!!
     #--------------------------------------------
     if market_stage == "dayahead"
-        profile=DataFrame(CSV.File(joinpath(data_dir, "load_forecasts_processed","preds_$(loadyear)0101_$(scenario)_365days.csv"))) #in GW; original command: profile=DataFrame(CSV.File(joinpath(data_dir, "Load_Forecast_from_Local", "$(scenario)", "$(loadyear)", "preds_$(weatheryear)0101_365days.csv"))) #in GW
+        profile=DataFrame(
+            CSV.File(
+                joinpath(
+                    data_dir,
+                    "load_forecasts_processed",
+                    "preds_$(loadyear)0101_$(scenario)_365days.csv",
+                ),
+            ),
+        ) #in GW; original command: profile=DataFrame(CSV.File(joinpath(data_dir, "Load_Forecast_from_Local", "$(scenario)", "$(loadyear)", "preds_$(weatheryear)0101_365days.csv"))) #in GW
         loadscaler = loadscaler_da
     elseif market_stage == "realtime"
-        profile=DataFrame(CSV.File(joinpath(data_dir, "load_actuals_processed", "sup3rcc_ecearth3_load_gwh_ercot_$(scenario)_e$(loadyear)_w$(weatheryear)_cst.csv"))) #in GW
+        profile=DataFrame(
+            CSV.File(
+                joinpath(
+                    data_dir,
+                    "load_actuals_processed",
+                    "sup3rcc_ecearth3_load_gwh_ercot_$(scenario)_e$(loadyear)_w$(weatheryear)_cst.csv",
+                ),
+            ),
+        ) #in GW
         loadscaler = loadscaler_rt
     end
 
@@ -426,41 +668,57 @@ function create_sys_w_updated_ts(
         # revisedts = Dict{DateTime, Array{Float64}}()
         bus = PSY.get_bus(d)
         zone = PSY.get_area(bus)
-        revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
+        revisedts = DataStructures.SortedDict{DateTime, Vector{Float64}}()
 
-        newtsdata = profile[!,lowercase(PSY.get_name(zone))] 
+        newtsdata = profile[!, lowercase(PSY.get_name(zone))]
         baseload = get_max_active_power(d)
 
         # Get the loads in the zone and caculate the proportion that this load represents
-        loads_in_zone = PSY.get_components(x -> PSY.get_area(PSY.get_bus(x)) == zone, PSY_LOADS, sys_MD)
+        loads_in_zone =
+            PSY.get_components(x -> PSY.get_area(PSY.get_bus(x)) == zone, PSY_LOADS, sys_MD)
         zonal_load_sum = sum(get_max_active_power.(loads_in_zone))
         proportion = baseload / zonal_load_sum
-        
+
         newtsdata = newtsdata .* proportion
-        newtsdata = newtsdata.*1000
-        newtsdata = newtsdata./loadscaler # scale 2021 to 75GW peak
+        newtsdata = newtsdata .* 1000
+        newtsdata = newtsdata ./ loadscaler # scale 2021 to 75GW peak
 
         for t in 1:length(timestep)
             rtseries = Vector{Float64}()
             datetimeindex = timestep[t]
             if t < DEFAULT_HOURS_PER_YEAR/interval
-                rtseries = newtsdata[(interval*(t-1)+1):(interval*(t-1)+horizon)]
+                rtseries =
+                    newtsdata[(interval * (t - 1) + 1):(interval * (t - 1) + horizon)]
             elseif t == ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)
-                rtseries = [newtsdata[(interval*(t-1)+1):DEFAULT_HOURS_PER_YEAR];newtsdata[1:horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(t-1)))]]
+                rtseries = [
+                    newtsdata[(interval * (t - 1) + 1):DEFAULT_HOURS_PER_YEAR];
+                    newtsdata[1:(horizon - (DEFAULT_HOURS_PER_YEAR - (interval * (t - 1))))]
+                ]
             else
                 # simply use the end of the previous timeseries as the new start
-                new_start = horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)))
-                rtseries = newtsdata[new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+1:new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+horizon]
+                new_start =
+                    horizon-(
+                        DEFAULT_HOURS_PER_YEAR-(
+                            interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)
+                        )
+                    )
+                rtseries = newtsdata[(new_start + (t - ceil(
+                    Int,
+                    DEFAULT_HOURS_PER_YEAR / interval,
+                ) - 1) * interval + 1):(new_start + (t - ceil(
+                    Int,
+                    DEFAULT_HOURS_PER_YEAR / interval,
+                ) - 1) * interval + horizon)]
             end
             push!(revisedts, datetimeindex => rtseries)
         end
 
         # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
-            name="max_active_power",
-            data=revisedts,
-            resolution=Dates.Hour(1),
-            scaling_factor_multiplier=get_max_active_power
+            name = "max_active_power",
+            data = revisedts,
+            resolution = Dates.Hour(1),
+            scaling_factor_multiplier = get_max_active_power,
         )
 
         # remove old time series
@@ -473,50 +731,102 @@ function create_sys_w_updated_ts(
     # Regulation time series update
     #-----------------------------------------------------------------
     if market_stage == "dayahead"
-        regdown_ts = DataFrame(CSV.File(joinpath(data_dir,"regulation_reserves",scenario, "DA_regDown_$(scenario)_gmlc$(loadyear).csv"))) #in MW; previous command: regdown_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regDown_baseline_gmlc$(weatheryear).csv")))
-        regup_ts = DataFrame(CSV.File(joinpath(data_dir,"regulation_reserves",scenario, "DA_regUp_$(scenario)_gmlc$(loadyear).csv"))) #in MW; previous command: regup_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regUp_baseline_gmlc$(weatheryear).csv")))
+        regdown_ts = DataFrame(
+            CSV.File(
+                joinpath(
+                    data_dir,
+                    "regulation_reserves",
+                    scenario,
+                    "DA_regDown_$(scenario)_gmlc$(loadyear).csv",
+                ),
+            ),
+        ) #in MW; previous command: regdown_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regDown_baseline_gmlc$(weatheryear).csv")))
+        regup_ts = DataFrame(
+            CSV.File(
+                joinpath(
+                    data_dir,
+                    "regulation_reserves",
+                    scenario,
+                    "DA_regUp_$(scenario)_gmlc$(loadyear).csv",
+                ),
+            ),
+        ) #in MW; previous command: regup_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regUp_baseline_gmlc$(weatheryear).csv")))
     else
-        regdown_ts = DataFrame(CSV.File(joinpath(data_dir,"regulation_reserves",scenario, "RT_regDown_$(scenario)_gmlc$(loadyear).csv"))) #in MW; previous command: regdown_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regDown_baseline_gmlc$(weatheryear).csv")))
-        regup_ts = DataFrame(CSV.File(joinpath(data_dir,"regulation_reserves",scenario, "RT_regUp_$(scenario)_gmlc$(loadyear).csv"))) #in MW; previous command: regup_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regUp_baseline_gmlc$(weatheryear).csv")))
+        regdown_ts = DataFrame(
+            CSV.File(
+                joinpath(
+                    data_dir,
+                    "regulation_reserves",
+                    scenario,
+                    "RT_regDown_$(scenario)_gmlc$(loadyear).csv",
+                ),
+            ),
+        ) #in MW; previous command: regdown_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regDown_baseline_gmlc$(weatheryear).csv")))
+        regup_ts = DataFrame(
+            CSV.File(
+                joinpath(
+                    data_dir,
+                    "regulation_reserves",
+                    scenario,
+                    "RT_regUp_$(scenario)_gmlc$(loadyear).csv",
+                ),
+            ),
+        ) #in MW; previous command: regup_ts = DataFrame(CSV.File(joinpath(data_dir, "TS_for_Regulation_Req_Calc", "RegulationTS_Bethany", "DA_regUp_baseline_gmlc$(weatheryear).csv")))
     end
 
     regdown_ts = select!(regdown_ts, Not(:DATETIME))
     regup_ts = select!(regup_ts, Not(:DATETIME))
-    regdown_ts[!,"RegDown"] = sum(eachcol(regdown_ts))
-    regup_ts[!,"RegUp"] = sum(eachcol(regup_ts))
-    reg_profile = DataFrame(REG_DN = regdown_ts[!,"RegDown"], REG_UP = regup_ts[!,"RegUp"])
+    regdown_ts[!, "RegDown"] = sum(eachcol(regdown_ts))
+    regup_ts[!, "RegUp"] = sum(eachcol(regup_ts))
+    reg_profile =
+        DataFrame(; REG_DN = regdown_ts[!, "RegDown"], REG_UP = regup_ts[!, "RegUp"])
 
-    for d in get_components(x -> PSY.get_name(x) in ["REG_DN","REG_UP"], Service, sys_MD)
+    for d in get_components(x -> PSY.get_name(x) in ["REG_DN", "REG_UP"], Service, sys_MD)
         # println("Processing serve: $(get_name(d))")
         #create dictionary
         # revisedts = Dict{DateTime, Array{Float64}}()
-        revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
+        revisedts = DataStructures.SortedDict{DateTime, Vector{Float64}}()
 
-        newtsdata = reg_profile[!,PSY.get_name(d)] 
+        newtsdata = reg_profile[!, PSY.get_name(d)]
         basereq = get_requirement(d)
-        newtsdata = newtsdata./basereq/100
+        newtsdata = newtsdata ./ basereq/100
 
         for t in 1:length(timestep)
             rtseries = Vector{Float64}()
             datetimeindex = timestep[t]
             if t < DEFAULT_HOURS_PER_YEAR/interval
-                rtseries = newtsdata[(interval*(t-1)+1):(interval*(t-1)+horizon)]
+                rtseries =
+                    newtsdata[(interval * (t - 1) + 1):(interval * (t - 1) + horizon)]
             elseif t == ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)
-                rtseries = [newtsdata[(interval*(t-1)+1):DEFAULT_HOURS_PER_YEAR];newtsdata[1:horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(t-1)))]]
+                rtseries = [
+                    newtsdata[(interval * (t - 1) + 1):DEFAULT_HOURS_PER_YEAR];
+                    newtsdata[1:(horizon - (DEFAULT_HOURS_PER_YEAR - (interval * (t - 1))))]
+                ]
             else
                 # simply use the end of the previous timeseries as the new start
-                new_start = horizon-(DEFAULT_HOURS_PER_YEAR-(interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)))
-                rtseries = newtsdata[new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+1:new_start+(t-ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)*interval+horizon]
+                new_start =
+                    horizon-(
+                        DEFAULT_HOURS_PER_YEAR-(
+                            interval*(ceil(Int, DEFAULT_HOURS_PER_YEAR/interval)-1)
+                        )
+                    )
+                rtseries = newtsdata[(new_start + (t - ceil(
+                    Int,
+                    DEFAULT_HOURS_PER_YEAR / interval,
+                ) - 1) * interval + 1):(new_start + (t - ceil(
+                    Int,
+                    DEFAULT_HOURS_PER_YEAR / interval,
+                ) - 1) * interval + horizon)]
             end
             push!(revisedts, datetimeindex => rtseries)
         end
 
         # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
-            name="requirement",
-            data=revisedts,
-            resolution=Dates.Hour(1),
-            scaling_factor_multiplier=get_requirement
+            name = "requirement",
+            data = revisedts,
+            resolution = Dates.Hour(1),
+            scaling_factor_multiplier = get_requirement,
         )
 
         # remove old time series
@@ -525,41 +835,11 @@ function create_sys_w_updated_ts(
         add_time_series!(sys_MD, d, revisedts_deterministic)
     end
 
-    # Add fixed outage timeseries
-    #--------------------------------------------
-    if outages_dir != nothing
-        outages_data = DataFrame(CSV.File(outages_dir)) 
-
-        for gen in get_components(PSY_THERMAL_GENERATORS, sys_MD)
-            gen_name = PSY.get_name(gen)
-
-            ts = zeros(length(dates))
-            if gen_name in names(outages_data)
-                @info "Adding outage timeseries for generator $(gen_name)."
-                ts[1:size(outages_data, 1)] = outages_data[!, gen_name]
-            else
-                @info "No outage timeseries found for generator $(gen_name), adding default values of 0."
-            end
-
-            outage_ts = TS.TimeArray(dates, ts)
-            transition_data = PSY.FixedForcedOutage(;
-                                outage_status = 0.0,
-                                )
-
-            add_supplemental_attribute!(sys_MD, gen, transition_data)
-
-            PSY.add_time_series!(
-                sys_MD,
-                transition_data,
-                PSY.SingleTimeSeries("outage_profile_1", outage_ts),
-            )            
-        end
-    else
-        @info "No outages directory provided, skipping outage timeseries update."
-    end
+    # Add outage supplemental attributes and time series
+    add_outages_to_system!(sys_MD, outages_dir, dates)
 
     PSY.set_units_base_system!(sys_MD, PSY.IS.UnitSystem.SYSTEM_BASE)
-    to_json(sys_MD, output_file, force=true)
+    to_json(sys_MD, output_file; force = true)
 
     number_of_forecast = get_forecast_window_count(sys_MD)
     if first_stage
@@ -569,9 +849,7 @@ function create_sys_w_updated_ts(
     end
 
     return
-
 end
-
 
 function create_sys_w_updated_ts_ny(
     data_dir::String,
@@ -584,24 +862,22 @@ function create_sys_w_updated_ts_ny(
     horizon::Int64, # hours
     interval::Int64, # hours
     output_file::String,
-    first_stage::Bool=false,
-    first_stage_horizon::Union{Nothing, Integer}=nothing, # hour (only need input if first_stage is false)
-    first_stage_interval::Union{Nothing, Integer}=nothing, # hour (only need input if first_stage is false)
-    first_stage_number_of_forecast_filename::Union{Nothing, String}=nothing, # (only need input if first_stage is false)
+    first_stage::Bool = false,
+    first_stage_horizon::Union{Nothing, Integer} = nothing, # hour (only need input if first_stage is false)
+    first_stage_interval::Union{Nothing, Integer} = nothing, # hour (only need input if first_stage is false)
+    first_stage_number_of_forecast_filename::Union{Nothing, String} = nothing, # (only need input if first_stage is false)
 )
-
     sys_MD = initial_sys
     PSY.set_units_base_system!(sys_MD, PSY.IS.UnitSystem.SYSTEM_BASE)
-    to_json(sys_MD, output_file, force=true)
+    to_json(sys_MD, output_file; force = true)
 
     return
-
 end
-
 
 function create_PRAS_sys_json(
     sys_EDs::Vector{PSY.System},
-    output_file::String
+    output_file::String,
+    outages_dir::Union{Nothing, String} = nothing,
 )
     sys_PRAS = deepcopy(first(sys_EDs))
 
@@ -609,13 +885,29 @@ function create_PRAS_sys_json(
     sys_PRAS_res = PSY.get_time_series_resolutions(sys_PRAS)[1]
     sys_PRAS_interval = Int(PSY.get_forecast_interval(sys_PRAS).value / sys_PRAS_res.value)
     sys_PRAS_horizon = Int(PSY.get_forecast_horizon(sys_PRAS).value / sys_PRAS_res.value)
-    finish_datetime_PRAS = start_datetime_PRAS + Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
-    
-    timestep = StepRange(start_datetime_PRAS, sys_PRAS_res * sys_PRAS_interval, finish_datetime_PRAS);
+    finish_datetime_PRAS =
+        start_datetime_PRAS +
+        Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
+
+    timestep = StepRange(
+        start_datetime_PRAS,
+        sys_PRAS_res * sys_PRAS_interval,
+        finish_datetime_PRAS,
+    );
 
     ts_objects = Dict{String, Any}()
-    ts_objects["gens"] = collect(PSY.get_components(x -> has_time_series(x, Deterministic) && PSY.get_prime_mover_type(x) in [PrimeMovers.PVe, PrimeMovers.WT, PrimeMovers.HY], Generator, sys_PRAS))
-    ts_objects["loads"] = collect(PSY.get_components(x -> has_time_series(x, Deterministic), PSY_LOADS, sys_PRAS))
+    ts_objects["gens"] = collect(
+        PSY.get_components(
+            x ->
+                has_time_series(x, Deterministic) && PSY.get_prime_mover_type(x) in
+                [PrimeMovers.PVe, PrimeMovers.WT, PrimeMovers.HY],
+            Generator,
+            sys_PRAS,
+        ),
+    )
+    ts_objects["loads"] = collect(
+        PSY.get_components(x -> has_time_series(x, Deterministic), PSY_LOADS, sys_PRAS),
+    )
 
     for (key, devices) in ts_objects
         for component_PRAS in devices
@@ -633,15 +925,21 @@ function create_PRAS_sys_json(
             end
             # append!(reconstruct_single_ts, reconstruct_single_ts[1:sys_PRAS_horizon - 1])
             # dates = range(DateTime("2018-01-01T00:00:00"), step = sys_PRAS_res, length = length(timestep) + sys_PRAS_horizon - 1)
-            dates = range(SIM_START_DATE, step = sys_PRAS_res, length = length(timestep))
+            dates = range(SIM_START_DATE; step = sys_PRAS_res, length = length(timestep))
             # @info "Line 633 - Reconstructing time series for component $(name) with length: $(length(reconstruct_single_ts))."
             data = TS.TimeArray(dates, reconstruct_single_ts)
             single_time_series = SingleTimeSeries("max_active_power", data)
             add_time_series!(sys_PRAS, component_PRAS, single_time_series)
         end
     end
-    
-    services = collect(PSY.get_components(x -> PSY.get_name(x) in ["Reg_Down","Reg_Up"], Service, sys_PRAS))
+
+    services = collect(
+        PSY.get_components(
+            x -> PSY.get_name(x) in ["Reg_Down", "Reg_Up"],
+            Service,
+            sys_PRAS,
+        ),
+    )
     for service_PRAS in services
         name = PSY.get_name(service_PRAS)
         reconstruct_single_ts = Float64[]
@@ -657,7 +955,7 @@ function create_PRAS_sys_json(
         end
         # append!(reconstruct_single_ts, reconstruct_single_ts[1:sys_PRAS_horizon - 1])
         # dates = range(DateTime("2018-01-01T00:00:00"), step = sys_PRAS_res, length = length(timestep) + sys_PRAS_horizon - 1)
-        dates = range(SIM_START_DATE, step = sys_PRAS_res, length = length(timestep))
+        dates = range(SIM_START_DATE; step = sys_PRAS_res, length = length(timestep))
         # @info "Line 644 - Creating time series for service $(name) with length: $(length(reconstruct_single_ts))."
         data = TS.TimeArray(dates, reconstruct_single_ts)
         single_time_series = SingleTimeSeries("requirement", data)
@@ -668,76 +966,87 @@ function create_PRAS_sys_json(
 
     for (key, devices) in ts_objects
         for component in devices
-            revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
-            newtsdata = values(get_time_series(SingleTimeSeries, component, "max_active_power").data)
+            revisedts = DataStructures.SortedDict{DateTime, Vector{Float64}}()
+            newtsdata = values(
+                get_time_series(SingleTimeSeries, component, "max_active_power").data,
+            )
             # @info "Line 668 - Processing component $(PSY.get_name(component)) with original time series length: $(length(newtsdata))."
 
-    
-            for t in 1:length(timestep)-1
+            for t in 1:(length(timestep) - 1)
                 rtseries=Vector{Float64}()
                 datetimeindex = timestep[t]
-                rtseries = newtsdata[(sys_PRAS_interval * (t - 1) + 1):(sys_PRAS_interval * ( t - 1) + sys_PRAS_horizon)]
+                rtseries =
+                    newtsdata[(sys_PRAS_interval * (t - 1) + 1):(sys_PRAS_interval * (t - 1) + sys_PRAS_horizon)]
                 push!(revisedts, datetimeindex => rtseries)
             end
-    
+
             # @info "Line 677 - Processing component $(PSY.get_name(component)) with revised time series length: $(length(revisedts))."
             # convert to deterministic time series
             revisedts_deterministic = PSY.Deterministic(;
-                name="max_active_power",
-                data=revisedts,
-                resolution=Dates.Hour(1),
-                scaling_factor_multiplier=get_max_active_power
-            )    
-            
+                name = "max_active_power",
+                data = revisedts,
+                resolution = Dates.Hour(1),
+                scaling_factor_multiplier = get_max_active_power,
+            )
+
             add_time_series!(sys_PRAS, component, revisedts_deterministic)
         end
     end
 
     for service in services
-        revisedts = DataStructures.SortedDict{DateTime,Vector{Float64}}()
+        revisedts = DataStructures.SortedDict{DateTime, Vector{Float64}}()
         newtsdata = values(get_time_series(SingleTimeSeries, service, "requirement").data)
 
-        for t in 1:length(timestep)-1
+        for t in 1:(length(timestep) - 1)
             rtseries=Vector{Float64}()
             datetimeindex = timestep[t]
-            rtseries = newtsdata[(sys_PRAS_interval * (t - 1) + 1):(sys_PRAS_interval * ( t - 1) + sys_PRAS_horizon)]
+            rtseries =
+                newtsdata[(sys_PRAS_interval * (t - 1) + 1):(sys_PRAS_interval * (t - 1) + sys_PRAS_horizon)]
             push!(revisedts, datetimeindex => rtseries)
         end
 
         # @info "Line 701 - Processing service $(PSY.get_name(service)) with revised time series length: $(length(revisedts))."
         # convert to deterministic time series
         revisedts_deterministic = PSY.Deterministic(;
-            name="requirement",
-            data=revisedts,
-            resolution=Dates.Hour(1),
-            scaling_factor_multiplier=get_requirement
+            name = "requirement",
+            data = revisedts,
+            resolution = Dates.Hour(1),
+            scaling_factor_multiplier = get_requirement,
         )
 
         add_time_series!(sys_PRAS, service, revisedts_deterministic)
     end
 
-    remove_time_series!(sys_PRAS, Deterministic)    
-    to_json(sys_PRAS, output_file, force=true)
+    remove_time_series!(sys_PRAS, Deterministic)
+
+    dates = range(SIM_START_DATE; step = sys_PRAS_res, length = length(timestep))
+    add_outages_to_system!(sys_PRAS, outages_dir, dates)
+
+    to_json(sys_PRAS, output_file; force = true)
 
     return
 end
 
 function create_PRAS_sys_NY_json(
     sys_EDs::Vector{PSY.System},
-    output_file::String
+    output_file::String,
 )
     sys_PRAS = deepcopy(first(sys_EDs))
-    
+
     first_ts_temp_PRAS = first(PSY.get_time_series_multiple(sys_PRAS))
     start_datetime_PRAS = PSY.IS.get_initial_timestamp(first_ts_temp_PRAS)
     sys_PRAS_res = PSY.get_time_series_resolutions(sys_PRAS)[1]
-    finish_datetime_PRAS = start_datetime_PRAS + Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
+    finish_datetime_PRAS =
+        start_datetime_PRAS +
+        Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_PRAS_res * length(sys_EDs) - sys_PRAS_res)
     timestep = StepRange(start_datetime_PRAS, sys_PRAS_res, finish_datetime_PRAS);
 
     ts_objects = Dict{String, Any}()
 
     # ts_objects["gens"] = collect(PSY.get_components(x -> PSY.get_prime_mover_type(x) in [PrimeMovers.PVe, PrimeMovers.WT, PrimeMovers.HY], Generator, sys_PRAS))
-    ts_objects["gens"] = collect(PSY.get_components(x -> PSY.has_time_series(x) == true, Generator, sys_PRAS))
+    ts_objects["gens"] = collect(
+        PSY.get_components(x -> PSY.has_time_series(x) == true, Generator, sys_PRAS),
+    )
     ts_objects["loads"] = collect(PSY.get_components(PSY_LOADS, sys_PRAS))
 
     for (key, devices) in ts_objects
@@ -762,8 +1071,8 @@ function create_PRAS_sys_NY_json(
             add_time_series!(sys_PRAS, component_PRAS, single_time_series)
         end
     end
-    
-    to_json(sys_PRAS, output_file, force=true)
+
+    to_json(sys_PRAS, output_file; force = true)
 
     return
 end
@@ -785,10 +1094,15 @@ function fix_multistart_cost_curves!(sys::PSY.System)
                 slope = points[end].x > 0 ? points[end].y / points[end].x : 1.0
                 new_points = vcat(points, [(x = pmax_mw, y = pmax_mw * slope)])
                 new_curve = PSY.PiecewisePointCurve(new_points)
-                new_vc = PSY.CostCurve(new_curve, PSY.get_power_units(vc), PSY.get_vom_cost(vc))
-                PSY.set_operation_cost!(unit, PSY.ThermalGenerationCost(
-                    new_vc, PSY.get_fixed(cost), PSY.get_start_up(cost), PSY.get_shut_down(cost)
-                ))
+                new_vc =
+                    PSY.CostCurve(new_curve, PSY.get_power_units(vc), PSY.get_vom_cost(vc))
+                PSY.set_operation_cost!(
+                    unit,
+                    PSY.ThermalGenerationCost(
+                        new_vc, PSY.get_fixed(cost), PSY.get_start_up(cost),
+                        PSY.get_shut_down(cost),
+                    ),
+                )
             end
 
         elseif curve isa PSY.PiecewiseIncrementalCurve
@@ -801,12 +1115,17 @@ function fix_multistart_cost_curves!(sys::PSY.System)
                 new_x = vcat(x_coords, pmax_mw)
                 new_slopes = vcat(slopes, slopes[end])  # extend with last slope
                 new_curve = PSY.PiecewiseIncrementalCurve(
-                    PSY.get_initial_input(curve), new_x, new_slopes
+                    PSY.get_initial_input(curve), new_x, new_slopes,
                 )
-                new_vc = PSY.CostCurve(new_curve, PSY.get_power_units(vc), PSY.get_vom_cost(vc))
-                PSY.set_operation_cost!(unit, PSY.ThermalGenerationCost(
-                    new_vc, PSY.get_fixed(cost), PSY.get_start_up(cost), PSY.get_shut_down(cost)
-                ))
+                new_vc =
+                    PSY.CostCurve(new_curve, PSY.get_power_units(vc), PSY.get_vom_cost(vc))
+                PSY.set_operation_cost!(
+                    unit,
+                    PSY.ThermalGenerationCost(
+                        new_vc, PSY.get_fixed(cost), PSY.get_start_up(cost),
+                        PSY.get_shut_down(cost),
+                    ),
+                )
             end
 
         else

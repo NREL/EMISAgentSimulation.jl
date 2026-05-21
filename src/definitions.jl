@@ -19,12 +19,17 @@ const PENALTY_COST = 5000.0
 # PRAS constants
 const PRAS_N_SAMPLES = 100
 
+# Outage constants
+const NOMINAL_GEN_OUTAGE_PROBABILITY = 0.04
+const NOMINAL_GEN_RECOVERY_PROBABILITY = 1.0
+const NOMINAL_STORAGE_OUTAGE_PROBABILITY = 0.0
+const NOMINAL_STORAGE_RECOVERY_PROBABILITY = 1.0
+const DEFAULT_THERMAL_MTTR_HOURS = 24
+
 const SIM_START_DATE = Dates.DateTime("2018-01-01T00:00:00")
 const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
 
 # File pointers
 const TIMESERIES_DATA_DIR = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/NTP_TimeSeries_Data"
 const POINTER_FILE = Dict(
-    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"),
-   
-)
+    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"),)

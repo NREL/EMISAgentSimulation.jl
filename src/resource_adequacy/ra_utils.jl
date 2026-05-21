@@ -18,12 +18,10 @@ function calculate_RA_metrics(sys::PSY.System,
     samples::Int64 = PRAS_N_SAMPLES,
     seed::Int64 = 42,
     simulation_years::Int64 = 15)
-
     system_period_of_interest = range(1; length = DEFAULT_HOURS_PER_YEAR * simulation_years);
-    correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_scenario_1_new.csv")
+    # correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_scenario_1_new.csv")
 
     @info "Calculating RA metrics for iteration year: $(iteration_year) with system_period_of_interest: $(system_period_of_interest)"
-
 
     # pras_system = make_pras_system(sys,
     #                                 system_model="Single-Node",
@@ -135,7 +133,6 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     target_year::Int64,
     rt_resolution::Int64,
     simulation_years::Int64)
-
     @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
 
     PSY_project = create_PSY_generator(project, capacity_market_system)
@@ -195,7 +192,6 @@ function create_capacity_mkt_system(initial_system::PSY.System,
     simulation_dir::String,
     rt_resolution::Int64,
     simulation_years::Int64)
-
     @info "Creating Forward Capacity Market System"
     capacity_market_system = deepcopy(initial_system)
 
@@ -212,14 +208,11 @@ function create_capacity_mkt_system(initial_system::PSY.System,
 
         if end_life_year >= capacity_market_year &&
            construction_year <= capacity_market_year
-
             push!(capacity_market_projects, project)
             if !(get_name(project) in PSY.get_name.(get_all_techs(capacity_market_system)))
-
                 add_capacity_market_project!(capacity_market_system, project,
                     simulation_dir, scenario,
                     capacity_market_year, rt_resolution, simulation_years)
-                    
             end
         end
     end
@@ -286,14 +279,38 @@ function update_delta_irm!(initial_system::PSY.System,
 
         #TODO: Clean up temp data saving/loading after debugging
         temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
-        FileIO.save(joinpath(temp_dir, "active_projects.jld2"), "active_projects", active_projects)
-        FileIO.save(joinpath(temp_dir, "capacity_forward_years.jld2"), "capacity_forward_years", capacity_forward_years)
+        FileIO.save(
+            joinpath(temp_dir, "active_projects.jld2"),
+            "active_projects",
+            active_projects,
+        )
+        FileIO.save(
+            joinpath(temp_dir, "capacity_forward_years.jld2"),
+            "capacity_forward_years",
+            capacity_forward_years,
+        )
         FileIO.save(joinpath(temp_dir, "scenario.jld2"), "scenario", scenario)
-        FileIO.save(joinpath(temp_dir, "iteration_year.jld2"), "iteration_year", iteration_year)
-        FileIO.save(joinpath(temp_dir, "simulation_dir.jld2"), "simulation_dir", simulation_dir)
-        FileIO.save(joinpath(temp_dir, "rt_resolution.jld2"), "rt_resolution", rt_resolution)
-        FileIO.save(joinpath(temp_dir, "simulation_years.jld2"), "simulation_years", simulation_years)
-        to_json(initial_system, joinpath(temp_dir, "initial_system.json"), force = true)
+        FileIO.save(
+            joinpath(temp_dir, "iteration_year.jld2"),
+            "iteration_year",
+            iteration_year,
+        )
+        FileIO.save(
+            joinpath(temp_dir, "simulation_dir.jld2"),
+            "simulation_dir",
+            simulation_dir,
+        )
+        FileIO.save(
+            joinpath(temp_dir, "rt_resolution.jld2"),
+            "rt_resolution",
+            rt_resolution,
+        )
+        FileIO.save(
+            joinpath(temp_dir, "simulation_years.jld2"),
+            "simulation_years",
+            simulation_years,
+        )
+        to_json(initial_system, joinpath(temp_dir, "initial_system.json"); force = true)
 
         capacity_market_system = create_capacity_mkt_system(initial_system,
             active_projects,
@@ -335,10 +352,10 @@ function update_delta_irm!(initial_system::PSY.System,
                     iteration_year;
                     samples = PRAS_N_SAMPLES,
                     simulation_years = simulation_years,
-                    )
+                )
 
                 @info "RA metrics: $(ra_metrics)"
-                
+
                 adequacy_conditions_met, scarcity_conditions_met =
                     check_ra_conditions(ra_targets, ra_metrics)
                 @info "Adequacy conditions met: $(adequacy_conditions_met), Scarcity conditions met: $(scarcity_conditions_met)"
