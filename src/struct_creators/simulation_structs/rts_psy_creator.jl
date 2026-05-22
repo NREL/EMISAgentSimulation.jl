@@ -317,9 +317,7 @@ function add_outages_to_system!(
         n_csv_rows = size(outages_data, 1)
         n_timesteps = length(dates)
         if n_csv_rows < n_timesteps
-            error(
-                "Outage CSV has $(n_csv_rows) rows but system requires $(n_timesteps) timesteps.",
-            )
+            @warn "Outage CSV has $(n_csv_rows) rows but system requires $(n_timesteps) timesteps. Wrapping CSV data cyclically for the additional timesteps."
         end
     end
 
@@ -335,8 +333,13 @@ function add_outages_to_system!(
 
         if outages_data !== nothing && gen_name in names(outages_data)
             @info "Adding outage time series for thermal generator $(gen_name)."
+            # Wrap the CSV column cyclically to cover all timesteps:
+            # repeat full-year blocks then append the remaining partial-year slice.
+            col = outages_data[!, gen_name]
+            n_repeats, remainder = divrem(length(dates), n_csv_rows)
+            wrapped_col = vcat(repeat(col, n_repeats), col[1:remainder])
             λ_μ = SPI.rate_to_probability.(
-                outages_data[1:length(dates), gen_name],
+                wrapped_col,
                 DEFAULT_THERMAL_MTTR_HOURS,
             )
             supp_attr = first(
