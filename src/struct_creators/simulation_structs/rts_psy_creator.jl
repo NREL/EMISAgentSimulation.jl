@@ -1022,6 +1022,21 @@ function create_PRAS_sys_json(
 
     remove_time_series!(sys_PRAS, Deterministic)
 
+    # sys_PRAS was deepcopied from an ED system that already has GeometricDistributionForcedOutage
+    # supplemental attributes (with single-year time series) embedded. Strip them here at the
+    # call site before re-adding with the full multi-year PRAS date range.
+    # Note: remove_supplemental_attribute! calls prepare_for_removal! which clears time series too.
+    for comp in PSY.get_components(PSY.Generator, sys_PRAS)
+        for attr in collect(PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, comp))
+            PSY.remove_supplemental_attribute!(sys_PRAS, comp, attr)
+        end
+    end
+    for comp in PSY.get_components(PSY.Storage, sys_PRAS)
+        for attr in collect(PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, comp))
+            PSY.remove_supplemental_attribute!(sys_PRAS, comp, attr)
+        end
+    end
+
     dates = range(SIM_START_DATE; step = sys_PRAS_res, length = length(timestep))
     add_outages_to_system!(sys_PRAS, outages_dir, dates)
 
