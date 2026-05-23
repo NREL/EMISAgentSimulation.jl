@@ -644,9 +644,10 @@ end
 
 """
 Add a nominal `GeometricDistributionForcedOutage` supplemental attribute to a single
-PSY component. Uses `NOMINAL_STORAGE_OUTAGE_PROBABILITY` for storage, otherwise
-`NOMINAL_GEN_OUTAGE_PROBABILITY`. No time series attached — for runtime additions
-of new/option projects that are not present in the outage CSV.
+PSY component. Uses `NOMINAL_STORAGE_FOR` for storage, otherwise `NOMINAL_GEN_FOR`.
+Converts the FOR to a transition probability via `SPI.rate_to_probability`.
+No time series attached — for runtime additions of new/option projects that are not
+present in the outage CSV.
 Skips silently if the component already has the attribute.
 """
 function add_nominal_outage_to_component!(sys::PSY.System, component::PSY.Component)
@@ -655,11 +656,11 @@ function add_nominal_outage_to_component!(sys::PSY.System, component::PSY.Compon
     )
         return
     end
-    prob = component isa PSY.Storage ? NOMINAL_STORAGE_OUTAGE_PROBABILITY :
-           NOMINAL_GEN_OUTAGE_PROBABILITY
+    for_val = component isa PSY.Storage ? NOMINAL_STORAGE_FOR : NOMINAL_GEN_FOR
+    λ, _ = SPI.rate_to_probability(for_val, DEFAULT_THERMAL_MTTR_HOURS)
     attr = PSY.GeometricDistributionForcedOutage(;
-        mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
-        outage_transition_probability = prob,
+        mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+        outage_transition_probability = λ,
     )
     PSY.add_supplemental_attribute!(sys, component, attr)
     return

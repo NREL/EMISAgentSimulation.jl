@@ -20,13 +20,10 @@ const PENALTY_COST = 5000.0
 const PRAS_N_SAMPLES = 100
 const PRAS_MONTE_CARLO_SEED = 42
 
-# Outage constants
-const NOMINAL_GEN_OUTAGE_PROBABILITY = 0.04
-const NOMINAL_GEN_RECOVERY_PROBABILITY = 1.0
-const NOMINAL_STORAGE_OUTAGE_PROBABILITY = 0.0
-const NOMINAL_STORAGE_RECOVERY_PROBABILITY = 1.0
+# Outage constants (FORs — converted to transition probabilities via SPI.rate_to_probability)
+const NOMINAL_GEN_FOR = 0.04
+const NOMINAL_STORAGE_FOR = 0.0
 const DEFAULT_THERMAL_MTTR_HOURS = 24
-const HOURS_TO_MS = 3_600_000
 
 const SIM_START_DATE = Dates.DateTime("2018-01-01T00:00:00")
 const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")

@@ -322,12 +322,14 @@ function add_outages_to_system!(
     end
 
     # Thermal generators: GeometricDistributionForcedOutage + λ/μ time series
+    λ_gen, _ = SPI.rate_to_probability(NOMINAL_GEN_FOR, DEFAULT_THERMAL_MTTR_HOURS)
+    λ_storage, _ = SPI.rate_to_probability(NOMINAL_STORAGE_FOR, DEFAULT_THERMAL_MTTR_HOURS)
     for gen in PSY.get_components(PSY_THERMAL_GENERATORS, sys)
         gen_name = PSY.get_name(gen)
 
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
-            outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = λ_gen,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
 
@@ -369,8 +371,8 @@ function add_outages_to_system!(
     # Renewable generators: fixed nominal, supplemental attribute only
     for gen in PSY.get_components(PSY.RenewableGen, sys)
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
-            outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = λ_gen,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
     end
@@ -378,8 +380,8 @@ function add_outages_to_system!(
     # Hydro generators: fixed nominal, supplemental attribute only
     for gen in PSY.get_components(PSY.HydroGen, sys)
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
-            outage_transition_probability = NOMINAL_GEN_OUTAGE_PROBABILITY,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = λ_gen,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
     end
@@ -387,8 +389,8 @@ function add_outages_to_system!(
     # Storage: fixed nominal (zero outage probability), supplemental attribute only
     for gen in PSY.get_components(PSY.Storage, sys)
         transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS * HOURS_TO_MS,
-            outage_transition_probability = NOMINAL_STORAGE_OUTAGE_PROBABILITY,
+            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+            outage_transition_probability = λ_storage,
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
     end
