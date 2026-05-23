@@ -537,7 +537,7 @@ function create_base_system(initial_system::PSY.System,
                             (ra_metrics[metric] - ra_targets[metric]) / ra_targets[metric]
                     end
                     ratio = max(1, scalar * ratio / length(keys(ra_targets)))
-
+                    @info "adding $ratio new CTs to system to meet adequacy targets"
                     for i in 1:ceil(ratio)
                         incremental_project = deepcopy(
                             first(

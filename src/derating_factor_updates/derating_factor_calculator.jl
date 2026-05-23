@@ -473,7 +473,7 @@ function calculate_derating_factors(
     if marginal_cc
         for zone in zones
             for type in new_types
-                println("$(type)_$(zone)")
+                @info "$(type)_$(zone)"
                 idx = findfirst(
                     x -> (
                         (get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)
