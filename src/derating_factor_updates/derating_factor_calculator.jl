@@ -367,6 +367,54 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
 end
 
 """
+Deepcopy base_system, remove all projects in projects_to_remove via
+remove_system_component!, and return the resulting PRAS.SystemModel.
+The intermediate PSY system is freed at function return, reducing peak memory
+before any subsequent PRAS.assess call.
+"""
+function build_pruned_pras_system(
+    base_system::PSY.System,
+    projects_to_remove::AbstractVector{<:Project},
+)::PRAS.SystemModel
+    pruned_sys = deepcopy(base_system)
+    for project in projects_to_remove
+        remove_system_component!(pruned_sys, project)
+    end
+    return SPI.generate_pras_system(pruned_sys, PSY.Area, false)
+end
+
+"""
+Deepcopy base_system, add all projects in projects_to_add via
+add_capacity_market_project!, and return the resulting PRAS.SystemModel.
+The caller is responsible for pre-configuring projects (deepcopy, set_name!, etc.)
+before passing them. The intermediate PSY system is freed at function return,
+reducing peak memory before any subsequent PRAS.assess call.
+"""
+function build_augmented_pras_system(
+    base_system::PSY.System,
+    projects_to_add::AbstractVector{<:Project},
+    simulation_dir::String,
+    scenario::String,
+    capacity_market_year::Int64,
+    rt_resolution,
+    simulation_years,
+)::PRAS.SystemModel
+    augmented_sys = deepcopy(base_system)
+    for project in projects_to_add
+        add_capacity_market_project!(
+            augmented_sys,
+            project,
+            simulation_dir,
+            scenario,
+            capacity_market_year,
+            rt_resolution,
+            simulation_years,
+        )
+    end
+    return SPI.generate_pras_system(augmented_sys, PSY.Area, false)
+end
+
+"""
 This function calculates the derating data for existing and new renewable generation
 and storage based on PRAS outcomes.
 """
@@ -480,26 +528,23 @@ function calculate_derating_factors(
                     options,
                 )
                 if !isnothing(idx)
-                    augmented_sys = deepcopy(adjusted_base_system)
                     build_size = 4 # set to 4 considering that there are 4 investors, so if a project is viable, there could be 4 such units coming online together.
                     max_cap = get_maxcap(options[idx]) * build_size
+                    new_projects = Project[]
                     for i in 1:build_size
-                        new_project = deepcopy(options[idx])
-                        set_name!(new_project, "$(get_name(new_project))_$i")
-                        add_capacity_market_project!(
-                            augmented_sys,
-                            new_project,
-                            simulation_dir,
-                            scenario,
-                            capacity_market_year,
-                            rt_resolution,
-                            simulation_years,
-                        )
+                        p = deepcopy(options[idx])
+                        set_name!(p, "$(get_name(p))_$i")
+                        push!(new_projects, p)
                     end
-
-                    augmented_pras_system = SPI.generate_pras_system(augmented_sys,
-                        PSY.Area,
-                        false)
+                    augmented_pras_system = build_augmented_pras_system(
+                        adjusted_base_system,
+                        new_projects,
+                        simulation_dir,
+                        scenario,
+                        capacity_market_year,
+                        rt_resolution,
+                        simulation_years,
+                    )
 
                     # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
                     cc_result = PRAS.assess(
@@ -529,22 +574,15 @@ function calculate_derating_factors(
 
     for zone in zones
         for type in existing_types
-            pruned_based_sys = deepcopy(adjusted_base_system)
-            total_capacity = 0.0
             zone_tech_units = existing[findall(
                 x -> ((get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)),
                 existing,
             )]
             if !isempty(zone_tech_units)
-                for project in zone_tech_units
-                    remove_system_component!(pruned_based_sys, project)
-                    total_capacity += get_maxcap(project)
-                end
-
+                total_capacity = sum(get_maxcap.(zone_tech_units))
                 @assert total_capacity > 0
-                pruned_base_pras_system = SPI.generate_pras_system(pruned_based_sys,
-                    PSY.Area,
-                    false)
+                pruned_base_pras_system =
+                    build_pruned_pras_system(adjusted_base_system, zone_tech_units)
                 #  Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
                 cc_result = PRAS.assess(
                     pruned_base_pras_system,
@@ -595,16 +633,9 @@ function calculate_derating_factors(
     end
 
     for (stor_duration, battery_existing) in existing_storage_duration_dict
-        pruned_based_sys = deepcopy(adjusted_base_system)
-        total_capacity = 0.0
-        for project in battery_existing
-            remove_system_component!(pruned_based_sys, project)
-            total_capacity += get_maxcap(project)
-        end
-
-        pruned_base_pras_system = SPI.generate_pras_system(pruned_based_sys,
-            PSY.Area,
-            false)
+        total_capacity = sum(get_maxcap.(battery_existing))
+        pruned_base_pras_system =
+            build_pruned_pras_system(adjusted_base_system, battery_existing)
 
         # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
         cc_result = PRAS.assess(
@@ -621,32 +652,33 @@ function calculate_derating_factors(
         derating_factors[!, "existing_STOR_$(stor_duration)"] .= cc_final
     end
 
+    # augmented_pras_system is no longer needed after the existing storage loop above.
+    # Release it before the battery marginal CC block to reduce peak memory.
+    augmented_pras_system = nothing
+
     if marginal_cc
         new_project_names = []
         max_cap = 0.0
         for (stor_duration, battery_options) in option_storage_duration_dict
-            augmented_sys = deepcopy(adjusted_base_system)
+            new_projects = Project[]
             for project in battery_options
                 new_project = deepcopy(project)
                 project_name = get_name(new_project)
                 if !(project_name in new_project_names)
                     push!(new_project_names, project_name)
                     max_cap += get_maxcap(project)
-                    add_capacity_market_project!(
-                        augmented_sys,
-                        new_project,
-                        simulation_dir,
-                        scenario,
-                        capacity_market_year,
-                        rt_resolution,
-                        simulation_years,
-                    )
+                    push!(new_projects, new_project)
                 end
             end
-
-            augmented_pras_system = SPI.generate_pras_system(augmented_sys,
-                PSY.Area,
-                false)
+            augmented_pras_system = build_augmented_pras_system(
+                adjusted_base_system,
+                new_projects,
+                simulation_dir,
+                scenario,
+                capacity_market_year,
+                rt_resolution,
+                simulation_years,
+            )
 
             # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
             cc_result = PRAS.assess(
