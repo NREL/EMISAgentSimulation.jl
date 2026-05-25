@@ -35,12 +35,8 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
 
     simulation_years = get_total_horizon(get_case(simulation))
 
-    load_n_vg_data = DataFrames.DataFrame()
-    availability_data = DataFrames.DataFrame()
-
-    for sim_year in simulation_years
-        load_n_vg_data = vcat(
-            load_n_vg_data,
+    load_n_vg_data = vcat(
+        [
             read_data(
                 joinpath(
                     simulation_dir,
@@ -50,10 +46,11 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
                     "Net Load Data",
                     "load_n_vg_data_rt.csv",
                 ),
-            ),
-        )
-        availability_data = vcat(
-            availability_data,
+            ) for sim_year in simulation_years
+        ]...,
+    )
+    availability_data = vcat(
+        [
             read_data(
                 joinpath(
                     simulation_dir,
@@ -63,9 +60,9 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
                     "Availability",
                     "REAL_TIME_availability.csv",
                 ),
-            ),
-        )
-    end
+            ) for sim_year in simulation_years
+        ]...,
+    )
 
     num_hours = DataFrames.nrow(load_n_vg_data)
     num_top_hours = cap_mkt_params.num_top_hours[1] * length(simulation_years)
@@ -430,7 +427,9 @@ function calculate_derating_factors(
 
     sys_PRAS = get_system_PRAS(simulation)[scenario]
 
-    base_sys = deepcopy(sys_PRAS)
+    # No deepcopy needed here: create_base_system -> create_capacity_mkt_system performs
+    # deepcopy(initial_system) internally, so copying here would be redundant.
+    base_sys = sys_PRAS
 
     # create adjusted base system (by iteratively adding or removing generators) such that it meets the RA targets
     adjusted_base_system = create_base_system(base_sys,
@@ -507,7 +506,10 @@ function calculate_derating_factors(
                         base_pras_system,
                         augmented_pras_system,
                         methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
-                        PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
+                        PRAS.SequentialMonteCarlo(;
+                            samples = PRAS_N_SAMPLES,
+                            seed = PRAS_MONTE_CARLO_SEED,
+                        ),
                     )
                     cc_lower, cc_upper = extrema(cc_result)
                     cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
@@ -518,7 +520,9 @@ function calculate_derating_factors(
     end
 
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
-    augmented_sys = deepcopy(adjusted_base_system)
+    # No deepcopy needed here: SPI.generate_pras_system only reads the PSY system to build a
+    # PRAS struct and does not mutate it. The resulting augmented_pras_system is a fresh object.
+    augmented_sys = adjusted_base_system
     augmented_pras_system = SPI.generate_pras_system(augmented_sys,
         PSY.Area,
         false)
@@ -546,7 +550,10 @@ function calculate_derating_factors(
                     pruned_base_pras_system,
                     augmented_pras_system,
                     PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
-                    PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
+                    PRAS.SequentialMonteCarlo(;
+                        samples = PRAS_N_SAMPLES,
+                        seed = PRAS_MONTE_CARLO_SEED,
+                    ),
                 )
                 cc_lower, cc_upper = extrema(cc_result)
                 cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
@@ -604,7 +611,10 @@ function calculate_derating_factors(
             pruned_base_pras_system,
             augmented_pras_system,
             PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
-            PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
+            PRAS.SequentialMonteCarlo(;
+                samples = PRAS_N_SAMPLES,
+                seed = PRAS_MONTE_CARLO_SEED,
+            ),
         )
         cc_lower, cc_upper = extrema(cc_result)
         cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
@@ -643,7 +653,10 @@ function calculate_derating_factors(
                 base_pras_system,
                 augmented_pras_system,
                 methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
-                PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = PRAS_MONTE_CARLO_SEED),
+                PRAS.SequentialMonteCarlo(;
+                    samples = PRAS_N_SAMPLES,
+                    seed = PRAS_MONTE_CARLO_SEED,
+                ),
             )
             cc_lower, cc_upper = extrema(cc_result)
             cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)

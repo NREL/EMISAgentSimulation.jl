@@ -148,10 +148,8 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
 
     #max_year = maximum(map(s -> parse(Int, filter(x -> !isempty(x) && all(isdigit, x), split(s, "_"))[end]), readdir(joinpath(simulation_dir, "timeseries_data_files", scenario))))
 
-    availability_df_rt = DataFrames.DataFrame()
-    for sim_year in 1:simulation_years
-        availability_df_rt = vcat(
-            availability_df_rt,
+    availability_df_rt = vcat(
+        [
             read_data(
                 joinpath(
                     simulation_dir,
@@ -161,9 +159,9 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
                     "Availability",
                     "REAL_TIME_availability.csv",
                 ),
-            ),
-        )
-    end
+            ) for sim_year in 1:simulation_years
+        ]...,
+    )
 
     availability_raw_rt = ones(size(availability_df_rt, 1))
     if in(get_name(project), names(availability_df_rt))
@@ -585,6 +583,7 @@ function create_base_system(initial_system::PSY.System,
                             get_device_size(removed_project) *
                             PSY.get_base_power(removed_project)
                         total_removed_capacity += removed_capacity
+                        @info "Removing $(get_name(removed_project)) with capacity $(removed_capacity) MW to meet scarcity targets"
                         PSY.remove_component!(capacity_market_system, removed_project)
                         ra_metrics, shortfall = calculate_RA_metrics(
                             capacity_market_system,
@@ -595,8 +594,8 @@ function create_base_system(initial_system::PSY.System,
                             samples = PRAS_N_SAMPLES,
                             simulation_years = simulation_years,
                         )
-                        println("Removed Capacity")
-                        println(ra_metrics)
+                        @info "Removed Capacity"
+                        @info "RA metrics after removing capacity: $(ra_metrics)"
                         adequacy_conditions_met, scarcity_conditions_met =
                             check_ra_conditions(ra_targets, ra_metrics)
                         count += 1
