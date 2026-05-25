@@ -36,9 +36,18 @@ function calculate_RA_metrics(sys::PSY.System,
         calculate_total_load(sys, DEFAULT_TIME_RESOLUTION, system_period_of_interest)
 
     ra_metrics = Dict{String, Float64}()
-    shortfall, gens_avail = @time PRAS.assess(sys, PSY.Area,
-        PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
-        PRAS.Shortfall(), PRAS.GeneratorAvailability())
+    if exportoutage
+        shortfall, gens_avail = @time PRAS.assess(sys, PSY.Area,
+            PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
+            PRAS.Shortfall(), PRAS.GeneratorAvailability())
+    else
+        # Skip GeneratorAvailability when not exporting — avoids allocating
+        # an [n_generators × timesteps × n_samples] array unnecessarily.
+        (shortfall,) = @time PRAS.assess(sys, PSY.Area,
+            PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
+            PRAS.Shortfall())
+        gens_avail = nothing
+    end
 
     @info "Finished PRAS simulation... "
     eue_overall = PRAS.EUE(shortfall)
