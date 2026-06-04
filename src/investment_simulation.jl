@@ -13,6 +13,9 @@ function run_agent_simulation(
 
     installed_capacity = zeros(simulation_years)
     capacity_forward_years = get_capacity_forward_years(simulation)
+    results_dir = get_results_dir(simulation)
+    simulation_dir = get_data_dir(get_case(simulation))
+    total_sim_time = 0.0
 
     # Set initial capacity market profits considering forward capacity auctions
     @info "Setting initial capacity market profits for existing projects based on forward capacity auctions"
@@ -20,7 +23,6 @@ function run_agent_simulation(
         if get_markets(simulation)[:Capacity]
             initial_existing_projects = vcat(get_existing.(get_investors(simulation))...)
 
-            simulation_dir = get_data_dir(get_case(simulation))
             capacity_mkt_param_file =
                 joinpath(simulation_dir, "markets_data", "Capacity.csv")
             capacity_mkt_params = read_data(capacity_mkt_param_file)[1, :]
@@ -58,16 +60,18 @@ function run_agent_simulation(
     investors = get_investors(simulation)
     average_capital_cost_multiplier = Statistics.mean(get_cap_cost_multiplier.(investors))
     clean_energy_percentage_vector = zeros(simulation_years)
+    carbon_tax = get_carbon_tax(simulation)
+
+     # Update operation cost for all projects based on carbon tax in the first year
 
     for iteration_year in current_year:step_size:simulation_years
         t_start = time()
         yearly_horizon = min(total_horizon - iteration_year + 1, rolling_horizon)
-
-        @info "Starting iteration year $(iteration_year) @ $(Dates.now())"
+        ts_now = Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS")
+        @info "Starting iteration year $(iteration_year) @ $(ts_now)"
         set_iteration_year!(simulation, iteration_year)
 
         active_projects = deepcopy(get_activeprojects(simulation))
-
         installed_capacity = update_installed_cap!(installed_capacity,
             active_projects,
             iteration_year,
@@ -110,7 +114,11 @@ function run_agent_simulation(
                 "Net Load Data",
                 "load_n_vg_data_rt.csv",
             )
-            if isfile(pre_update_da_net_load)
+            # Restore from pre_update only when genuinely restarting at this exact year.
+            # On a fresh run or for years beyond the restart year, always save so that
+            # stale pre_update files copied from a prior run don't clobber retirements
+            # and new builds applied in earlier years of this run.
+            if isfile(pre_update_da_net_load) && iteration_year == current_year && current_year > 1
                 cp(pre_update_da_net_load, post_update_da_net_load; force = true)
                 cp(pre_update_rt_net_load, post_update_rt_net_load; force = true)
             else
@@ -139,6 +147,15 @@ function run_agent_simulation(
                 )
 
                 FileIO.save(output_file, "derating_factors", derating_factors)
+                save_derating_factors(
+                    joinpath(
+                        get_results_dir(simulation),
+                        "derating_data",
+                        scenario,
+                        "derating_data_year_$(iteration_year).h5",
+                    ),
+                    derating_factors,
+                )
             end
         end
 
@@ -162,7 +179,7 @@ function run_agent_simulation(
         resource_adequacy_tuples = []
         for scenario in scenario_names
             @info "Updating resource adequacy for scenario: $scenario"
-            resource_adequacy = update_delta_irm!(
+            resource_adequacy = @timeit EMIS_TIMER "update_delta_irm" update_delta_irm!(
                 sys_PRAS[scenario],
                 active_projects,
                 capacity_forward_years,
@@ -191,7 +208,7 @@ function run_agent_simulation(
         )
 
         @info "Creating investor predictions for all investors based on updated resource adequacy and other market data"
-        create_investor_predictions(investors,
+        @timeit EMIS_TIMER "investor_predictions" create_investor_predictions(investors,
             active_projects,
             iteration_year,
             yearly_horizon,
@@ -211,7 +228,7 @@ function run_agent_simulation(
         )
 
         for investor in investors
-            run_investor_iteration(investor,
+            @timeit EMIS_TIMER "investor_iteration" run_investor_iteration(investor,
                 active_projects,
                 iteration_year,
                 yearly_horizon,
@@ -234,6 +251,7 @@ function run_agent_simulation(
         capacity_market_projects = Project[]
 
         for project in get_activeprojects(simulation)
+            @info "Year $(iteration_year): Updating operation costs for project $(get_name(project))"
             end_life_year = get_end_life_year(project)
             construction_year = get_construction_year(project)
             if end_life_year >= capacity_market_year &&
@@ -242,30 +260,30 @@ function run_agent_simulation(
             end
 
             # Update variable operation cost based on annual carbon tax for SIIP market clearing
-            @info "Updating variable operation"
+            # @info "Updating variable operation"
             update_operation_cost!(
                 project,
                 sys_MDs[iteration_year],
-                (get_carbon_tax(simulation)),
+                carbon_tax,
                 iteration_year,
             )
             update_operation_cost!(
                 project,
                 sys_UCs[iteration_year],
-                (get_carbon_tax(simulation)),
+                carbon_tax,
                 iteration_year,
             )
             update_operation_cost!(
                 project,
                 sys_EDs[iteration_year],
-                (get_carbon_tax(simulation)),
+                carbon_tax,
                 iteration_year,
             )
             for scenario in keys(sys_PRAS)
                 update_operation_cost!(
                     project,
                     sys_PRAS[scenario],
-                    (get_carbon_tax(simulation)),
+                    carbon_tax,
                     iteration_year,
                 )
             end
@@ -277,7 +295,7 @@ function run_agent_simulation(
 
         @info "Current Installed Capacity = $(round(installed_capacity[iteration_year])) MW"
 
-        #Find which markets to simulate.
+        # Find which markets to simulate.
         markets = union(hcat(get_markets.(get_investors(simulation))...))
 
         # for d in PSY.get_components(PSYE.ThermalCleanEnergy,sys_UCs[iteration_year])
@@ -287,7 +305,7 @@ function run_agent_simulation(
         #     end
         # end
 
-        #Create realzed market prices for existing projects.
+        # Create realzed market prices for existing projects.
         @info "Creating realized market data for existing projects to calculate profits and update forecasts for next iteration"
         realized_market_prices,
         realized_capacity_factors_md,
@@ -300,7 +318,7 @@ function run_agent_simulation(
         capacity_accepted_bids,
         rec_accepted_bids,
         clean_energy_percentage_vector[iteration_year],
-        cet_achieved_ratio = create_realized_marketdata(simulation,
+        cet_achieved_ratio = @timeit EMIS_TIMER "realized_marketdata" create_realized_marketdata(simulation,
             sys_MDs[iteration_year],
             sys_UCs[iteration_year],
             sys_EDs[iteration_year],
@@ -355,7 +373,7 @@ function run_agent_simulation(
         end
 
         for scenario in keys(sys_PRAS)
-            ra_metrics, shortfall = calculate_RA_metrics(
+            ra_metrics, shortfall = @timeit EMIS_TIMER "ra_metrics" calculate_RA_metrics(
                 deepcopy(sys_PRAS[scenario]),
                 false,
                 get_results_dir(simulation),
@@ -371,6 +389,13 @@ function run_agent_simulation(
                 "shortfall_data",
                 shortfall,
             )
+            save_shortfall_data(
+                joinpath(
+                    get_results_dir(simulation),
+                    "shortfall_data_$(scenario)_year$(iteration_year).h5",
+                ),
+                shortfall,
+            )
             @info "RA Metrics for scenario $scenario in year $iteration_year: $ra_metrics"
             set_metrics!(
                 get_resource_adequacy(simulation)[scenario],
@@ -382,14 +407,9 @@ function run_agent_simulation(
         #Update forecasts and realized profits of all existing projects for each investor.
 
         for investor in get_investors(simulation)
-            # DEPRECATED: Load growth forecast updates commented out due to changes in input timeseries structure.
-            #= if iteration_year < simulation_years
-                update_forecast!(get_forecast(investor), get_annual_growth(simulation)[:, iteration_year], iteration_year)
-            end =#
-
             projects = get_projects(investor)
             for (i, project) in enumerate(projects)
-                # @info "$(i): Updating realized profits for $(get_name(project))"
+                @info "$(i): Updating realized profits for $(get_name(project))"
                 update_realized_profits!(project,
                     realized_market_prices,
                     realized_capacity_factors_md,
@@ -429,22 +449,29 @@ function run_agent_simulation(
             update_portfolio_preference_multipliers!(investor, iteration_year)
         end
 
-        # simulations, iteration_years, derating_scales, methodologies, ra_metric_list, marginal_cc_switches =  repeat_arguments(num_scenarios, simulation, iteration_year, get_derating_scale(case), get_accreditation_methodology(case), get_accreditation_metric(case), get_marginal_cc_switch(case))
-        # @time Distributed.pmap(parallelize_update_derating_data, zip(scenario_names, simulations, iteration_years, derating_scales, methodologies, ra_metric_list, marginal_cc_switches))
-
         @info "Updating derating data for all scenarios in the simulation based on updated resource adequacy and market conditions"
-        for scenario in scenario_names
-            @info "Updating derating data for scenario: $scenario"
-            update_simulation_derating_data!(
-                simulation,
-                scenario,
-                iteration_year,
-                get_derating_scale(case);
-                methodology = get_accreditation_methodology(case),
-                ra_metric = get_accreditation_metric(case),
-                marginal_cc = get_marginal_cc_switch(case),
-                )   
-        end
+        simulations, iteration_years, derating_scales,
+        methodologies, ra_metric_list, marginal_cc_switches =  repeat_arguments(num_scenarios,
+        simulation, iteration_year, get_derating_scale(case),
+        get_accreditation_methodology(case), get_accreditation_metric(case),
+        get_marginal_cc_switch(case))
+        
+        @time Distributed.pmap(parallelize_update_derating_data,
+         zip(scenario_names, simulations, iteration_years,
+        derating_scales, methodologies, ra_metric_list, marginal_cc_switches))
+
+        # for scenario in scenario_names
+        #     @info "Updating derating data for scenario: $scenario"
+        #     @timeit EMIS_TIMER "update_derating" update_simulation_derating_data!(
+        #         simulation,
+        #         scenario,
+        #         iteration_year,
+        #         get_derating_scale(case);
+        #         methodology = get_accreditation_methodology(case),
+        #         ra_metric = get_accreditation_metric(case),
+        #         marginal_cc = get_marginal_cc_switch(case),
+        #         )   
+        # end
 
         for scenario in scenario_names
             derating_factors = read_data(
@@ -465,6 +492,15 @@ function run_agent_simulation(
             )
 
             FileIO.save(output_file, "derating_factors", derating_factors)
+            save_derating_factors(
+                joinpath(
+                    get_results_dir(simulation),
+                    "derating_data",
+                    scenario,
+                    "derating_data_year_$(iteration_year+step_size).h5",
+                ),
+                derating_factors,
+            )
         end
 
         active_projects = get_activeprojects(simulation)
@@ -482,29 +518,63 @@ function run_agent_simulation(
         end
 
         # reserve_ts_scaling_factor = calculate_reserve_scaling_factor(simulation)
-        reserve_ts_scaling(simulation, iteration_year, step_size)
+        @timeit EMIS_TIMER "reserve_ts_scaling" reserve_ts_scaling(simulation, iteration_year, step_size)
 
-        @info "COMPLETED ITERATION YEAR $(iteration_year)"
-        FileIO.save(
-            joinpath(
-                get_results_dir(simulation),
-                "simulation_data_year$(iteration_year).jld2",
-            ),
-            "simulation_data",
-            simulation,
-        )
-        FileIO.save(
-            joinpath(
-                get_results_dir(simulation),
-                "clean_energy_percentage_year$(iteration_year).jld2",
-            ),
-            "clean_energy_percentage",
-            clean_energy_percentage_vector,
-        )
+        @timeit EMIS_TIMER "save_year_data" begin
+            @info "COMPLETED ITERATION YEAR $(iteration_year)"
+            FileIO.save(
+                joinpath(
+                    results_dir, "simulation_data_year$(iteration_year).jld2",
+                ),
+                "simulation_data",
+                simulation,
+            )
+            FileIO.save(
+                joinpath(
+                    results_dir, "clean_energy_percentage_year$(iteration_year).jld2",
+                ),
+                "clean_energy_percentage",
+                clean_energy_percentage_vector,
+            )
+            save_clean_energy_percentage(
+                joinpath(results_dir, "clean_energy_percentage_year$(iteration_year).h5"),
+                clean_energy_percentage_vector,
+            )
+
+            # Saving with a jld prefix to debug
+            JLD2.jldsave(joinpath(results_dir, "jld_simulation_data_year$(iteration_year).jld2");
+                simulation_data = simulation,
+            )
+
+            JLD2.jldsave(joinpath(results_dir, "jld_clean_energy_percentage_year$(iteration_year).jld2");
+                clean_energy_percentage = clean_energy_percentage_vector,
+            )
+
+            # simulation into h5 and Sienna systems into json files
+            save_simulation(simulation, results_dir, iteration_year)
+
+            # PSY.to_json(sys_MDs[iteration_year],
+            #     joinpath(get_results_dir(simulation), "sys_MD_year$(iteration_year).json"), force = true)
+            # PSY.to_json(sys_UCs[iteration_year],
+            #     joinpath(get_results_dir(simulation), "sys_UC_year$(iteration_year).json"), force = true)
+            # PSY.to_json(sys_EDs[iteration_year],
+            #     joinpath(get_results_dir(simulation), "sys_ED_year$(iteration_year).json"), force = true)
+
+            # for scenario in keys(sys_PRAS)
+            #     PSY.to_json(sys_PRAS[scenario],
+            #     joinpath(get_results_dir(simulation), "sys_PRAS_$(scenario)_year$(iteration_year).json"), force = true)
+            # end
+        end
+
         # FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
         t_end = time()
         iteration_time_hours = round((t_end - t_start) / 3600, digits=2)
-        @info "Iteration year $(iteration_year) took $(iteration_time_hours) hours: @ $(Dates.now())"
+        total_sim_time += iteration_time_hours
+        ts_now = Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS")
+        @info "Finished iteration year $(iteration_year) @ $(ts_now)"
+        @info "Iteration year $(iteration_year) took $(iteration_time_hours) hours"
+        @info "Total simulation time after completing iteration year $(iteration_year): $(round(total_sim_time, digits=2)) hours"
+        print_timer(stderr, EMIS_TIMER)
 
     end
 
@@ -521,13 +591,19 @@ function run_agent_simulation(
         "clean_energy_percentage",
         clean_energy_percentage_vector,
     )
+    save_clean_energy_percentage(
+        joinpath(get_results_dir(simulation), "clean_energy_percentage.h5"),
+        clean_energy_percentage_vector,
+    )
     FileIO.save(
         joinpath(get_results_dir(simulation), "simulation_data.jld2"),
         "simulation_data",
         simulation,
     )
 
+    save_simulation(simulation, get_results_dir(simulation), simulation_years)
 
-    @info "SIMULATION COMPLETED!"
+    @info "EMIS SIMULATION COMPLETED!"
+    print_timer(stderr, EMIS_TIMER)
     return
 end
