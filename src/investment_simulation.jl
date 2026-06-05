@@ -501,7 +501,7 @@ function run_agent_simulation(
             save_simulation(simulation, results_dir, iteration_year)
         end
 
-        # FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
+        save_shortfall_data(joinpath(results_dir,"shortfall_data_year$(iteration_year).h5"), shortfall)
         t_end = time()
         iteration_time_hours = round((t_end - t_start) / 3600, digits=2)
         total_sim_time += iteration_time_hours

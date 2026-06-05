@@ -318,7 +318,20 @@ function save_nested_dict_vf!(g::HDF5.Group, d::Dict{String, Dict{Int64, Vector{
     end
 end
 
+# JLD2 may restore rep_hour_weight as Vector{Vector{Float64}} (flattened CEM block weights).
+function save_nested_dict_vf!(g::HDF5.Group, vv::Vector{<:AbstractVector{<:Real}})
+    attributes(g)["format"] = "vector_of_vectors"
+    write(g, "n", length(vv))
+    for (i, v) in enumerate(vv)
+        write(g, string(i), Vector{Float64}(v))
+    end
+end
+
 function load_nested_dict_vf(g::HDF5.Group)
+    if haskey(HDF5.attributes(g), "format") && read_attribute(g, "format") == "vector_of_vectors"
+        n = read(g, "n")
+        return [read(g, string(i)) for i in 1:n]
+    end
     out = Dict{String, Dict{Int64, Vector{Float64}}}()
     for scen in keys(g)
         out[scen] = Dict{Int64, Vector{Float64}}()
@@ -1750,5 +1763,639 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
             end
         end
         @info "Propagated ThermalMultiStart initial conditions from year $(restore_year) to year $(restore_year + 1)"
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# expected_market_data  (standalone .h5 file per scenario × year)
+#
+# Private helpers for types not covered by the existing save/load utilities:
+#   _save_dict_str_float! / _load_dict_str_float   Dict{String, Float64}
+#   _save_dict_str_int!   / _load_dict_str_int     Dict{String, Int64}
+#   _save_dict_str_matrix!/ _load_dict_str_matrix  Dict{String, Matrix{Float64}}
+#   _save_dict_str_vec_float!/_load_dict_str_vec_float Dict{String, Vector{Float64}}
+#   _save_dict_str_vec_str! / _load_dict_str_vec_str   Dict{String, Vector{String}}
+# ─────────────────────────────────────────────────────────────────────────────
+
+function _save_dict_str_float!(g::HDF5.Group, d::AbstractDict)
+    ks = collect(String, keys(d))
+    vs = [Float64(d[k]) for k in ks]
+    write(g, "keys", ks)
+    write(g, "values", vs)
+end
+
+# JLD2 may restore parameter-vector AxisArrays (String axis, Float64 data).
+function _save_dict_str_float!(g::HDF5.Group, a::AxisArrays.AxisArray{<:Real, 1})
+    ks = string.(collect(AxisArrays.axisvalues(a)[1]))
+    vs = Float64.(collect(a))
+    write(g, "keys", ks)
+    write(g, "values", vs)
+end
+
+function _load_dict_str_float(g::HDF5.Group)
+    ks = read(g, "keys")
+    vs = read(g, "values")
+    return Dict(ks[i] => vs[i] for i in eachindex(ks))
+end
+
+function _save_dict_str_int!(g::HDF5.Group, d::AbstractDict)
+    ks = collect(String, keys(d))
+    vs = [Int64(d[k]) for k in ks]
+    write(g, "keys", ks)
+    write(g, "values", vs)
+end
+
+function _save_dict_str_int!(g::HDF5.Group, a::AxisArrays.AxisArray{<:Real, 1})
+    ks = string.(collect(AxisArrays.axisvalues(a)[1]))
+    vs = Int64.(collect(a))
+    write(g, "keys", ks)
+    write(g, "values", vs)
+end
+
+function _load_dict_str_int(g::HDF5.Group)
+    ks = read(g, "keys")
+    vs = read(g, "values")
+    return Dict(ks[i] => vs[i] for i in eachindex(ks))
+end
+
+# Each key maps to a 2-D Float64 matrix stored as a named dataset inside g.
+function _save_dict_str_matrix!(g::HDF5.Group, d)
+    ks = collect(String, keys(d))
+    write(g, "keys", ks)
+    for k in ks
+        write(g, k, Matrix{Float64}(d[k]))
+    end
+end
+
+function _load_dict_str_matrix(g::HDF5.Group)
+    ks = read(g, "keys")
+    return Dict(k => read(g, k) for k in ks)
+end
+
+# Each key maps to a 1-D Float64 vector stored as a named dataset inside g.
+function _save_dict_str_vec_float!(g::HDF5.Group, d)
+    ks = collect(String, keys(d))
+    write(g, "keys", ks)
+    for k in ks
+        write(g, k, Vector{Float64}(d[k]))
+    end
+end
+
+function _load_dict_str_vec_float(g::HDF5.Group)
+    ks = read(g, "keys")
+    return Dict(k => read(g, k) for k in ks)
+end
+
+# Each key maps to a Vector{String}; empty vectors written as a 0-element string array.
+function _save_dict_str_vec_str!(g::HDF5.Group, d)
+    ks = collect(String, keys(d))
+    write(g, "keys", ks)
+    for k in ks
+        v = Vector{String}(d[k])
+        if isempty(v)
+            write(g, k, String[])
+        else
+            write(g, k, v)
+        end
+    end
+end
+
+function _load_dict_str_vec_str(g::HDF5.Group)
+    ks = read(g, "keys")
+    return Dict(k => read(g, k) for k in ks)
+end
+
+# AxisArray helper with an is_empty guard for 0-length first-axis arrays
+# (e.g. p_in_ru_detail when storage_projects is empty).
+function _save_axisarray_guarded!(g::HDF5.Group, a::AxisArrays.AxisArray)
+    if isempty(a)
+        attributes(g)["is_empty"] = true
+        # Store axis metadata so load can reconstruct the shape.
+        axes_names = AxisArrays.axisnames(a)
+        axes_vals  = AxisArrays.axisvalues(a)
+        write(g, "axis_count", length(axes_vals))
+        for (i, (ax_name, ax_vals)) in enumerate(zip(axes_names, axes_vals))
+            write(g, "axis$(i)_name", string(ax_name))
+            if eltype(ax_vals) <: Symbol
+                write(g, "axis$(i)_values", string.(collect(ax_vals)))
+                write(g, "axis$(i)_type", "Symbol")
+            elseif eltype(ax_vals) <: Integer
+                write(g, "axis$(i)_values", collect(Int64, ax_vals))
+                write(g, "axis$(i)_type", "Int64")
+            else
+                write(g, "axis$(i)_values", string.(collect(ax_vals)))
+                write(g, "axis$(i)_type", "String")
+            end
+        end
+        return
+    end
+    attributes(g)["is_empty"] = false
+    save_axisarray!(g, a)
+end
+
+function _load_axisarray_guarded(g::HDF5.Group)
+    if read_attribute(g, "is_empty")
+        axis_count = read(g, "axis_count")
+        axes = []
+        sizes = Int[]
+        for i in 1:axis_count
+            ax_name = Symbol(read(g, "axis$(i)_name"))
+            ax_type = read(g, "axis$(i)_type")
+            ax_raw  = read(g, "axis$(i)_values")
+            ax_vals = if ax_type == "Symbol"
+                Symbol.(ax_raw)
+            elseif ax_type == "Int64"
+                collect(Int64, ax_raw)
+            else
+                ax_raw
+            end
+            push!(axes, AxisArrays.Axis{ax_name}(ax_vals))
+            push!(sizes, length(ax_vals))
+        end
+        return AxisArrays.AxisArray(zeros(Float64, sizes...), axes...)
+    end
+    return load_axisarray(g)
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+    save_expected_market_data(path, <all 49 CEM output variables>)
+
+Write the outputs of one CEM solve to a standalone HDF5 file at `path`.
+The file is created (or overwritten) by this function; it is separate from
+simulation_data_year_N.h5.
+"""
+function save_expected_market_data(path::String,
+    capacity_price,
+    energy_price,
+    reserve_price,
+    rec_price,
+    inertia_price,
+    capacity_factors,
+    total_utilization,
+    capacity_accepted_perc,
+    new_options,
+    new_options_by_type,
+    REC_slack,
+    REC_supply,
+    REC_demand,
+    rps_compliant_projects,
+    rec_requirement,
+    investment,
+    retirement,
+    max_new_options,
+    max_gen,
+    demand_e,
+    rep_hour_weight,
+    p_e_print,
+    in_flow_print,
+    out_flow_print,
+    v_e_print,
+    p_in_print,
+    linepowerlimit,
+    rec_correction,
+    p_e_storage_print,
+    zone_storage,
+    zone_projects,
+    lines_to_zone,
+    lines_from_zone,
+    init_storage,
+    p_e_detail,
+    remaining_buildtime,
+    projects,
+    generator_projects,
+    storage_projects,
+    reserve_up_products,
+    ordc_products,
+    reserve_down_products,
+    p_in_ru_detail,
+    p_in_ordc_detail,
+    p_in_inertia_detail,
+    p_in_rd_detail,
+    p_out_ru_detail,
+    p_out_ordc_detail,
+    p_out_inertia_detail,
+    p_out_rd_detail,
+)
+    isdir(dirname(path)) || mkpath(dirname(path))
+    h5open(path, "w") do f
+        attributes(f)["schema_version"] = SCHEMA_VERSION
+
+        save_axisarray!(create_group(f, "capacity_price"),   capacity_price)
+        save_axisarray!(create_group(f, "energy_price"),     energy_price)
+        _save_dict_str_matrix!(create_group(f, "reserve_price"),         reserve_price)
+        save_axisarray!(create_group(f, "rec_price"),        rec_price)
+        save_axisarray!(create_group(f, "inertia_price"),    inertia_price)
+
+        _save_dict_str_matrix!(create_group(f, "capacity_factors"),      capacity_factors)
+        _save_dict_str_matrix!(create_group(f, "total_utilization"),     total_utilization)
+        _save_dict_str_vec_float!(create_group(f, "capacity_accepted_perc"), capacity_accepted_perc)
+
+        _save_dict_str_int!(create_group(f, "new_options"),              new_options)
+        _save_dict_str_float!(create_group(f, "new_options_by_type"),    new_options_by_type)
+
+        save_axisarray!(create_group(f, "REC_slack"),  REC_slack)
+        save_axisarray!(create_group(f, "REC_supply"), REC_supply)
+        save_axisarray!(create_group(f, "REC_demand"), REC_demand)
+
+        write(f, "rps_compliant_projects", Vector{String}(rps_compliant_projects))
+        save_axisarray!(create_group(f, "rec_requirement"), rec_requirement)
+
+        save_axisarray!(create_group(f, "investment"), investment)
+        save_axisarray!(create_group(f, "retirement"), retirement)
+
+        _save_dict_str_float!(create_group(f, "max_new_options"),  max_new_options)
+        _save_dict_str_float!(create_group(f, "max_gen"),          max_gen)
+
+        save_axisarray!(create_group(f, "demand_e"), demand_e)
+        save_nested_dict_vf!(create_group(f, "rep_hour_weight"), rep_hour_weight)
+
+        save_axisarray!(create_group(f, "p_e_print"),         p_e_print)
+        save_axisarray!(create_group(f, "in_flow_print"),     in_flow_print)
+        save_axisarray!(create_group(f, "out_flow_print"),    out_flow_print)
+        save_axisarray!(create_group(f, "v_e_print"),         v_e_print)
+        save_axisarray!(create_group(f, "p_in_print"),        p_in_print)
+        save_axisarray!(create_group(f, "p_e_storage_print"), p_e_storage_print)
+
+        _save_dict_str_float!(create_group(f, "linepowerlimit"),  linepowerlimit)
+        _save_dict_str_float!(create_group(f, "rec_correction"),  rec_correction)
+
+        _save_dict_str_vec_str!(create_group(f, "zone_storage"),    zone_storage)
+        _save_dict_str_vec_str!(create_group(f, "zone_projects"),   zone_projects)
+        _save_dict_str_vec_str!(create_group(f, "lines_to_zone"),   lines_to_zone)
+        _save_dict_str_vec_str!(create_group(f, "lines_from_zone"), lines_from_zone)
+
+        _save_dict_str_float!(create_group(f, "init_storage"),      init_storage)
+        save_axisarray!(create_group(f, "p_e_detail"), p_e_detail)
+        _save_dict_str_float!(create_group(f, "remaining_buildtime"), remaining_buildtime)
+
+        write(f, "projects",             Vector{String}(projects))
+        write(f, "generator_projects",   Vector{String}(generator_projects))
+        write(f, "storage_projects",     Vector{String}(storage_projects))
+        write(f, "reserve_up_products",  Vector{String}(collect(reserve_up_products)))
+        write(f, "ordc_products",        Vector{String}(collect(ordc_products)))
+        write(f, "reserve_down_products",Vector{String}(collect(reserve_down_products)))
+
+        _save_axisarray_guarded!(create_group(f, "p_in_ru_detail"),      p_in_ru_detail)
+        _save_axisarray_guarded!(create_group(f, "p_in_ordc_detail"),    p_in_ordc_detail)
+        _save_axisarray_guarded!(create_group(f, "p_in_inertia_detail"), p_in_inertia_detail)
+        _save_axisarray_guarded!(create_group(f, "p_in_rd_detail"),      p_in_rd_detail)
+        _save_axisarray_guarded!(create_group(f, "p_out_ru_detail"),     p_out_ru_detail)
+        _save_axisarray_guarded!(create_group(f, "p_out_ordc_detail"),   p_out_ordc_detail)
+        _save_axisarray_guarded!(create_group(f, "p_out_inertia_detail"),p_out_inertia_detail)
+        _save_axisarray_guarded!(create_group(f, "p_out_rd_detail"),     p_out_rd_detail)
+    end
+end
+
+"""
+    load_expected_market_data(path) -> Dict{String, Any}
+
+Read a CEM output file written by `save_expected_market_data`.
+Returns a `Dict{String, Any}` with the same keys as the old JLD2 format so
+that call sites in investor_iteration.jl need no changes.
+"""
+function load_expected_market_data(path::String)
+    h5open(path, "r") do f
+        return Dict{String, Any}(
+            "capacity_price"          => load_axisarray(f["capacity_price"]),
+            "energy_price"            => load_axisarray(f["energy_price"]),
+            "reserve_price"           => _load_dict_str_matrix(f["reserve_price"]),
+            "rec_price"               => load_axisarray(f["rec_price"]),
+            "inertia_price"           => load_axisarray(f["inertia_price"]),
+            "capacity_factors"        => _load_dict_str_matrix(f["capacity_factors"]),
+            "total_utilization"       => _load_dict_str_matrix(f["total_utilization"]),
+            "capacity_accepted_perc"  => _load_dict_str_vec_float(f["capacity_accepted_perc"]),
+            "new_options"             => _load_dict_str_int(f["new_options"]),
+            "new_options_by_type"     => _load_dict_str_float(f["new_options_by_type"]),
+            "REC_slack"               => load_axisarray(f["REC_slack"]),
+            "REC_supply"              => load_axisarray(f["REC_supply"]),
+            "REC_demand"              => load_axisarray(f["REC_demand"]),
+            "rps_compliant_projects"  => read(f, "rps_compliant_projects"),
+            "rec_requirement"         => load_axisarray(f["rec_requirement"]),
+            "investment"              => load_axisarray(f["investment"]),
+            "retirement"              => load_axisarray(f["retirement"]),
+            "max_new_options"         => _load_dict_str_float(f["max_new_options"]),
+            "max_gen"                 => _load_dict_str_float(f["max_gen"]),
+            "demand_e"                => load_axisarray(f["demand_e"]),
+            "rep_hour_weight"         => load_nested_dict_vf(f["rep_hour_weight"]),
+            "p_e_print"               => load_axisarray(f["p_e_print"]),
+            "in_flow_print"           => load_axisarray(f["in_flow_print"]),
+            "out_flow_print"          => load_axisarray(f["out_flow_print"]),
+            "v_e_print"               => load_axisarray(f["v_e_print"]),
+            "p_in_print"              => load_axisarray(f["p_in_print"]),
+            "linepowerlimit"          => _load_dict_str_float(f["linepowerlimit"]),
+            "rec_correction"          => _load_dict_str_float(f["rec_correction"]),
+            "p_e_storage_print"       => load_axisarray(f["p_e_storage_print"]),
+            "zone_storage"            => _load_dict_str_vec_str(f["zone_storage"]),
+            "zone_projects"           => _load_dict_str_vec_str(f["zone_projects"]),
+            "lines_to_zone"           => _load_dict_str_vec_str(f["lines_to_zone"]),
+            "lines_from_zone"         => _load_dict_str_vec_str(f["lines_from_zone"]),
+            "init_storage"            => _load_dict_str_float(f["init_storage"]),
+            "p_e_detail"              => load_axisarray(f["p_e_detail"]),
+            "remaining_buildtime"     => _load_dict_str_float(f["remaining_buildtime"]),
+            "projects"                => read(f, "projects"),
+            "generator_projects"      => read(f, "generator_projects"),
+            "storage_projects"        => read(f, "storage_projects"),
+            "reserve_up_products"     => read(f, "reserve_up_products"),
+            "ordc_products"           => read(f, "ordc_products"),
+            "reserve_down_products"   => read(f, "reserve_down_products"),
+            "p_in_ru_detail"          => _load_axisarray_guarded(f["p_in_ru_detail"]),
+            "p_in_ordc_detail"        => _load_axisarray_guarded(f["p_in_ordc_detail"]),
+            "p_in_inertia_detail"     => _load_axisarray_guarded(f["p_in_inertia_detail"]),
+            "p_in_rd_detail"          => _load_axisarray_guarded(f["p_in_rd_detail"]),
+            "p_out_ru_detail"         => _load_axisarray_guarded(f["p_out_ru_detail"]),
+            "p_out_ordc_detail"       => _load_axisarray_guarded(f["p_out_ordc_detail"]),
+            "p_out_inertia_detail"    => _load_axisarray_guarded(f["p_out_inertia_detail"]),
+            "p_out_rd_detail"         => _load_axisarray_guarded(f["p_out_rd_detail"]),
+        )
+    end
+end
+
+
+
+
+# investor_iteration.jl calls save_expected_market_data
+# This code snippet transforms the jld2 to new h5 format
+# Note: this is a one-time utility function to convert existing JLD2 files to the new HDF5 format.
+# base_path = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/EMIS_RTS_Analysis_GS/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/investors"
+
+function transform_jld2_to_h5(base_path::String)
+
+    for investor_id in 1:4
+        investor_name = "investor$(investor_id)"
+        for scenario_name in ["scenario_1", "scenario_2", "scenario_3"]
+            for iteration_year in 1:15
+                @info "Loading OLD format expected market data for $(investor_name) iteration year $(iteration_year)"
+                data_path = joinpath(base_path, investor_name, "expected_market_data", "$(scenario_name)_year_$(iteration_year).jld2")
+                expected_data = FileIO.load(data_path)
+                
+                capacity_price = expected_data["capacity_price"]
+                energy_price = expected_data["energy_price"]
+                reserve_price = expected_data["reserve_price"]
+                rec_price = expected_data["rec_price"]
+                inertia_price = expected_data["inertia_price"]
+                capacity_factors = expected_data["capacity_factors"]
+                total_utilization = expected_data["total_utilization"]
+                capacity_accepted_perc = expected_data["capacity_accepted_perc"]
+                new_options = expected_data["new_options"]
+                new_options_by_type = expected_data["new_options_by_type"]
+                REC_slack = expected_data["REC_slack"]
+                REC_supply = expected_data["REC_supply"]
+                REC_demand = expected_data["REC_demand"]
+                rps_compliant_projects = expected_data["rps_compliant_projects"]
+                rec_requirement = expected_data["rec_requirement"]
+                investment = expected_data["investment"]
+                retirement = expected_data["retirement"]
+                max_new_options = expected_data["max_new_options"]
+                max_gen = expected_data["max_gen"]
+                demand_e = expected_data["demand_e"]
+                rep_hour_weight = expected_data["rep_hour_weight"]
+                p_e_print = expected_data["p_e_print"]
+                in_flow_print = expected_data["in_flow_print"]
+                out_flow_print = expected_data["out_flow_print"]
+                v_e_print = expected_data["v_e_print"]
+                p_in_print = expected_data["p_in_print"]
+                linepowerlimit = expected_data["linepowerlimit"]
+                rec_correction = expected_data["rec_correction"]    
+                p_e_storage_print = expected_data["p_e_storage_print"]
+                zone_storage = expected_data["zone_storage"]
+                zone_projects = expected_data["zone_projects"]
+                lines_to_zone = expected_data["lines_to_zone"]
+                lines_from_zone = expected_data["lines_from_zone"]
+                init_storage = expected_data["init_storage"]
+                p_e_detail = expected_data["p_e_detail"]
+                remaining_buildtime = expected_data["remaining_buildtime"]
+                projects = expected_data["projects"]
+                generator_projects = expected_data["generator_projects"]
+                storage_projects = expected_data["storage_projects"]
+                reserve_up_products = expected_data["reserve_up_products"]
+                ordc_products = expected_data["ordc_products"]
+                reserve_down_products = expected_data["reserve_down_products"]
+                p_in_ru_detail = expected_data["p_in_ru_detail"]
+                p_in_ordc_detail = expected_data["p_in_ordc_detail"]
+                p_in_inertia_detail = expected_data["p_in_inertia_detail"]
+                p_in_rd_detail = expected_data["p_in_rd_detail"]
+                p_out_ru_detail = expected_data["p_out_ru_detail"]
+                p_out_ordc_detail = expected_data["p_out_ordc_detail"]
+                p_out_inertia_detail = expected_data["p_out_inertia_detail"]
+                p_out_rd_detail = expected_data["p_out_rd_detail"]
+
+                @info "Saving NEW format expected market data for $(investor_name) iteration year $(iteration_year)"
+                h5_data_path = joinpath(base_path, investor_name, "expected_market_data", "$(scenario_name)_year_$(iteration_year).h5")
+                save_expected_market_data(h5_data_path,
+                capacity_price, energy_price, reserve_price, rec_price, inertia_price,
+                capacity_factors, total_utilization, capacity_accepted_perc,
+                new_options, new_options_by_type,
+                REC_slack, REC_supply, REC_demand,
+                rps_compliant_projects, rec_requirement,
+                investment, retirement,
+                max_new_options, max_gen, demand_e, rep_hour_weight,
+                p_e_print, in_flow_print, out_flow_print, v_e_print, p_in_print,
+                linepowerlimit, rec_correction, p_e_storage_print,
+                zone_storage, zone_projects, lines_to_zone, lines_from_zone,
+                init_storage, p_e_detail, remaining_buildtime,
+                projects, generator_projects, storage_projects,
+                reserve_up_products, ordc_products, reserve_down_products,
+                p_in_ru_detail, p_in_ordc_detail, p_in_inertia_detail, p_in_rd_detail,
+                p_out_ru_detail, p_out_ordc_detail, p_out_inertia_detail, p_out_rd_detail,
+            )
+            end
+        end
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# realized_market_data  (standalone .h5 file per simulation year)
+#
+# Additional private helpers:
+#   _save_nested_dict_str_matrix! / _load_nested_dict_str_matrix
+#       Dict{String, Dict{String, Matrix{Float64}}}  — reserve_perc_{md/uc/ed}
+#   _save_supply_curve! / _load_supply_curve
+#       Vector{Vector{Union{String,Float64}}} with rows [name, val1, val2]
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Outer key → inner key → 2-D Float64 matrix.
+function _save_nested_dict_str_matrix!(g::HDF5.Group, d)
+    outer_keys = collect(String, keys(d))
+    write(g, "outer_keys", outer_keys)
+    for ok in outer_keys
+        og = create_group(g, ok)
+        inner = d[ok]
+        inner_keys = collect(String, keys(inner))
+        write(og, "inner_keys", inner_keys)
+        for ik in inner_keys
+            write(og, ik, Matrix{Float64}(inner[ik]))
+        end
+    end
+end
+
+function _load_nested_dict_str_matrix(g::HDF5.Group)
+    outer_keys = read(g, "outer_keys")
+    return Dict(
+        ok => begin
+            og = g[ok]
+            inner_keys = read(og, "inner_keys")
+            Dict(ik => read(og, ik) for ik in inner_keys)
+        end
+        for ok in outer_keys
+    )
+end
+
+# rec_supply_curve rows: [name::String, val1::Float64, val2::Float64]
+function _save_supply_curve!(g::HDF5.Group, sc::Vector)
+    n = length(sc)
+    write(g, "n", n)
+    if n == 0
+        return
+    end
+    write(g, "names",  String[row[1] for row in sc])
+    ncols = length(sc[1]) - 1   # number of float columns
+    write(g, "ncols", ncols)
+    for c in 1:ncols
+        write(g, "col$(c)", Float64[row[c + 1] for row in sc])
+    end
+end
+
+function _load_supply_curve(g::HDF5.Group)
+    n = read(g, "n")
+    n == 0 && return Vector{Union{String, Float64}}[]
+    names = read(g, "names")
+    ncols = read(g, "ncols")
+    cols = [read(g, "col$(c)") for c in 1:ncols]
+    return [Union{String, Float64}[names[i], [cols[c][i] for c in 1:ncols]...] for i in 1:n]
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+    save_realized_market_data(path, <all 30 actual-market variables>)
+
+Write the outputs of one year's actual market clearing to a standalone HDF5
+file at `path`.  The file is separate from simulation_data_year_N.h5.
+"""
+function save_realized_market_data(path::String,
+    capacity_price,
+    energy_price_ed,
+    energy_price_uc,
+    energy_price_md,
+    reserve_price_ed,
+    reserve_price_uc,
+    reserve_price_md,
+    rec_price,
+    inertia_price,
+    capacity_factors_md,
+    capacity_factors_uc,
+    capacity_factors_ed,
+    reserve_perc_md,
+    reserve_perc_uc,
+    reserve_perc_ed,
+    capacity_accepted_bids,
+    rec_accepted_bids,
+    inertia_perc,
+    start_up_costs,
+    shut_down_costs,
+    energy_voll,
+    energy_voll_uc,
+    energy_voll_md,
+    reserve_voll,
+    reserve_voll_uc,
+    reserve_voll_md,
+    inertia_voll,
+    rec_supply_curve,
+    rec_energy_requirment,
+    cet_achieved_ratio,
+)
+    isdir(dirname(path)) || mkpath(dirname(path))
+    h5open(path, "w") do f
+        attributes(f)["schema_version"] = SCHEMA_VERSION
+
+        save_axisarray!(create_group(f, "capacity_price"), capacity_price)
+        save_axisarray!(create_group(f, "energy_price_ed"), energy_price_ed)
+        save_axisarray!(create_group(f, "energy_price_uc"), energy_price_uc)
+        save_axisarray!(create_group(f, "energy_price_md"), energy_price_md)
+
+        _save_dict_str_matrix!(create_group(f, "reserve_price_ed"), reserve_price_ed)
+        _save_dict_str_matrix!(create_group(f, "reserve_price_uc"), reserve_price_uc)
+        _save_dict_str_matrix!(create_group(f, "reserve_price_md"), reserve_price_md)
+
+        save_axisarray!(create_group(f, "rec_price"),      rec_price)
+        save_axisarray!(create_group(f, "inertia_price"),  inertia_price)
+
+        _save_dict_str_matrix!(create_group(f, "capacity_factors_md"), capacity_factors_md)
+        _save_dict_str_matrix!(create_group(f, "capacity_factors_uc"), capacity_factors_uc)
+        _save_dict_str_matrix!(create_group(f, "capacity_factors_ed"), capacity_factors_ed)
+
+        _save_nested_dict_str_matrix!(create_group(f, "reserve_perc_md"), reserve_perc_md)
+        _save_nested_dict_str_matrix!(create_group(f, "reserve_perc_uc"), reserve_perc_uc)
+        _save_nested_dict_str_matrix!(create_group(f, "reserve_perc_ed"), reserve_perc_ed)
+
+        _save_dict_str_float!(create_group(f, "capacity_accepted_bids"), capacity_accepted_bids)
+        _save_dict_str_float!(create_group(f, "rec_accepted_bids"),      rec_accepted_bids)
+
+        _save_dict_str_matrix!(create_group(f, "inertia_perc"),   inertia_perc)
+        _save_dict_str_matrix!(create_group(f, "start_up_costs"), start_up_costs)
+        _save_dict_str_matrix!(create_group(f, "shut_down_costs"), shut_down_costs)
+
+        save_axisarray!(create_group(f, "energy_voll"),    energy_voll)
+        save_axisarray!(create_group(f, "energy_voll_uc"), energy_voll_uc)
+        save_axisarray!(create_group(f, "energy_voll_md"), energy_voll_md)
+
+        _save_dict_str_matrix!(create_group(f, "reserve_voll"),    reserve_voll)
+        _save_dict_str_matrix!(create_group(f, "reserve_voll_uc"), reserve_voll_uc)
+        _save_dict_str_matrix!(create_group(f, "reserve_voll_md"), reserve_voll_md)
+
+        save_axisarray!(create_group(f, "inertia_voll"), inertia_voll)
+
+        _save_supply_curve!(create_group(f, "rec_supply_curve"), rec_supply_curve)
+        write(f, "rec_energy_requirment", Float64(rec_energy_requirment))
+        write(f, "cet_achieved_ratio",    Float64(cet_achieved_ratio))
+    end
+end
+
+"""
+    load_realized_market_data(path) -> Dict{String, Any}
+
+Read a realized market data file written by `save_realized_market_data`.
+Returns a `Dict{String, Any}` with the same keys as the old JLD2 format.
+"""
+function load_realized_market_data(path::String)
+    h5open(path, "r") do f
+        return Dict{String, Any}(
+            "capacity_price"        => load_axisarray(f["capacity_price"]),
+            "energy_price_ed"       => load_axisarray(f["energy_price_ed"]),
+            "energy_price_uc"       => load_axisarray(f["energy_price_uc"]),
+            "energy_price_md"       => load_axisarray(f["energy_price_md"]),
+            "reserve_price_ed"      => _load_dict_str_matrix(f["reserve_price_ed"]),
+            "reserve_price_uc"      => _load_dict_str_matrix(f["reserve_price_uc"]),
+            "reserve_price_md"      => _load_dict_str_matrix(f["reserve_price_md"]),
+            "rec_price"             => load_axisarray(f["rec_price"]),
+            "inertia_price"         => load_axisarray(f["inertia_price"]),
+            "capacity_factors_md"   => _load_dict_str_matrix(f["capacity_factors_md"]),
+            "capacity_factors_uc"   => _load_dict_str_matrix(f["capacity_factors_uc"]),
+            "capacity_factors_ed"   => _load_dict_str_matrix(f["capacity_factors_ed"]),
+            "reserve_perc_md"       => _load_nested_dict_str_matrix(f["reserve_perc_md"]),
+            "reserve_perc_uc"       => _load_nested_dict_str_matrix(f["reserve_perc_uc"]),
+            "reserve_perc_ed"       => _load_nested_dict_str_matrix(f["reserve_perc_ed"]),
+            "capacity_accepted_bids"=> _load_dict_str_float(f["capacity_accepted_bids"]),
+            "rec_accepted_bids"     => _load_dict_str_float(f["rec_accepted_bids"]),
+            "inertia_perc"          => _load_dict_str_matrix(f["inertia_perc"]),
+            "start_up_costs"        => _load_dict_str_matrix(f["start_up_costs"]),
+            "shut_down_costs"       => _load_dict_str_matrix(f["shut_down_costs"]),
+            "energy_voll"           => load_axisarray(f["energy_voll"]),
+            "energy_voll_uc"        => load_axisarray(f["energy_voll_uc"]),
+            "energy_voll_md"        => load_axisarray(f["energy_voll_md"]),
+            "reserve_voll"          => _load_dict_str_matrix(f["reserve_voll"]),
+            "reserve_voll_uc"       => _load_dict_str_matrix(f["reserve_voll_uc"]),
+            "reserve_voll_md"       => _load_dict_str_matrix(f["reserve_voll_md"]),
+            "inertia_voll"          => load_axisarray(f["inertia_voll"]),
+            "rec_supply_curve"      => _load_supply_curve(f["rec_supply_curve"]),
+            "rec_energy_requirment" => read(f, "rec_energy_requirment"),
+            "cet_achieved_ratio"    => read(f, "cet_achieved_ratio"),
+        )
     end
 end
