@@ -26,6 +26,7 @@ they must be saved separately with PSY.to_json.
 """
 function save_simulation(simulation::AgentSimulation, save_dir::String, iteration_year::Int)
     @info "Saving simulation to directory: $save_dir"
+    isdir(save_dir) || mkpath(save_dir)
     h5_path = joinpath(save_dir, "simulation_data_year_$(iteration_year).h5")
     h5open(h5_path, "w") do f
         attributes(f)["schema_version"] = SCHEMA_VERSION
@@ -1534,17 +1535,21 @@ end
 function save_Sienna_systems(simulation::AgentSimulation, result_path::String, iteration_year::Int)
 
     scenario_names = String.(get_all_scenario_names(get_data_dir(get_case(simulation))))
-    ##TODO: Check if previous systems already exist to avoid overwriting
-    for year in 1:iteration_year
+    # Save from iteration_year onward only. Past years were already saved at their own
+    # checkpoints and are immutable (finish_construction! only modifies construction_year:end,
+    # never retroactively changes past-year systems).
+    all_years = length(simulation.system_MDs)
+    for year in iteration_year:all_years
         @info "Saving systems for year $(year) to checkpoint."
         PSY.to_json(simulation.system_MDs[year], joinpath(result_path, "sys_MD_year$(year).json"), force = true)
         PSY.to_json(simulation.system_UCs[year], joinpath(result_path, "sys_UC_year$(year).json"), force = true)
         PSY.to_json(simulation.system_EDs[year], joinpath(result_path, "sys_ED_year$(year).json"), force = true)
-
-        for scenario in scenario_names
-            PSY.to_json(simulation.system_PRAS[scenario],
-            joinpath(get_results_dir(simulation), "sys_PRAS_$(scenario)_year$(year).json"), force = true)
-        end
+    end
+    # PRAS is a single object per scenario (not year-indexed). Only save for iteration_year;
+    # load_sienna_systems! is updated to load only restore_year instead of 1:restore_year.
+    for scenario in scenario_names
+        PSY.to_json(simulation.system_PRAS[scenario],
+        joinpath(get_results_dir(simulation), "sys_PRAS_$(scenario)_year$(iteration_year).json"), force = true)
     end
 end
 
@@ -1557,6 +1562,7 @@ end
 # Derating factors  (DataFrame → HDF5)
 # ─────────────────────────────────────────────────────────────────────────────
 function save_derating_factors(path::String, df::DataFrames.DataFrame)
+    isdir(dirname(path)) || mkpath(dirname(path))
     h5open(path, "w") do f
         attributes(f)["schema_version"] = SCHEMA_VERSION
         save_dataframe!(create_group(f, "derating_factors"), df)
@@ -1573,6 +1579,7 @@ end
 # Clean energy percentage vector  (Vector{Float64} → HDF5)
 # ─────────────────────────────────────────────────────────────────────────────
 function save_clean_energy_percentage(path::String, v::Vector{Float64})
+    isdir(dirname(path)) || mkpath(dirname(path))
     h5open(path, "w") do f
         attributes(f)["schema_version"] = SCHEMA_VERSION
         write(f, "clean_energy_percentage", v)
@@ -1591,6 +1598,7 @@ end
 # Timestamps are stored as ISO8601 strings; no round-trip load is needed.
 # ─────────────────────────────────────────────────────────────────────────────
 function save_shortfall_data(path::String, sf)
+    isdir(dirname(path)) || mkpath(dirname(path))
     h5open(path, "w") do f
         attributes(f)["schema_version"] = SCHEMA_VERSION
         g = create_group(f, "shortfall")
@@ -1639,12 +1647,12 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
 
         sys_ED = PSY.System(joinpath(result_path, "sys_ED_year$(year).json"), runchecks = false)
         push!(simulation.system_EDs, sys_ED)
-
-        for scenario in scenarios
-            @info "Restoring PRAS system for scenario $(scenario) in year $(year) from checkpoint."
-            sys_PRAS = PSY.System(joinpath(result_path, "sys_PRAS_$(scenario)_year$(year).json"), runchecks = false)
-            simulation.system_PRAS[scenario] = sys_PRAS
-        end
+    end
+    # PRAS is not year-indexed; only the restore_year file exists and is needed.
+    for scenario in scenarios
+        @info "Restoring PRAS system for scenario $(scenario) from year $(restore_year) checkpoint."
+        sys_PRAS = PSY.System(joinpath(result_path, "sys_PRAS_$(scenario)_year$(restore_year).json"), runchecks = false)
+        simulation.system_PRAS[scenario] = sys_PRAS
     end
 
     simulation_years = get_total_horizon(case)
@@ -1674,67 +1682,53 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
     end
 
     for sim_year in restore_year+1:simulation_years
-        @info "reading systems for sim year $(sim_year) from files"
-        MD_sys_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
-        "sim_year_$(sim_year)", "MD_sys_EMIS_$(MD_horizon)hor_$(MD_interval)int.json")
-        MD_num_forecast_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
-        "sim_year_$(sim_year)", "MD_num_forecast_$(MD_horizon)hor_$(MD_interval)int.txt")
+        md_json = joinpath(result_path, "sys_MD_year$(sim_year).json")
+        uc_json = joinpath(result_path, "sys_UC_year$(sim_year).json")
+        ed_json = joinpath(result_path, "sys_ED_year$(sim_year).json")
 
-        loadyear = DEFAULT_LOAD_YEAR + sim_year
-        weatheryear = loadyear
+        if isfile(md_json) && isfile(uc_json) && isfile(ed_json)
+            # Load from checkpoint: these systems already have investor-constructed devices
+            # from finish_construction! calls in years 1..restore_year, plus all post-load
+            # modifications (fix_multistart_cost_curves!, component removals, renaming, units).
+            @info "Restoring systems for year $(sim_year) from checkpoint."
+            sys_MD = PSY.System(md_json, time_series_directory = scratch_dir, runchecks = runchecks)
+            sys_UC = PSY.System(uc_json, time_series_directory = scratch_dir, runchecks = runchecks)
+            sys_ED = PSY.System(ed_json, time_series_directory = scratch_dir, runchecks = runchecks)
+        else
+            # Fallback: no checkpoint for this year — load base system and re-apply modifications.
+            @info "No checkpoint found for year $(sim_year), reading from constructed_systems."
+            MD_sys_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
+            "sim_year_$(sim_year)", "MD_sys_EMIS_$(MD_horizon)hor_$(MD_interval)int.json")
+            UC_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
+            "sim_year_$(sim_year)",
+            "DA_sys_EMIS_$(UC_horizon)hor_$(UC_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
+            ED_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
+            "sim_year_$(sim_year)", "RT_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
 
-        sys_MD = PSY.System(MD_sys_filename, time_series_directory = scratch_dir, runchecks = runchecks)
-        fix_multistart_cost_curves!(sys_MD);
-        push!(simulation.system_MDs, sys_MD);
+            sys_MD = PSY.System(MD_sys_filename, time_series_directory = scratch_dir, runchecks = runchecks)
+            sys_UC = PSY.System(UC_filename, time_series_directory = scratch_dir, runchecks = runchecks)
+            sys_ED = PSY.System(ED_filename, time_series_directory = scratch_dir, runchecks = runchecks)
 
-        UC_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
-        "sim_year_$(sim_year)",
-        "DA_sys_EMIS_$(UC_horizon)hor_$(UC_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
+            fix_multistart_cost_curves!(sys_MD)
+            fix_multistart_cost_curves!(sys_UC)
+            fix_multistart_cost_curves!(sys_ED)
 
-        sys_UC = PSY.System(UC_filename, time_series_directory = scratch_dir, runchecks = runchecks)
-        fix_multistart_cost_curves!(sys_UC);
-        push!(simulation.system_UCs, sys_UC);
-
-        ED_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
-        "sim_year_$(sim_year)", "RT_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
-        sys_ED = PSY.System(ED_filename, time_series_directory = scratch_dir, runchecks = runchecks)
-        fix_multistart_cost_curves!(sys_ED);
-        push!(simulation.system_EDs, sys_ED);
-
-        # ERCOT specific items
-        removegen_name = ["AUSTIN_1","AUSTIN_2"]
-
-        for sys in [simulation.system_MDs[sim_year], simulation.system_UCs[sim_year], simulation.system_EDs[sim_year]]
-            for d in PSY.get_components(PSY.Generator, sys)
-                if d.name in removegen_name
-                    PSY.remove_component!(sys, d)
+            removegen_name = ["AUSTIN_1","AUSTIN_2"]
+            for sys in [sys_MD, sys_UC, sys_ED]
+                for d in PSY.get_components(PSY.Generator, sys)
+                    d.name in removegen_name && PSY.remove_component!(sys, d)
                 end
+                PSY.remove_component!(sys, PSY.get_component(PSY.VariableReserve, sys, "SPIN"))
+                PSY.remove_component!(sys, PSY.get_component(PSY.VariableReserveNonSpinning, sys, "NONSPIN"))
+                PSY.set_name!(sys, PSY.get_component(PSY.VariableReserve, sys, "REG_DN"), "Reg_Down")
+                PSY.set_name!(sys, PSY.get_component(PSY.VariableReserve, sys, "REG_UP"), "Reg_Up")
+                PSY.set_units_base_system!(sys, PSY.IS.UnitSystem.DEVICE_BASE)
             end
         end
 
-        for sys in [simulation.system_MDs[sim_year], simulation.system_UCs[sim_year], simulation.system_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserve,sys,"SPIN")
-            PSY.remove_component!(sys,d)
-        end
-
-        for sys in [simulation.system_MDs[sim_year], simulation.system_UCs[sim_year], simulation.system_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserveNonSpinning,sys,"NONSPIN")
-            PSY.remove_component!(sys,d)
-        end
-
-        for sys in [simulation.system_MDs[sim_year], simulation.system_UCs[sim_year], simulation.system_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserve,sys,"REG_DN")
-            PSY.set_name!(sys,d,"Reg_Down")
-        end
-
-        for sys in [simulation.system_MDs[sim_year], simulation.system_UCs[sim_year], simulation.system_EDs[sim_year]]
-            d= PSY.get_component(PSY.VariableReserve,sys,"REG_UP")
-            PSY.set_name!(sys,d,"Reg_Up")
-        end
-
-        PSY.set_units_base_system!(simulation.system_MDs[sim_year], PSY.IS.UnitSystem.DEVICE_BASE)
-        PSY.set_units_base_system!(simulation.system_UCs[sim_year], PSY.IS.UnitSystem.DEVICE_BASE)
-        PSY.set_units_base_system!(simulation.system_EDs[sim_year], PSY.IS.UnitSystem.DEVICE_BASE)
+        push!(simulation.system_MDs, sys_MD)
+        push!(simulation.system_UCs, sys_UC)
+        push!(simulation.system_EDs, sys_ED)
     end
 
     # Propagate ThermalMultiStart end-of-year-restore_year states into year restore_year+1 fresh systems
