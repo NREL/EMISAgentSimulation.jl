@@ -284,17 +284,6 @@ function update_delta_irm!(initial_system::PSY.System,
     if !(static_capacity_market)
         capacity_market_year = iteration_year + capacity_forward_years - 1
 
-        #TODO: Clean up temp data saving/loading after debugging
-        temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
-        FileIO.save(joinpath(temp_dir, "active_projects.jld2"), "active_projects", active_projects)
-        FileIO.save(joinpath(temp_dir, "capacity_forward_years.jld2"), "capacity_forward_years", capacity_forward_years)
-        FileIO.save(joinpath(temp_dir, "scenario.jld2"), "scenario", scenario)
-        FileIO.save(joinpath(temp_dir, "iteration_year.jld2"), "iteration_year", iteration_year)
-        FileIO.save(joinpath(temp_dir, "simulation_dir.jld2"), "simulation_dir", simulation_dir)
-        FileIO.save(joinpath(temp_dir, "rt_resolution.jld2"), "rt_resolution", rt_resolution)
-        FileIO.save(joinpath(temp_dir, "simulation_years.jld2"), "simulation_years", simulation_years)
-        to_json(initial_system, joinpath(temp_dir, "initial_system.json"), force = true)
-
         capacity_market_system = create_capacity_mkt_system(initial_system,
             active_projects,
             capacity_forward_years,
