@@ -110,9 +110,9 @@ function create_expected_marketdata(investor_dir::String,
                         "C:/Users/manwar2/Documents/GitRepos/emt-tests/data/simulation_data/results/cem_results.txt"
                      )
 
-    output_file = joinpath(investor_dir, "expected_market_data", "$(get_name(scenario))_year_$(iteration_year).jld2")
+    output_file = joinpath(investor_dir, "expected_market_data", "$(get_name(scenario))_year_$(iteration_year).h5")
 
-    FileIO.save(output_file,
+    save_expected_market_data(output_file,
                      "capacity_price", capacity_price,
                      "energy_price", energy_price,
                      "reserve_price", reserve_price,
@@ -165,9 +165,9 @@ function create_expected_marketdata(investor_dir::String,
                      "p_out_rd_detail", p_out_rd_detail,
         )
 
-    sys_results_file = joinpath(sys_results_dir, investor_name, "expected_market_data", "$(get_name(scenario))_year_$(iteration_year).jld2")
+    sys_results_file = joinpath(sys_results_dir, investor_name, "expected_market_data", "$(get_name(scenario))_year_$(iteration_year).h5")
 
-    FileIO.save(sys_results_file,
+    save_expected_market_data(sys_results_file,
                      "capacity_price", capacity_price,
                      "energy_price", energy_price,
                      "reserve_price", reserve_price,

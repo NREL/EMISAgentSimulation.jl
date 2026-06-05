@@ -46,13 +46,13 @@
         parallel_scenarios: Whether each investor's price prediction scenarios are to be parallelized.
 """
 
-struct CaseDefinition
+mutable struct CaseDefinition
     name::String
     base_dir::String
     sys_dir::String
     scratch_dir::String
     outage_dir::String
-    solver::JuMP.MOI.OptimizerWithAttributes
+    solver::Union{JuMP.MOI.OptimizerWithAttributes, Nothing}
     siip_market_clearing::Bool
     pcm_scenario::String
     start_year::Int64
@@ -230,7 +230,7 @@ function CaseDefinition(name::String,
                         sys_dir::String,
                         scratch_dir::String,
                         outage_dir::String,
-                        solver::JuMP.MOI.OptimizerWithAttributes;
+                        solver::Union{JuMP.MOI.OptimizerWithAttributes, Nothing} = nothing,;
                         siip_market_clearing::Bool = true,
                         pcm_scenario::String = "scenario_1",
                         start_year::Int64 = 2020,
@@ -325,6 +325,8 @@ function CaseDefinition(name::String,
                    ed_interval,
                    md_market,)
 end
+
+set_solver!(case::CaseDefinition, solver) = (case.solver = solver)
 
 get_base_dir(case::CaseDefinition) = case.base_dir
 get_sys_dir(case::CaseDefinition) = case.sys_dir

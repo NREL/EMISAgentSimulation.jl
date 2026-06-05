@@ -33,8 +33,8 @@ function run_investor_iteration(investor::Investor,
 
     for scenario in scenarios
         scenario_name = get_name(scenario)
-        output_file = joinpath(investor_dir, "expected_market_data", "$(scenario_name)_year_$(iteration_year).jld2")
-        expected_data = FileIO.load(output_file)
+        output_file = joinpath(investor_dir, "expected_market_data", "$(scenario_name)_year_$(iteration_year).h5")
+        expected_data = load_expected_market_data(output_file)
 
         set_energy_price!(market_prices, scenario_name, expected_data["energy_price"])
 

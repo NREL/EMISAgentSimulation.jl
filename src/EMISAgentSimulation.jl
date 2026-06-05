@@ -390,6 +390,7 @@ include("utils/conversion_utils.jl")       # Define new convert functions for ch
 include("utils/read_and_write_utils.jl")   # Read and write utils.
 include("utils/parallel_utils.jl")         # Utils for parallelizing price prediction runs.
 include("utils/finance_utils.jl")          # Functions for calculating adjusted CAPEX and WACC
+include("utils/save_load_utils.jl")        # Functions for saving and loading simulation data into .h5 files
 
 #Include files containing functions for creating the simulation structs from the given data.
 include("struct_creators/simulation_structs/product_creator.jl")

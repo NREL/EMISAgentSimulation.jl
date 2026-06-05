@@ -260,9 +260,9 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
     ################# Write actual market clearing data ################################################
 
-    output_file = joinpath(results_dir, "realized_market_data", "year_$(iteration_year).jld2")
+    output_file = joinpath(results_dir, "realized_market_data", "year_$(iteration_year).h5")
 
-    FileIO.save(output_file,
+    save_realized_market_data(output_file,
                      "capacity_price", capacity_price,
                      "energy_price_ed", energy_price_ed,
                      "energy_price_uc", energy_price_uc,

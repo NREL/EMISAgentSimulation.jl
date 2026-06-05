@@ -83,9 +83,9 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
             for scenario in scenario_names
                 derating_factors = read_data(joinpath(get_data_dir(case), "markets_data", "derating_data", scenario, "derating_dict.csv"))
 
-                output_file = joinpath(get_results_dir(simulation), "derating_data", scenario, "derating_data_year_$(iteration_year).jld2")
+                output_file = joinpath(get_results_dir(simulation), "derating_data", scenario, "derating_data_year_$(iteration_year).h5")
 
-                FileIO.save(output_file, "derating_factors", derating_factors)
+                save_derating_factors(output_file, derating_factors)
             end
         end
 
@@ -227,7 +227,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         for scenario in keys(sys_PRAS)
             ra_metrics, shortfall = calculate_RA_metrics(deepcopy(sys_PRAS[scenario]),false,get_results_dir(simulation), get_outage_dir(case), iteration_year)
-            FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_$(scenario)_year$(iteration_year).jld2"), "shortfall_data", shortfall)
+            save_shortfall_data(joinpath(get_results_dir(simulation), "shortfall_data_$(scenario)_year$(iteration_year).h5"), shortfall)
             println(ra_metrics)
             set_metrics!(get_resource_adequacy(simulation)[scenario], iteration_year, ra_metrics)
         end
@@ -290,9 +290,9 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         for scenario in scenario_names
             derating_factors = read_data(joinpath(get_data_dir(case), "markets_data", "derating_data", scenario, "derating_dict.csv"))
 
-            output_file = joinpath(get_results_dir(simulation), "derating_data", scenario, "derating_data_year_$(iteration_year+1).jld2")
+            output_file = joinpath(get_results_dir(simulation), "derating_data", scenario, "derating_data_year_$(iteration_year+1).h5")
 
-            FileIO.save(output_file, "derating_factors", derating_factors)
+            save_derating_factors(output_file, derating_factors)
         end
     
         active_projects = get_activeprojects(simulation)
@@ -307,9 +307,9 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         reserve_ts_scaling(simulation, iteration_year)
 
         println("COMPLETED YEAR $(iteration_year)")
-        FileIO.save(joinpath(get_results_dir(simulation), "simulation_data_year$(iteration_year).jld2"), "simulation_data", simulation)
-        FileIO.save(joinpath(get_results_dir(simulation), "clean_energy_percentage_year$(iteration_year).jld2"), "clean_energy_percentage", clean_energy_percentage_vector)
         # FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
+        save_simulation(joinpath(get_results_dir(simulation), "simulation_data_year$(iteration_year).h5"), simulation)
+        save_clean_energy_percentage(joinpath(get_results_dir(simulation), "clean_energy_percentage_year$(iteration_year).h5"), clean_energy_percentage_vector)
     end
 
     final_portfolio = vcat(get_existing.(get_investors(simulation))...)
@@ -318,8 +318,8 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         extrapolate_profits!(project, simulation_years)
     end
 
-    FileIO.save(joinpath(get_results_dir(simulation), "clean_energy_percentage.jld2"), "clean_energy_percentage", clean_energy_percentage_vector)
-    FileIO.save(joinpath(get_results_dir(simulation), "simulation_data.jld2"), "simulation_data", simulation)
+    save_clean_energy_percentage(joinpath(get_results_dir(simulation), "clean_energy_percentage.h5"), clean_energy_percentage_vector)
+    save_simulation(joinpath(get_results_dir(simulation), "simulation_data.h5"), simulation)
 
     return
 end
