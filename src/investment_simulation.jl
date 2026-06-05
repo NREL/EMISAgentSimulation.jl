@@ -139,17 +139,9 @@ function run_agent_simulation(
                     ),
                 )
 
-                output_file = joinpath(
-                    get_results_dir(simulation),
-                    "derating_data",
-                    scenario,
-                    "derating_data_year_$(iteration_year).jld2",
-                )
-
-                FileIO.save(output_file, "derating_factors", derating_factors)
                 save_derating_factors(
                     joinpath(
-                        get_results_dir(simulation),
+                        results_dir,
                         "derating_data",
                         scenario,
                         "derating_data_year_$(iteration_year).h5",
@@ -174,7 +166,13 @@ function run_agent_simulation(
         @info "Resource adequacies: $(resource_adequacies)"
 
         # Parallelize the processing of scenarios using Distributed.pmap
-        # @time resource_adequacy_tuples = Distributed.pmap(parallelize_update_delta_irm!, zip(scenario_names, sys_PRAS_list, active_projects_list, capacity_forward_years_list, resource_adequacies, peak_loads, static_capacity_bools, iteration_years, simulation_years_list, data_dirs, rt_resolutions, results_dirs, outage_dirs))
+        # NOTE: pmap risks OOM because each worker receives a full sys_PRAS dict copy
+        # (all scenarios serialized to each worker). Use sequential loop instead and
+        # rely on --threads auto for PRAS multi-threading in the main process.
+        # @timeit EMIS_TIMER "update_delta_irm" resource_adequacy_tuples = Distributed.pmap(parallelize_update_delta_irm!,
+        # zip(scenario_names, sys_PRAS_list, active_projects_list, capacity_forward_years_list,
+        # resource_adequacies, peak_loads, static_capacity_bools, iteration_years, simulation_years_list,
+        # data_dirs, rt_resolutions, results_dirs, outage_dirs))
 
         resource_adequacy_tuples = []
         for scenario in scenario_names
@@ -376,22 +374,15 @@ function run_agent_simulation(
             ra_metrics, shortfall = @timeit EMIS_TIMER "ra_metrics" calculate_RA_metrics(
                 deepcopy(sys_PRAS[scenario]),
                 false,
-                get_results_dir(simulation),
+                results_dir,
                 get_outage_dir(case),
                 iteration_year,
                 simulation_years = simulation_years,
             )
-            FileIO.save(
-                joinpath(
-                    get_results_dir(simulation),
-                    "shortfall_data_$(scenario)_year$(iteration_year).jld2",
-                ),
-                "shortfall_data",
-                shortfall,
-            )
+
             save_shortfall_data(
                 joinpath(
-                    get_results_dir(simulation),
+                    results_dir,
                     "shortfall_data_$(scenario)_year$(iteration_year).h5",
                 ),
                 shortfall,
@@ -460,19 +451,6 @@ function run_agent_simulation(
          zip(scenario_names, simulations, iteration_years,
         derating_scales, methodologies, ra_metric_list, marginal_cc_switches))
 
-        # for scenario in scenario_names
-        #     @info "Updating derating data for scenario: $scenario"
-        #     @timeit EMIS_TIMER "update_derating" update_simulation_derating_data!(
-        #         simulation,
-        #         scenario,
-        #         iteration_year,
-        #         get_derating_scale(case);
-        #         methodology = get_accreditation_methodology(case),
-        #         ra_metric = get_accreditation_metric(case),
-        #         marginal_cc = get_marginal_cc_switch(case),
-        #         )   
-        # end
-
         for scenario in scenario_names
             derating_factors = read_data(
                 joinpath(
@@ -484,17 +462,9 @@ function run_agent_simulation(
                 ),
             )
 
-            output_file = joinpath(
-                get_results_dir(simulation),
-                "derating_data",
-                scenario,
-                "derating_data_year_$(iteration_year+step_size).jld2",
-            )
-
-            FileIO.save(output_file, "derating_factors", derating_factors)
             save_derating_factors(
                 joinpath(
-                    get_results_dir(simulation),
+                    results_dir,
                     "derating_data",
                     scenario,
                     "derating_data_year_$(iteration_year+step_size).h5",
@@ -522,48 +492,13 @@ function run_agent_simulation(
 
         @timeit EMIS_TIMER "save_year_data" begin
             @info "COMPLETED ITERATION YEAR $(iteration_year)"
-            FileIO.save(
-                joinpath(
-                    results_dir, "simulation_data_year$(iteration_year).jld2",
-                ),
-                "simulation_data",
-                simulation,
-            )
-            FileIO.save(
-                joinpath(
-                    results_dir, "clean_energy_percentage_year$(iteration_year).jld2",
-                ),
-                "clean_energy_percentage",
-                clean_energy_percentage_vector,
-            )
+
             save_clean_energy_percentage(
                 joinpath(results_dir, "clean_energy_percentage_year$(iteration_year).h5"),
                 clean_energy_percentage_vector,
             )
 
-            # Saving with a jld prefix to debug
-            JLD2.jldsave(joinpath(results_dir, "jld_simulation_data_year$(iteration_year).jld2");
-                simulation_data = simulation,
-            )
-
-            JLD2.jldsave(joinpath(results_dir, "jld_clean_energy_percentage_year$(iteration_year).jld2");
-                clean_energy_percentage = clean_energy_percentage_vector,
-            )
-
-            # simulation into h5 and Sienna systems into json files
             save_simulation(simulation, results_dir, iteration_year)
-
-            # PSY.to_json(sys_MDs[iteration_year],
-            #     joinpath(get_results_dir(simulation), "sys_MD_year$(iteration_year).json"), force = true)
-            # PSY.to_json(sys_UCs[iteration_year],
-            #     joinpath(get_results_dir(simulation), "sys_UC_year$(iteration_year).json"), force = true)
-            # PSY.to_json(sys_EDs[iteration_year],
-            #     joinpath(get_results_dir(simulation), "sys_ED_year$(iteration_year).json"), force = true)
-
-            # for scenario in keys(sys_PRAS)
-            #     PSY.to_json(sys_PRAS[scenario],
-            #     joinpath(get_results_dir(simulation), "sys_PRAS_$(scenario)_year$(iteration_year).json"), force = true)
-            # end
         end
 
         # FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
@@ -586,22 +521,12 @@ function run_agent_simulation(
     end
 
     @info "Saving final simulation data and clean energy percentage vector"
-    FileIO.save(
-        joinpath(get_results_dir(simulation), "clean_energy_percentage.jld2"),
-        "clean_energy_percentage",
-        clean_energy_percentage_vector,
-    )
     save_clean_energy_percentage(
-        joinpath(get_results_dir(simulation), "clean_energy_percentage.h5"),
+        joinpath(results_dir, "clean_energy_percentage.h5"),
         clean_energy_percentage_vector,
-    )
-    FileIO.save(
-        joinpath(get_results_dir(simulation), "simulation_data.jld2"),
-        "simulation_data",
-        simulation,
     )
 
-    save_simulation(simulation, get_results_dir(simulation), simulation_years)
+    save_simulation(simulation, results_dir, simulation_years)
 
     @info "EMIS SIMULATION COMPLETED!"
     print_timer(stderr, EMIS_TIMER)
