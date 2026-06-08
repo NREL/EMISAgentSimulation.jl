@@ -21,16 +21,19 @@
 SCHEMA_VERSION = 1
 
 """
-    save_simulation(path, simulation)
+    save_simulation(simulation, save_dir[, iteration_year])
 
-Write an `AgentSimulation` to an HDF5 file at `path`.
+Write an `AgentSimulation` to an HDF5 file inside `save_dir`.
+If `iteration_year` is provided, the file is named `simulation_data_year_<iteration_year>.h5`;
+otherwise it is named `simulation_data.h5`.
 PSY systems (system_MDs, system_UCs, system_EDs, system_PRAS) are NOT written here;
 they must be saved separately with PSY.to_json.
 """
-function save_simulation(simulation::AgentSimulation, save_dir::String, iteration_year::Int)
+function save_simulation(simulation::AgentSimulation, save_dir::String, iteration_year::Union{Int, Nothing}=nothing)
     @info "Saving simulation to directory: $save_dir"
     isdir(save_dir) || mkpath(save_dir)
-    h5_path = joinpath(save_dir, "simulation_data_year_$(iteration_year).h5")
+    h5_filename = isnothing(iteration_year) ? "simulation_data.h5" : "simulation_data_year_$(iteration_year).h5"
+    h5_path = joinpath(save_dir, h5_filename)
     h5open(h5_path, "w") do f
         attributes(f)["schema_version"] = SCHEMA_VERSION
         save_simulation!(f, simulation)
@@ -41,15 +44,19 @@ function save_simulation(simulation::AgentSimulation, save_dir::String, iteratio
 end
 
 """
-    load_simulation(save_dir, restore_year, case) -> AgentSimulation
+    load_simulation(save_dir[, restore_year]) -> AgentSimulation
 
-Reconstruct an `AgentSimulation` from an HDF5 checkpoint.
-`case` is the caller's `CaseDefinition`; its `solver` field is spliced into the
-reconstructed case (the solver cannot be serialized to HDF5).
-PSY systems are not stored in the HDF5 file; callers must reload them separately.
+Reconstruct an `AgentSimulation` from an HDF5 checkpoint in `save_dir`.
+If `restore_year` is provided, reads `simulation_data_year_<restore_year>.h5`;
+otherwise reads `simulation_data.h5`.
+The `solver` field of the embedded `CaseDefinition` is not serialized and will
+be `nothing` after loading — the caller must re-inject it if needed.
+PSY systems are not stored in the HDF5 file; callers must reload them separately
+(e.g. via `load_sienna_systems!`).
 """
-function load_simulation(save_dir::String, restore_year::Int)
-    h5_path = joinpath(save_dir, "simulation_data_year_$(restore_year).h5")
+function load_simulation(save_dir::String, restore_year::Union{Int, Nothing} = nothing)
+    h5_filename = isnothing(restore_year) ? "simulation_data.h5" : "simulation_data_year_$(restore_year).h5"
+    h5_path = joinpath(save_dir, h5_filename)
     h5open(h5_path, "r") do f
         return load_simulation(f)
     end
@@ -65,7 +72,6 @@ function save_case_definition!(g::HDF5.Group, c::CaseDefinition)
     write(g, "sys_dir", get_sys_dir(c))
     write(g, "scratch_dir", get_scratch_dir(c))
     write(g, "outage_dir", get_outage_dir(c))
-    write(g, "timeseries_data_dir", get_timeseries_data_dir(c))
     write(g, "siip_market_clearing", get_siip_market_clearing(c))
     # solver is not serialized — MOI.OptimizerWithAttributes contains Any-typed fields
     write(g, "pcm_scenario", get_pcm_scenario(c))
@@ -110,8 +116,6 @@ function save_case_definition!(g::HDF5.Group, c::CaseDefinition)
     write(g, "ed_horizon", get_ed_horizon(c))
     write(g, "ed_interval", get_ed_interval(c))
     write(g, "md_market", get_md_market(c))
-    write(g, "single_stage", get_single_stage(c))
-    write(g, "step_size", get_step_size(c))
 end
 
 function load_case_definition(g::HDF5.Group)
@@ -121,7 +125,6 @@ function load_case_definition(g::HDF5.Group)
         read(g, "sys_dir"),
         read(g, "scratch_dir"),
         read(g, "outage_dir"),
-        read(g, "timeseries_data_dir"),
         nothing,  # solver — not serialized; caller must re-inject after loading
         read(g, "siip_market_clearing"),
         read(g, "pcm_scenario"),
@@ -166,8 +169,6 @@ function load_case_definition(g::HDF5.Group)
         read(g, "ed_horizon"),
         read(g, "ed_interval"),
         read(g, "md_market"),
-        read(g, "single_stage"),
-        read(g, "step_size"),
     )
 end
 
@@ -1590,9 +1591,7 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
     end
 
     simulation_years = get_total_horizon(case)
-    timeseries_data_dir = get_timeseries_data_dir(case)
     rts_dir = get_sys_dir(case)
-    ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
     runchecks = false
     MD_horizon = get_md_horizon(case)
     MD_interval = get_md_interval(case)

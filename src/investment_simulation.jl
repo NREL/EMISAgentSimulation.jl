@@ -308,7 +308,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
 
         println("COMPLETED YEAR $(iteration_year)")
         # FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
-        save_simulation(joinpath(get_results_dir(simulation), "simulation_data_year$(iteration_year).h5"), simulation)
+        save_simulation(simulation, get_results_dir(simulation), iteration_year)
         save_clean_energy_percentage(joinpath(get_results_dir(simulation), "clean_energy_percentage_year$(iteration_year).h5"), clean_energy_percentage_vector)
     end
 
@@ -319,7 +319,7 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
     end
 
     save_clean_energy_percentage(joinpath(get_results_dir(simulation), "clean_energy_percentage.h5"), clean_energy_percentage_vector)
-    save_simulation(joinpath(get_results_dir(simulation), "simulation_data.h5"), simulation)
+    save_simulation(simulation, get_results_dir(simulation))
 
     return
 end
