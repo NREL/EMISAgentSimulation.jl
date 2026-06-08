@@ -1054,14 +1054,7 @@ function save_tech!(g::HDF5.Group, t::BatteryTech)
         t.output_active_power_limits,
     )
     _save_named_tuple_minmax!(create_group(g, "storage_capacity"), t.storage_capacity)
-    _save_named_tuple_minmax!(
-        create_group(g, "storage_level_limits"),
-        t.storage_level_limits,
-    )
-    write(g, "initial_storage_capacity_level", t.initial_storage_capacity_level)
-    write(g, "rating", t.rating)
     write(g, "soc", t.soc)
-    write(g, "base_power", t.base_power)
     eff_g = create_group(g, "efficiency")
     write(eff_g, "in", t.efficiency.in)
     write(eff_g, "out", t.efficiency.out)
@@ -1160,32 +1153,9 @@ function load_tech(g::HDF5.Group)
             min = read(g["storage_capacity"], "min"),
             max = read(g["storage_capacity"], "max"),
         )
-        sll = (
-            min = read(g["storage_level_limits"], "min"),
-            max = read(g["storage_level_limits"], "max"),
-        )
-        iscl = read(g, "initial_storage_capacity_level")
-        rating = read(g, "rating")
         soc = read(g, "soc")
-        base_power = read(g, "base_power")
         eff = (in = read(g["efficiency"], "in"), out = read(g["efficiency"], "out"))
-        return BatteryTech(
-            type,
-            iapl,
-            oapl,
-            rl,
-            sc,
-            sll,
-            iscl,
-            rating,
-            soc,
-            eff,
-            bus,
-            zone,
-            FOR,
-            MTTR,
-            base_power,
-        )
+        return BatteryTech(type, iapl, oapl, rl, sc, soc, eff, bus, zone, FOR, MTTR)
 
     else
         error("Unknown tech_type: $tt")
@@ -1211,111 +1181,61 @@ function save_operation_cost!(g::HDF5.Group, oc::Nothing)
     attributes(g)["is_nothing"] = true
 end
 
-function save_operation_cost!(g::HDF5.Group, oc::PSY.ThermalGenerationCost)
+function save_operation_cost!(g::HDF5.Group, oc::PSY.ThreePartCost)
     attributes(g)["is_nothing"] = false
-    attributes(g)["cost_type"] = "ThermalGenerationCost"
+    attributes(g)["cost_type"] = "ThreePartCost"
     write(g, "fixed", oc.fixed)
     write(g, "shut_down", oc.shut_down)
     _save_psy_cost_curve!(create_group(g, "variable"), oc.variable)
     su_g = create_group(g, "start_up")
-    if oc.start_up isa NamedTuple
-        attributes(su_g)["is_named_tuple"] = true
-        write(su_g, "hot", oc.start_up.hot)
-        write(su_g, "warm", oc.start_up.warm)
-        write(su_g, "cold", oc.start_up.cold)
-    else
-        attributes(su_g)["is_named_tuple"] = false
-        write(su_g, "value", Float64(oc.start_up))
-    end
+    attributes(su_g)["is_named_tuple"] = false
+    write(su_g, "value", Float64(oc.start_up))
 end
 
-function save_operation_cost!(g::HDF5.Group, oc::PSY.RenewableGenerationCost)
+function save_operation_cost!(g::HDF5.Group, oc::PSY.TwoPartCost)
     attributes(g)["is_nothing"] = false
-    attributes(g)["cost_type"] = "RenewableGenerationCost"
-    write(g, "fixed", oc.fixed)
-    _save_psy_cost_curve!(create_group(g, "variable"), oc.variable)
-    _save_psy_cost_curve!(create_group(g, "curtailment_cost"), oc.curtailment_cost)
-end
-
-function save_operation_cost!(g::HDF5.Group, oc::PSY.HydroGenerationCost)
-    attributes(g)["is_nothing"] = false
-    attributes(g)["cost_type"] = "HydroGenerationCost"
+    attributes(g)["cost_type"] = "TwoPartCost"
     write(g, "fixed", oc.fixed)
     _save_psy_cost_curve!(create_group(g, "variable"), oc.variable)
 end
 
-function _save_psy_cost_curve!(g::HDF5.Group, curve)
-    if isnothing(curve)
-        attributes(g)["is_nothing"] = true
-        return
-    end
-    attributes(g)["is_nothing"] = false
-    vc = PSY.get_value_curve(curve)
-    if vc isa PSY.LinearCurve
+function _save_psy_cost_curve!(g::HDF5.Group, vc::PSY.VariableCost)
+    cost_val = PSY.get_cost(vc)
+    if cost_val isa Float64
         attributes(g)["curve_kind"] = "Linear"
-        write(g, "proportional_term", PSY.get_proportional_term(vc))
-        write(g, "constant_term", PSY.get_constant_term(vc))
+        write(g, "proportional_term", cost_val)
+        write(g, "constant_term", 0.0)
+    elseif cost_val isa Vector && length(cost_val) >= 2
+        attributes(g)["curve_kind"] = "Piecewise"
+        write(g, "x", Float64[p[1] for p in cost_val])
+        write(g, "y", Float64[p[2] for p in cost_val])
     else
-        # Try to extract piecewise breakpoints; if we can't get ≥2, fall back to
-        # zero-cost LinearCurve so the load path stays unambiguous.
-        pts = nothing
-        try
-            extracted = PSY.get_breakpoint_vars(curve)
-            length(extracted) >= 2 && (pts = extracted)
-        catch
-        end
-        if !isnothing(pts)
-            attributes(g)["curve_kind"] = "Piecewise"
-            write(g, "x", Float64[p[1] for p in pts])
-            write(g, "y", Float64[p[2] for p in pts])
-        else
-            attributes(g)["curve_kind"] = "Linear"
-            write(g, "proportional_term", 0.0)
-            write(g, "constant_term", 0.0)
-            @warn "Could not extract ≥2 breakpoints from PSY cost curve; saved as zero-cost LinearCurve"
-        end
+        attributes(g)["curve_kind"] = "Linear"
+        write(g, "proportional_term", 0.0)
+        write(g, "constant_term", 0.0)
+        @warn "Could not extract ≥2 breakpoints from PSY VariableCost; saved as zero-cost Linear"
     end
 end
 
 function load_operation_cost(g::HDF5.Group)
     read_attribute(g, "is_nothing") && return nothing
     ct = read_attribute(g, "cost_type")
-    if ct == "ThermalGenerationCost"
+    if ct == "ThreePartCost"
         fixed = read(g, "fixed")
         shut_down = read(g, "shut_down")
         variable = _load_psy_cost_curve(g["variable"])
-        su_g = g["start_up"]
-        start_up = if read_attribute(su_g, "is_named_tuple")
-            (hot = read(su_g, "hot"), warm = read(su_g, "warm"), cold = read(su_g, "cold"))
-        else
-            read(su_g, "value")
-        end
-        return PSY.ThermalGenerationCost(;
-            variable = variable,
-            fixed = fixed,
-            start_up = start_up,
-            shut_down = shut_down,
-        )
-    elseif ct == "RenewableGenerationCost"
+        start_up = read(g["start_up"], "value")
+        return PSY.ThreePartCost(variable, fixed, start_up, shut_down)
+    elseif ct == "TwoPartCost"
         fixed = read(g, "fixed")
         variable = _load_psy_cost_curve(g["variable"])
-        curtailment_cost = _load_psy_cost_curve(g["curtailment_cost"])
-        return PSY.RenewableGenerationCost(;
-            variable = variable,
-            curtailment_cost = curtailment_cost,
-            fixed = fixed,
-        )
-    elseif ct == "HydroGenerationCost"
-        fixed = read(g, "fixed")
-        variable = _load_psy_cost_curve(g["variable"])
-        return PSY.HydroGenerationCost(; variable = variable, fixed = fixed)
+        return PSY.TwoPartCost(variable, fixed)
     else
         error("Unknown cost_type: $ct")
     end
 end
 
 function _load_psy_cost_curve(g::HDF5.Group)
-    read_attribute(g, "is_nothing") && return nothing
     # curve_kind absent in files saved before this fix → assume Piecewise
     curve_kind = if haskey(HDF5.attributes(g), "curve_kind")
         read_attribute(g, "curve_kind")
@@ -1324,16 +1244,14 @@ function _load_psy_cost_curve(g::HDF5.Group)
     end
     if curve_kind == "Linear"
         prop = read(g, "proportional_term")
-        const_term = read(g, "constant_term")
-        return PSY.CostCurve(PSY.LinearCurve(prop, const_term))
+        return PSY.VariableCost(prop)
     else
         xs = read(g, "x")
         ys = read(g, "y")
-        # Old files may have stored only 1 point → fall back to zero-cost LinearCurve
-        length(xs) < 2 && return PSY.CostCurve(PSY.LinearCurve(0.0, 0.0))
+        # Old files may have stored only 1 point → fall back to zero-cost flat VariableCost
+        length(xs) < 2 && return PSY.VariableCost(0.0)
         pts = [(xs[i], ys[i]) for i in eachindex(xs)]
-        # PiecewiseLinearData is function data; wrap in InputOutputCurve to get a ValueCurve
-        return PSY.CostCurve(PSY.InputOutputCurve(PSY.PiecewiseLinearData(pts)))
+        return PSY.VariableCost(pts)
     end
 end
 
@@ -1624,7 +1542,7 @@ function save_shortfall_data(path::String, sf)
             attributes(g)["nsamples_is_nothing"] = false
             write(g, "nsamples", sf.nsamples)
         end
-        write(g, "region_names", collect(String, sf.regions.names))
+        write(g, "region_names", collect(String, sf.regions))
         write(g, "timestamps", string.(collect(sf.timestamps)))
         write(g, "eventperiod_mean", sf.eventperiod_mean)
         write(g, "eventperiod_std", sf.eventperiod_std)

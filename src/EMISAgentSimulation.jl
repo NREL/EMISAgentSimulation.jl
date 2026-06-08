@@ -290,6 +290,7 @@ import LinearAlgebra
 import PooledArrays
 import PowerSystems
 import PowerSimulations
+using HDF5
 
 # using EMISExtensions
 using PRAS
