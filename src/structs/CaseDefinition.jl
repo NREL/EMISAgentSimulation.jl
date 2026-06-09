@@ -471,12 +471,11 @@ function get_name(case::CaseDefinition)
     return case_name
 
     =#
-    return "$(case.name)_$(get_rps_target(case))_RPS"
+    return case.name
 end
 
 function get_data_dir(case::CaseDefinition)
-    base_dir = get_base_dir(case)
-    case_dir = joinpath(base_dir, get_name(case))
+    case_dir = joinpath(get_base_dir(case), "$(get_name(case))_$(get_rps_target(case))_RPS")
 
     return case_dir
 end

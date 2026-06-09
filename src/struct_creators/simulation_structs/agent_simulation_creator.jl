@@ -270,7 +270,7 @@ This function creates the results directory for the simulated case.
 """
 function make_results_dir(case::CaseDefinition)
 
-    case_name = get_name(case)
+    case_name = "$(get_name(case))_$(get_rps_target(case))_RPS"
 
     results_dir = joinpath(".", "Results", case_name)
     dir_exists(results_dir)
