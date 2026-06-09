@@ -63,9 +63,9 @@ function energy_mkt_clearing(sys_MD::PSY.System,
     # TODO: need to update outage timeseries for MD as well
     # update_PSY_outage_timeseries!(sys_UC, sys_ED,get_results_dir(simulation),base_dir,iteration_year)
 
-    to_json(sys_MD, joinpath(get_results_dir(simulation), "sys_MD_year$(iteration_year).json"), force=true)
-    to_json(sys_UC, joinpath(get_results_dir(simulation), "sys_UC_year$(iteration_year).json"), force=true)
-    to_json(sys_ED, joinpath(get_results_dir(simulation), "sys_ED_year$(iteration_year).json"), force=true)
+    # to_json(sys_MD, joinpath(get_results_dir(simulation), "sys_MD_year$(iteration_year).json"), force=true)
+    # to_json(sys_UC, joinpath(get_results_dir(simulation), "sys_UC_year$(iteration_year).json"), force=true)
+    # to_json(sys_ED, joinpath(get_results_dir(simulation), "sys_ED_year$(iteration_year).json"), force=true)
 
     energy_price_ed,
     energy_price_uc,
