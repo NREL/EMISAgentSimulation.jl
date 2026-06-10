@@ -145,7 +145,8 @@ mutable struct CaseDefinition
                             uc_interval,
                             ed_horizon,
                             ed_interval,
-                            md_market,)
+                            md_market,
+                            skip_data_dir::Bool = false)
 
         @assert total_horizon >= simulation_years
 
@@ -220,7 +221,7 @@ mutable struct CaseDefinition
                    ed_interval,
                    md_market,)
 
-        make_case_data_dir(case)
+        skip_data_dir || make_case_data_dir(case)
         return case
     end
 end

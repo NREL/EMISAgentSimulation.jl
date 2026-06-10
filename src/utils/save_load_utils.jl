@@ -169,6 +169,7 @@ function load_case_definition(g::HDF5.Group)
         read(g, "ed_horizon"),
         read(g, "ed_interval"),
         read(g, "md_market"),
+        true,  # skip_data_dir — directory already exists from original run
     )
 end
 
