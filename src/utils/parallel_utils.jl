@@ -62,6 +62,21 @@ function create_parallel_workers(case::CaseDefinition, hpc::Bool)
 end
 
 """
+Create a dedicated worker for PRAS Monte Carlo with full CPU threading.
+Sets PRAS_WORKER[] so calculate_RA_metrics dispatches to it automatically.
+"""
+function create_pras_worker(hpc::Bool; n_threads::Int = 16)
+    if hpc
+        node = first(split(ENV["SLURM_NODELIST"], ","))
+        workers = Distributed.addprocs([(node, 1)], exeflags="--threads=$(n_threads)")
+    else
+        workers = Distributed.addprocs(1, lazy=false, exeflags="--threads=$(n_threads)")
+    end
+    PRAS_WORKER[] = first(workers)
+    return PRAS_WORKER[]
+end
+
+"""
 This function runs price prediction if investors are parallelized but scenarios are sequential.
 """
 function parallelize_only_investors(investor::Investor,

@@ -113,6 +113,7 @@ export calculate_operating_profit
 export calculate_required_processes
 export chronological_clustering
 export create_parallel_workers
+export create_pras_worker
 export dir_exists
 export leaftypes
 export make_case_data_dir
@@ -466,5 +467,8 @@ include("representative_days/chronological_clustering.jl")
 
 #Include main investment simulation function.
 include("investment_simulation.jl")
+
+#Include definitions
+include("definitions.jl")
 
 end

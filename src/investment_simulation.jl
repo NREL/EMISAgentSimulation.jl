@@ -45,12 +45,15 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
     average_capital_cost_multiplier = Statistics.mean(get_cap_cost_multiplier.(investors))
 
     clean_energy_percentage_vector = zeros(simulation_years)
+    total_sim_time = 0.0
 
     for iteration_year = current_year:simulation_years
 
         yearly_horizon = min(total_horizon - iteration_year + 1, rolling_horizon)
 
-        println("Year $(iteration_year)")
+        t_start = time()
+        ts_now = Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS")
+        @info "Starting iteration year $(iteration_year) @ $(ts_now)"
         set_iteration_year!(simulation, iteration_year)
 
         active_projects = deepcopy(get_activeprojects(simulation))
@@ -306,7 +309,13 @@ function run_agent_simulation(simulation::AgentSimulation, simulation_years::Int
         # reserve_ts_scaling_factor = calculate_reserve_scaling_factor(simulation)
         reserve_ts_scaling(simulation, iteration_year)
 
-        println("COMPLETED YEAR $(iteration_year)")
+        t_end = time()
+        iteration_time_hours = round((t_end - t_start) / 3600, digits=2)
+        total_sim_time += iteration_time_hours
+        ts_now = Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS")
+        @info "Finished iteration year $(iteration_year) @ $(ts_now)"
+        @info "Iteration year $(iteration_year) took $(iteration_time_hours) hours"
+        @info "Total simulation time after completing iteration year $(iteration_year): $(round(total_sim_time, digits=2)) hours"
         # FileIO.save(joinpath(get_results_dir(simulation), "shortfall_data_year$(iteration_year).jld2"), "shortfall_data", shortfall)
         save_simulation(simulation, get_results_dir(simulation), iteration_year)
         save_clean_energy_percentage(joinpath(get_results_dir(simulation), "clean_energy_percentage_year$(iteration_year).h5"), clean_energy_percentage_vector)

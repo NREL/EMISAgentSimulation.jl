@@ -33,8 +33,19 @@ function calculate_RA_metrics(sys::PSY.System,
     total_load = calculate_total_load(sys, 60)
 
     ra_metrics = Dict{String, Float64}()
-    # seed = 3
-    shortfall, gens_avail= @time PRAS.assess(pras_system,  PRAS.SequentialMonteCarlo(samples = samples, seed = seed),  PRAS.Shortfall(),  PRAS.GeneratorAvailability()) 
+    if !isnothing(PRAS_WORKER[])
+        shortfall, gens_avail = Distributed.remotecall_fetch(
+            PRAS_WORKER[], pras_system, samples, seed
+        ) do pras_system, samples, seed
+            PRAS.assess(pras_system,
+                PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
+                PRAS.Shortfall(), PRAS.GeneratorAvailability())
+        end
+    else
+        shortfall, gens_avail = @time PRAS.assess(pras_system,
+            PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
+            PRAS.Shortfall(), PRAS.GeneratorAvailability())
+    end
     @info "Finished PRAS simulation... "
     eue_overall = PRAS.EUE(shortfall)
     lole_overall = PRAS.LOLE(shortfall)
