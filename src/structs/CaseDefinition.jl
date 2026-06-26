@@ -47,15 +47,207 @@
         parallel_scenarios: Whether each investor's price prediction scenarios are to be parallelized.
         step_size: Step size in hours for the simulation.
 """
+# struct CaseDefinition
+#     name::String
+#     base_dir::String
+#     sys_dir::String
+#     scratch_dir::String
+#     outage_dir::String
+#     timeseries_data_dir::String
+#     solver::JuMP.MOI.OptimizerWithAttributes
+#     siip_market_clearing::Bool
+#     pcm_scenario::String
+#     start_year::Int64
+#     total_horizon::Int64
+#     rolling_horizon::Int64
+#     simulation_years::Int64
+#     rep_period_interval::Int64
+#     num_rep_periods::Int64
+#     avg_block_size::Int64
+#     fixed_block_size::Bool
+#     rep_chronology_checkpoint::Int64
+#     da_resolution::Int64
+#     rt_resolution::Int64
+#     rps_target::String
+#     markets::Dict{Symbol, Bool}
+#     ordc_curved::Bool
+#     ordc_unavailability_method::String
+#     reserve_penalty::String
+#     static_capacity_market::Bool
+#     irm_scalar::Float64
+#     accreditation_methodology::String
+#     accreditation_metric::String
+#     marginal_cc_switch::Bool
+#     derating_scale::Float64
+#     mopr::Bool
+#     battery_cap_mkt::Bool
+#     vre_reserves::Bool
+#     heterogeneity::Bool
+#     forecast_type::String
+#     max_carbon_tax_increase::Float64
+#     info_symmetry::Bool
+#     belief_update::Bool
+#     uncertainty::Bool
+#     risk_aversion::Bool
+#     parallel_investors::Bool
+#     parallel_scenarios::Bool
+#     md_horizon::Int64
+#     md_interval::Int64
+#     uc_horizon::Int64
+#     uc_interval::Int64
+#     ed_horizon::Int64
+#     ed_interval::Int64
+#     md_market::Bool
+#     single_stage::Bool
+#     step_size::Int64
 
-struct CaseDefinition
+#     function CaseDefinition(
+#         simulation_settings::Dict{String, String},
+#         solver::MathOptInterface.OptimizerWithAttributes,
+#         dir_dict::Dict{String, String},
+#         markets::Dict{Symbol, Bool},
+#         )
+        
+#         name = simulation_settings["name"]
+#         siip_market_clearing = EAS.parsebool(simulation_settings["siip_market_clearing"])
+#         pcm_scenario = simulation_settings["pcm_scenario"]
+#         start_year = EAS.parseint(simulation_settings["start_year"])
+#         total_horizon = EAS.parseint(simulation_settings["total_horizon"])
+#         rolling_horizon = EAS.parseint(simulation_settings["rolling_horizon"])
+#         simulation_years = EAS.parseint(simulation_settings["simulation_years"])
+#         rep_period_interval = EAS.parseint(simulation_settings["rep_period_interval"])
+#         num_rep_periods = EAS.parseint(simulation_settings["num_rep_periods"])
+#         avg_block_size = EAS.parseint(simulation_settings["avg_block_size"])
+#         fixed_block_size = EAS.parsebool(simulation_settings["fixed_block_size"])
+#         rep_chronology_checkpoint = EAS.parseint(simulation_settings["rep_chronology_checkpoint"])
+#         da_resolution = EAS.parseint(simulation_settings["da_resolution"])
+#         rt_resolution = EAS.parseint(simulation_settings["rt_resolution"])
+#         rps_target = simulation_settings["rps_target"]
+#         ordc_curved = EAS.parsebool(simulation_settings["ordc_curved"])
+#         ordc_unavailability_method = simulation_settings["ordc_unavailability_method"]
+#         reserve_penalty = simulation_settings["reserve_penalty"]
+#         static_capacity_market = EAS.parsebool(simulation_settings["static_capacity_market"])
+#         irm_scalar = EAS.parsefloat(simulation_settings["irm_scalar"])
+#         accreditation_methodology = simulation_settings["accreditation_methodology"]
+#         accreditation_metric = simulation_settings["accreditation_metric"]
+#         marginal_cc_switch = EAS.parsebool(simulation_settings["marginal_cc_switch"])
+#         derating_scale = EAS.parsefloat(simulation_settings["derating_scale"])
+#         mopr = EAS.parsebool(simulation_settings["mopr"])
+#         battery_cap_mkt = EAS.parsebool(simulation_settings["battery_cap_mkt"])
+#         vre_reserves = EAS.parsebool(simulation_settings["vre_reserves"])
+#         heterogeneity = EAS.parsebool(simulation_settings["heterogeneity"])
+#         forecast_type = simulation_settings["forecast_type"]
+#         max_carbon_tax_increase =  EAS.parsefloat(simulation_settings["max_carbon_tax_increase"])
+#         info_symmetry = EAS.parsebool(simulation_settings["info_symmetry"])
+#         belief_update =EAS.parsebool(simulation_settings["belief_update"])
+#         uncertainty = EAS.parsebool(simulation_settings["uncertainty"])
+#         risk_aversion = EAS.parsebool(simulation_settings["risk_aversion"])
+#         parallel_investors = EAS.parsebool(simulation_settings["parallel_investors"])
+#         parallel_scenarios = EAS.parsebool(simulation_settings["parallel_scenarios"])
+#         md_horizon = EAS.parseint(simulation_settings["md_horizon"])
+#         md_interval = EAS.parseint(simulation_settings["md_interval"])
+#         uc_horizon = EAS.parseint(simulation_settings["uc_horizon"])
+#         uc_interval = EAS.parseint(simulation_settings["uc_interval"])
+#         ed_horizon = EAS.parseint(simulation_settings["ed_horizon"])
+#         ed_interval = EAS.parseint(simulation_settings["ed_interval"])
+#         md_market = EAS.parsebool(simulation_settings["multi_day_market"])
+
+#         @assert typeof(name) == String
+#         @assert typeof(siip_market_clearing) == Bool
+
+#         @assert total_horizon >= simulation_years
+#         @assert lowercase(forecast_type) in ["perfect", "imperfect"]
+#         @assert lowercase(rps_target) in ["high", "mid", "low"]
+#         @assert lowercase(reserve_penalty) in ["high", "mid", "low"]
+
+#         if lowercase(forecast_type) == "perfect"
+#             @assert info_symmetry == true
+#             @assert belief_update == false
+#             @assert uncertainty == false
+#             @assert risk_aversion == false
+#         end
+
+#         @assert da_resolution >= rt_resolution
+#         @assert irm_scalar >= 0.0
+
+#         md_horizon > md_interval || error("MD horizon must be greater than MD interval")
+#         uc_horizon > uc_interval || error("UC horizon must be greater than UC interval")
+#         ed_horizon > ed_interval || error("ED horizon must be greater than ED interval")
+
+#         base_dir = dir_dict["base_dir"]
+#         sys_dir = dir_dict["test_system_dir"]
+#         scratch_dir = dir_dict["scratch_dir"]
+#         outage_filepath = dir_dict["outage_filepath"]
+#         timeseries_data_dir = dir_dict["timeseries_data_dir"]
+
+#         # TODO: add assertion to MD, DA, RT horizon and interval
+#         case = new(name,
+#             base_dir,
+#             sys_dir,
+#             scratch_dir,
+#             outage_filepath,
+#             timeseries_data_dir,
+#             solver,
+#             siip_market_clearing,
+#             pcm_scenario,
+#             start_year,
+#             total_horizon,
+#             rolling_horizon,
+#             simulation_years,
+#             rep_period_interval,
+#             num_rep_periods,
+#             avg_block_size,
+#             fixed_block_size,
+#             rep_chronology_checkpoint,
+#             da_resolution,
+#             rt_resolution,
+#             rps_target,
+#             markets,
+#             ordc_curved,
+#             ordc_unavailability_method,
+#             reserve_penalty,
+#             static_capacity_market,
+#             irm_scalar,
+#             accreditation_methodology,
+#             accreditation_metric,
+#             marginal_cc_switch,
+#             derating_scale,
+#             mopr,
+#             battery_cap_mkt,
+#             vre_reserves,
+#             heterogeneity,
+#             forecast_type,
+#             max_carbon_tax_increase,
+#             info_symmetry,
+#             belief_update,
+#             uncertainty,
+#             risk_aversion,
+#             parallel_investors,
+#             parallel_scenarios,
+#             md_horizon,
+#             md_interval,
+#             uc_horizon,
+#             uc_interval,
+#             ed_horizon,
+#             ed_interval,
+#             md_market,
+#             single_stage,
+#             step_size)
+
+#         make_case_data_dir(case)
+#         return case
+#     end
+# end
+
+
+mutable struct CaseDefinition
     name::String
     base_dir::String
     sys_dir::String
     scratch_dir::String
     outage_dir::String
     timeseries_data_dir::String
-    solver::JuMP.MOI.OptimizerWithAttributes
+    solver::Union{JuMP.MOI.OptimizerWithAttributes, Nothing}
     siip_market_clearing::Bool
     pcm_scenario::String
     start_year::Int64
@@ -470,104 +662,13 @@ get_md_market(case::CaseDefinition) = case.md_market
 get_single_stage(case::CaseDefinition) = case.single_stage
 get_step_size(case::CaseDefinition) = case.step_size
 
+set_solver!(case::CaseDefinition, solver) = (case.solver = solver)
+
 function get_name(case::CaseDefinition)
-    #=
-
-    if get_info_symmetry(case)
-        information = "InfoSym"
-    else
-        information = "InfoASym"
-    end
-
-    if get_belief_update(case)
-        update = "UpdateBelief"
-    else
-        update = "NoUpdate"
-    end
-
-    if get_uncertainty(case)
-        uncertainty = "Uncertain"
-    else
-        uncertainty = "Deterministic"
-    end
-
-    if get_risk_aversion(case)
-        risk = "RiskAverse"
-    else
-        risk = "RiskNeutral"
-    end
-
-    case_name = "$(investors)_$(information)_Forecast-$(get_forecast_type(case))_$(uncertainty)_$(update)_$(risk)_$(get_simulation_years(case))years"
-
-    if get_heterogeneity(case)
-        investors = "Het"
-    else
-        investors = "Hom"
-    end
-
-    #New case name
-
-    rps = "$(get_rps_target(case))_RPS"
-
-    if get_markets(case)[:Capacity]
-        capacity = "CapMkt"
-    else
-        capacity = "NoCapMkt"
-    end
-
-    if get_ordc_curved(case)
-        ordc = "with_ORDC"
-    else
-        ordc = "without_ORDC"
-    end
-
-    penalty = "$(get_reserve_penalty(case))_penalty"
-
-    if get_markets(case)[:CarbonTax]
-        carbon = "Carbon_Tax"
-    else
-        carbon = "No_Carbon_Tax"
-    end
-
-    if get_mopr(case)
-        mopr = "MOPR_ON"
-    else
-        mopr = "MOPR_OFF"
-    end
-
-    if get_battery_cap_mkt(case)
-        bat_cap = "BAT_Cap_ON"
-    else
-        bat_cap = "BAT_Cap_OFF"
-    end
-
-    derating_scale = replace("$(get_derating_scale(case))", "." => "_")
-
-    derating = "derating_scale_$(derating_scale)"
-
-    if get_vre_reserves(case)
-        vre_reserves = "VRE_reserves"
-    else
-        vre_reserves = "No_VRE_and Bat_reserves"
-    end
-
-    if get_markets(case)[:Inertia]
-        inertia = "Inertia"
-    else
-        inertia = "No_Inertia"
-    end
-
-    case_name = "$(investors)_$(rps)_$(capacity)_$(ordc)_$(penalty)_$(carbon)_$(derating)_$(mopr)_$(bat_cap)_$(vre_reserves)_$(inertia)"
-
-    return case_name
-
-    =#
-    return "$(case.name)_$(get_rps_target(case))_RPS"
+    return "$(case.name)"
+    # return "$(case.name)_$(get_rps_target(case))_RPS"
 end
 
 function get_data_dir(case::CaseDefinition)
-    base_dir = get_base_dir(case)
-    case_dir = joinpath(base_dir, get_name(case))
-
-    return case_dir
+    return joinpath(get_base_dir(case), get_name(case))
 end

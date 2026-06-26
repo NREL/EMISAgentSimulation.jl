@@ -10,3 +10,4 @@
 *.sh
 *.ipynb
 *.json
+Manifest*.toml

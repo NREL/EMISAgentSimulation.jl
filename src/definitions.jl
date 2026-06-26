@@ -31,4 +31,12 @@ const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
 # File pointers
 const TIMESERIES_DATA_DIR = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/NTP_TimeSeries_Data"
 const POINTER_FILE = Dict(
-    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"),)
+    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"),
+    
+)
+
+
+const OBJ_SCALE = 1 # Scale factor to convert objective function values from $ to millions of dollars
+
+# Reading and writing data
+const SCHEMA_VERSION = 1

@@ -65,7 +65,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     )
 
     num_hours = DataFrames.nrow(load_n_vg_data)
-    num_top_hours = cap_mkt_params.num_top_hours[1] * length(simulation_years)
+    num_top_hours = cap_mkt_params.num_top_hours[1] * simulation_years
 
     existing_vg_power = zeros(num_hours)
 
@@ -468,11 +468,8 @@ function calculate_derating_factors(
     new_types = unique(get_type.(get_tech.(options)))
 
     capacity_forward_years = get_capacity_forward_years(simulation)
-
     capacity_market_year = iteration_year + capacity_forward_years - 1
-
     resource_adequacy = get_resource_adequacy(simulation)
-
     sys_PRAS = get_system_PRAS(simulation)[scenario]
 
     # No deepcopy needed here: create_base_system -> create_capacity_mkt_system performs
@@ -500,22 +497,10 @@ function calculate_derating_factors(
     regional_load_shares = collect(get_regional_load_shares(base_pras_system))
 
     ##TODO: AA remove debug code after validation
-    # @info "Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    # temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff/temp_data"
-    # PSY.to_json(
-    #     base_pras_system,
-    #     joinpath(
-    #         temp_dir,
-    #         "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
-    #     ),
-    # )
-    # PSY.to_json(
-    #     adjusted_base_system,
-    #     joinpath(
-    #         temp_dir,
-    #         "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
-    #     ),
-    # )
+    temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
+    @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
+    PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
+    PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
 
     if marginal_cc
         for zone in zones
