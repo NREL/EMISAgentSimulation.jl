@@ -50,17 +50,30 @@ function create_parallel_workers(case::CaseDefinition, hpc::Bool)
         if hpc
           nodes = split(ENV["SLURM_NODELIST"], ",")
           num_procs = min(Int(ceil(num_workers_required / length(nodes))), 4)
-          threads_per_worker = max(1, Sys.CPU_THREADS ÷ num_procs)
           node_pairs = [(n, num_procs) for n in  nodes]
-          Distributed.addprocs(node_pairs, exeflags="--threads=$(threads_per_worker)")
+          Distributed.addprocs(node_pairs)
         else
           num_workers = min(Int(num_workers_required), 4)
-          threads_per_worker = max(1, Sys.CPU_THREADS ÷ num_workers)
-          Distributed.addprocs(num_workers, lazy=false, exeflags="--threads=$(threads_per_worker)")
+          Distributed.addprocs(num_workers, lazy=false)
         end
     end
 
     return
+end
+
+"""
+Create a dedicated worker for PRAS Monte Carlo with full CPU threading.
+Sets PRAS_WORKER[] so calculate_RA_metrics dispatches to it automatically.
+"""
+function create_pras_worker(hpc::Bool; n_threads::Int = 16)
+    if hpc
+        node = first(split(ENV["SLURM_NODELIST"], ","))
+        workers = Distributed.addprocs([(node, 1)], exeflags="--threads=$(n_threads)")
+    else
+        workers = Distributed.addprocs(1, lazy=false, exeflags="--threads=$(n_threads)")
+    end
+    PRAS_WORKER[] = first(workers)
+    return PRAS_WORKER[]
 end
 
 """
@@ -81,7 +94,8 @@ function parallelize_only_investors(investor::Investor,
                                     yearly_horizon::Int64,
                                     solver::JuMP.MOI.OptimizerWithAttributes,
                                     sys_results_dir::String,
-                                    investor_name::String)
+                                    investor_name::String,
+                                    timeseries_data_dir::String)
 
     investor_name,
     investor_dir,
@@ -122,7 +136,8 @@ function parallelize_only_investors(investor::Investor,
                                 yearly_horizon,
                                 solver,
                                 sys_results_dir,
-                                investor_name)
+                                investor_name,
+                                timeseries_data_dir)
     end
 
     return
@@ -132,9 +147,13 @@ end
 This function runs the construct_ordc function in parallel for different scenarios.
 """
 function parallelize_ordc_construction(args)
-    scenario, sys_UC, data_dir, investors, representative_periods, rep_period_interval, case, iteration_year, rolling_horizon, simulation_years = args
+    scenario, sys_UC, data_dir, investors, representative_periods, rep_period_interval, case, iteration_year, rolling_horizon, simulation_years, time_series_data_dir = args
     for sim_year in collect(iteration_year:min(iteration_year + rolling_horizon - 1, simulation_years))
-        construct_ordc(sys_UC, data_dir, scenario, sim_year, investors, 0, representative_periods[scenario][sim_year], rep_period_interval, get_ordc_curved(case), get_ordc_unavailability_method(case), get_reserve_penalty(case))
+        construct_ordc(sys_UC, data_dir, scenario, sim_year,
+                        investors, 0, representative_periods[scenario][sim_year],
+                        rep_period_interval, get_ordc_curved(case), 
+                        get_ordc_unavailability_method(case), get_reserve_penalty(case),
+                        time_series_data_dir)
     end
 end
 
@@ -176,12 +195,13 @@ end
 This function runs the update_simulation_derating_data! function in parallel for different scenarios.
 """
 function parallelize_update_derating_data(args)
-    scenario, simulation, iteration_year, derating_scale, methodology, ra_metric, marginal_cc = args    
+    scenario, simulation, iteration_year, derating_scale, methodology, ra_metric, marginal_cc, timeseries_data_dir = args    
     update_simulation_derating_data!(
         simulation,
         scenario,
         iteration_year,
         derating_scale,
+        timeseries_data_dir,
         methodology = methodology,
         ra_metric = ra_metric,
         marginal_cc = marginal_cc

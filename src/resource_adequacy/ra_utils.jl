@@ -24,23 +24,28 @@ function calculate_RA_metrics(sys::PSY.System,
 
     @info "Calculating RA metrics for iteration year: $(iteration_year) with system_period_of_interest: $(system_period_of_interest)"
 
-
-    # pras_system = make_pras_system(sys,
-    #                                 system_model="Single-Node",
-    #                                 aggregation="Area",
-    #                                 period_of_interest = system_period_of_interest,
-    #                                 outage_flag=false,
-    #                                 lump_pv_wind_gens=false,
-    #                                 availability_flag=true,
-    #                                 outage_csv_location = correlated_outage_csv_location);
-
     total_load =
         calculate_total_load(sys, DEFAULT_TIME_RESOLUTION, system_period_of_interest)
 
+    # Build PRAS.SystemModel on the main process (needs PSY.System's live SQLite connection).
+    # PRAS.SystemModel is plain arrays — safe to serialize and send to a remote worker.
+    # generate_pras_system is in SiennaPRASInterface (SPI), not in PRASCore (PRAS).
+    pras_system = SPI.generate_pras_system(sys, PSY.Area)
+
     ra_metrics = Dict{String, Float64}()
-    shortfall, gens_avail = @time PRAS.assess(sys, PSY.Area,
-        PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
-        PRAS.Shortfall(), PRAS.GeneratorAvailability())
+    if !isnothing(PRAS_WORKER[])
+        shortfall, gens_avail = Distributed.remotecall_fetch(
+            PRAS_WORKER[], pras_system, samples, seed
+        ) do pras_system, samples, seed
+            PRAS.assess(pras_system,
+                PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
+                PRAS.Shortfall(), PRAS.GeneratorAvailability())
+        end
+    else
+        shortfall, gens_avail = @time PRAS.assess(pras_system,
+            PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
+            PRAS.Shortfall(), PRAS.GeneratorAvailability())
+    end
 
     @info "Finished PRAS simulation... "
     eue_overall = PRAS.EUE(shortfall)
@@ -134,7 +139,8 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     scenario::String,
     target_year::Int64,
     rt_resolution::Int64,
-    simulation_years::Int64)
+    simulation_years::Int64,
+    timeseries_data_dir::String)
 
     @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
 
@@ -156,8 +162,7 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
             availability_df_rt,
             read_data(
                 joinpath(
-                    simulation_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     scenario,
                     "sim_year_$(sim_year)",
                     "Availability",
@@ -194,7 +199,8 @@ function create_capacity_mkt_system(initial_system::PSY.System,
     iteration_year::Int64,
     simulation_dir::String,
     rt_resolution::Int64,
-    simulation_years::Int64)
+    simulation_years::Int64,
+    timeseries_data_dir::String)
 
     @info "Creating Forward Capacity Market System"
     capacity_market_system = deepcopy(initial_system)
@@ -218,7 +224,7 @@ function create_capacity_mkt_system(initial_system::PSY.System,
 
                 add_capacity_market_project!(capacity_market_system, project,
                     simulation_dir, scenario,
-                    capacity_market_year, rt_resolution, simulation_years)
+                    capacity_market_year, rt_resolution, simulation_years, timeseries_data_dir)
                     
             end
         end
@@ -281,6 +287,10 @@ function update_delta_irm!(initial_system::PSY.System,
     results_dir::String,
     outage_dir::String,
     simulation_years::Int64)
+
+    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
+
+
     if !(static_capacity_market)
         capacity_market_year = iteration_year + capacity_forward_years - 1
 
@@ -291,7 +301,8 @@ function update_delta_irm!(initial_system::PSY.System,
             iteration_year,
             simulation_dir,
             rt_resolution,
-            simulation_years)
+            simulation_years,
+            timeseries_data_dir)
 
         ra_targets = get_targets(resource_adequacy)
         delta_irm = 0.0
@@ -371,7 +382,8 @@ function update_delta_irm!(initial_system::PSY.System,
                                 scenario,
                                 capacity_market_year,
                                 rt_resolution,
-                                simulation_years = simulation_years,
+                                simulation_years,
+                                timeseries_data_dir
                             )
                             count += 1
                         end
@@ -440,6 +452,8 @@ function create_base_system(initial_system::PSY.System,
     outage_dir::String,
     rt_resolution::Int64,
     simulation::Union{AgentSimulation, AgentSimulationData})
+    timeseries_data_dir = joinpath(get_results_dir(simulation), "timeseries_data_files")
+    simulation_years = get_simulation_years(get_case(simulation))
     capacity_market_year = iteration_year + capacity_forward_years - 1
 
     capacity_market_system = create_capacity_mkt_system(initial_system,
@@ -449,7 +463,9 @@ function create_base_system(initial_system::PSY.System,
         iteration_year,
         simulation_dir,
         rt_resolution,
-        get_total_horizon(get_case(simulation)))
+        get_total_horizon(get_case(simulation)),
+        timeseries_data_dir
+    )
 
     ra_targets = get_targets(resource_adequacy)
 
@@ -525,6 +541,7 @@ function create_base_system(initial_system::PSY.System,
                             capacity_market_year,
                             rt_resolution,
                             get_total_horizon(get_case(simulation)),
+                            timeseries_data_dir
                         )
                         count += 1
                     end
