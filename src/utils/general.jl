@@ -184,22 +184,23 @@ function update_lifecycle!(project::P,
                            simulation_years::Int64) where P <: Project{Option}
 
         finance_data = get_finance_data(project)
-
         queue_time = length(get_queue_cost(finance_data))
 
         if queue_time + iteration_year <  simulation_years
             set_decision_year!(project, (iteration_year + step_size))
-            @info "Updated decision year to $(get_decision_year(project))"
             set_construction_year!(project, (get_decision_year(project) +
                                             queue_time +
                                             get_lag_time(finance_data)))
-            @info "queue time is $(queue_time), lag time is $(get_lag_time(finance_data))"
-            @info "Updated construction year to $(get_construction_year(project))"
 
             end_life_year = get_construction_year(project) + get_life_time(finance_data)  - 1
             set_end_life_year!(project, end_life_year)
-            @info "life time is $(get_life_time(finance_data))"
-            @info "Updated end life year to $(get_end_life_year(project))"
+
+            @info "Updated lifecycle of project $(get_name(project)) to
+                  decision year: $(get_decision_year(project)),
+                  construction year: $(get_construction_year(project)),
+                 end life year: $(get_end_life_year(project)), 
+                 queue time: $(queue_time), lag time: $(get_lag_time(finance_data)),
+                 life time: $(get_life_time(finance_data))"
 
             set_effective_investment_cost!(project, get_investment_cost(finance_data)[queue_time + iteration_year + step_size])
 
