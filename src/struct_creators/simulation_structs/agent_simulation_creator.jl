@@ -130,7 +130,7 @@ function gather_data(case::CaseDefinition)
     if get_siip_market_clearing(case)
         base_power = BASE_POWER
         scratch_dir = get_scratch_dir(case)
-        
+
         sys_MDs, sys_UCs, sys_EDs, sys_PRAS,
         MD_horizon, MD_interval, UC_horizon,
         UC_interval, ED_horizon, ED_interval =
@@ -430,14 +430,12 @@ function gather_data(case::CaseDefinition)
 
     simulations,
     iteration_years,
-    derating_scales,
     methodologies,
     ra_metric_list,
     marginal_cc_switches = repeat_arguments(
         num_scenarios,
         simulation_data,
         iteration_year,
-        get_derating_scale(case),
         get_accreditation_methodology(case),
         get_accreditation_metric(case),
         get_marginal_cc_switch(case),
@@ -449,7 +447,6 @@ function gather_data(case::CaseDefinition)
             scenarios,
             simulations,
             iteration_years,
-            derating_scales,
             methodologies,
             ra_metric_list,
             marginal_cc_switches,
@@ -474,7 +471,6 @@ function gather_data(case::CaseDefinition)
                 project,
                 data_dir,
                 scenario,
-                get_derating_scale(case),
                 get_marginal_cc_switch(case),
             )
         end

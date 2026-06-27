@@ -11,15 +11,15 @@ function elementwise_ifelse(x, y)
 end
 
 """
-This function calculates the derating data for existing and new renewable generation
-based on top 100 net-load hour methodology.
+Calculates raw (unscaled) capacity credit values for existing and new renewable generation
+and storage using the top-N net-load-hour methodology, then writes them to
+`derating_dict.csv`. Per-type scalars are applied later in `update_derating_factor!`.
 """
 function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulationData},
     simulation_dir::String,
     scenario::String,
     iteration_year::Int64,
     active_projects::Vector{Project},
-    derating_scale::Float64,
     marginal_cc::Bool)
     @info "Calculating derating data using top net load hour methodology - iteration year: $(iteration_year), scenario: $(scenario)"
     cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
@@ -124,7 +124,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
                 gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] -
                 gen_sorted_df[1:num_top_hours, "net_load"]
             derating_factors[:, "existing_$(type_zone_id)"] .= min(
-                sum(load_reduction) * derating_scale / type_zone_max_cap[type_zone_id] /
+                sum(load_reduction) / type_zone_max_cap[type_zone_id] /
                 num_top_hours,
                 1.0,
             )
@@ -148,7 +148,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
             gen_sorted_df[1:num_top_hours, "net_load_with_$(gen_name)"]
 
         derating_factors[:, "new_$(type_zone_id)"] .=
-            min(sum(load_reduction) * derating_scale / gen_cap / num_top_hours, 1.0)
+            min(sum(load_reduction) / gen_cap / num_top_hours, 1.0)
     end
 
     # Storage CC script
@@ -415,15 +415,15 @@ function build_augmented_pras_system(
 end
 
 """
-This function calculates the derating data for existing and new renewable generation
-and storage based on PRAS outcomes.
+Calculates raw (unscaled) capacity credit values for existing and new renewable generation
+and storage using PRAS (ELCC or EFC methodology), then writes them to `derating_dict.csv`.
+Per-type scalars are applied later in `update_derating_factor!`.
 """
 
 function calculate_derating_factors(
     simulation::Union{AgentSimulation, AgentSimulationData},
     scenario::String,
     iteration_year::Int64,
-    derating_scale::Float64,
     methodology::String,
     ra_metric::String,
     marginal_cc::Bool)
@@ -499,8 +499,20 @@ function calculate_derating_factors(
     ##TODO: AA remove debug code after validation
     temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
     @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
-    PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
+    PSY.to_json(
+        base_pras_system,
+        joinpath(
+            temp_dir,
+            "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
+        ),
+    )
+    PSY.to_json(
+        adjusted_base_system,
+        joinpath(
+            temp_dir,
+            "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
+        ),
+    )
 
     if marginal_cc
         for zone in zones
@@ -542,7 +554,7 @@ function calculate_derating_factors(
                         ),
                     )
                     cc_lower, cc_upper = extrema(cc_result)
-                    cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
+                    cc_final = (cc_lower + cc_upper) / (2 * max_cap)
                     derating_factors[!, "new_$(type)_$(zone)"] .= cc_final
                 end
             end
@@ -579,7 +591,7 @@ function calculate_derating_factors(
                     ),
                 )
                 cc_lower, cc_upper = extrema(cc_result)
-                cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
+                cc_final = (cc_lower + cc_upper) / (2 * total_capacity)
 
                 derating_factors[!, "existing_$(type)_$(zone)"] .= cc_final
             end
@@ -633,7 +645,7 @@ function calculate_derating_factors(
             ),
         )
         cc_lower, cc_upper = extrema(cc_result)
-        cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
+        cc_final = (cc_lower + cc_upper) / (2 * total_capacity)
         derating_factors[!, "existing_STOR_$(stor_duration)"] .= cc_final
     end
 
@@ -676,7 +688,7 @@ function calculate_derating_factors(
                 ),
             )
             cc_lower, cc_upper = extrema(cc_result)
-            cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
+            cc_final = (cc_lower + cc_upper) / (2 * max_cap)
             derating_factors[!, "new_STOR_$(stor_duration)"] .= cc_final
         end
 
@@ -701,25 +713,48 @@ function calculate_derating_factors(
 end
 
 """
+Reads the per-type capacity credit scalar from `CC_SCALAR_FILENAME` for the given
+scenario. Returns the value in column `type_key` (row 1) if the file and column exist,
+otherwise returns `1.0` so that missing entries are a no-op.
+"""
+function read_cc_scalar(simulation_dir::String, scenario::String, type_key::String)::Float64
+    filepath = joinpath(
+        simulation_dir,
+        "markets_data",
+        "derating_data",
+        scenario,
+        CC_SCALAR_FILENAME,
+    )
+    if !isfile(filepath)
+        return 1.0
+    end
+    df = read_data(filepath)
+    if type_key in names(df)
+        return df[1, type_key]
+    end
+    return 1.0
+end
+
+"""
 This function does nothing is project is not of ThermalGenEMIS, HydroGenEMIS, RenewableGenEMIS or BatteryEMIS type.
 """
 function update_derating_factor!(project::P,
     simulation_dir::String,
     scenario::String,
-    derating_scale::Float64,
     marginal_cc::Bool,
 ) where {P <: Project{<:BuildPhase}}
     return
 end
 
 """
-This function updates the derating factors of ThermalGenEMIS and HydroGenEMIS projects.
+Updates the derating factors of ThermalGenEMIS and HydroGenEMIS projects.
+Reads the raw derating factor from `derating_dict.csv` and multiplies by the
+per-type scalar from `cc_scalar.csv` (defaults to 1.0 if absent).
 """
 function update_derating_factor!(
     project::Union{ThermalGenEMIS{<:BuildPhase}, HydroGenEMIS{<:BuildPhase}},
     simulation_dir::String,
     scenario::String,
-    derating_scale::Float64,
     marginal_cc::Bool,
 )
     derating_data = read_data(
@@ -732,19 +767,21 @@ function update_derating_factor!(
         ),
     )
     derating_factor = derating_data[1, get_type(get_tech(project))]
+    scalar = read_cc_scalar(simulation_dir, scenario, get_type(get_tech(project)))
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, derating_factor * scalar)
     end
     return
 end
 
 """
-This function updates the derating factors of existing RenewableGenEMIS projects.
+Updates the derating factors of existing RenewableGenEMIS projects.
+Reads the raw CC from `derating_dict.csv` (written unscaled by the calculate step)
+and multiplies by the per-type scalar from `cc_scalar.csv` (defaults to 1.0).
 """
 function update_derating_factor!(project::RenewableGenEMIS{Existing},
     simulation_dir::String,
     scenario::String,
-    derating_scale::Float64,
     marginal_cc::Bool,
 )
     derating_data = read_data(
@@ -766,20 +803,22 @@ function update_derating_factor!(project::RenewableGenEMIS{Existing},
         error("Derating data not found")
     end
 
+    scalar = read_cc_scalar(simulation_dir, scenario, get_type(tech))
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, derating_factor * scalar)
     end
 
     return
 end
 
 """
-This function updates the derating factors of new RenewableGenEMIS projects.
+Updates the derating factors of new/option RenewableGenEMIS projects.
+Reads the raw marginal or average CC from `derating_dict.csv` and multiplies by
+the per-type scalar from `cc_scalar.csv` (defaults to 1.0).
 """
 function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
     simulation_dir::String,
     scenario::String,
-    derating_scale::Float64,
     marginal_cc::Bool,
 )
     derating_data = read_data(
@@ -809,20 +848,23 @@ function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
         end
     end
 
+    scalar = read_cc_scalar(simulation_dir, scenario, get_type(tech))
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, derating_factor * scalar)
     end
 
     return
 end
 
 """
-This function updates the derating factors of Existing BatteryEMIS projects.
+Updates the derating factors of existing BatteryEMIS projects.
+Reads the raw CC from `derating_dict.csv` (written unscaled) and multiplies by the
+duration-based scalar `STOR_N` from `cc_scalar.csv` (defaults to 1.0). No cap
+at 1.0 — scalars above 1.0 are supported.
 """
 function update_derating_factor!(project::BatteryEMIS{Existing},
     simulation_dir::String,
     scenario::String,
-    derating_scale::Float64,
     marginal_cc::Bool,
 )
     tech = get_tech(project)
@@ -842,20 +884,22 @@ function update_derating_factor!(project::BatteryEMIS{Existing},
     )
 
     derating_factor = derating_data[1, project_type]
-    derating_factor = min(derating_factor * derating_scale, 1.0)
+    scalar = read_cc_scalar(simulation_dir, scenario, "STOR_$(duration)")
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, derating_factor * scalar)
     end
     return
 end
 
 """
-This function updates the derating factors of BatteryEMIS projects.
+Updates the derating factors of new/option BatteryEMIS projects.
+Reads the raw CC from `derating_dict.csv` (written unscaled) and multiplies by the
+duration-based scalar `STOR_N` from `cc_scalar.csv` (defaults to 1.0). No cap
+at 1.0 — scalars above 1.0 are supported.
 """
 function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
     simulation_dir::String,
     scenario::String,
-    derating_scale::Float64,
     marginal_cc::Bool,
 )
     tech = get_tech(project)
@@ -879,25 +923,28 @@ function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
         ),
     )
     derating_factor = derating_data[1, project_type]
-    derating_factor = min(derating_factor * derating_scale, 1.0)
+    scalar = read_cc_scalar(simulation_dir, scenario, "STOR_$(duration)")
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, derating_factor * scalar)
     end
     return
 end
 
 """
-This function updates the derating factors of all active projects in the simulation.
+Orchestrates the full derating-factor update for a single scenario and iteration year.
+Dispatches to `calculate_derating_data` (TopNetLoad) or `calculate_derating_factors`
+(ELCC/EFC) to write raw CC values to `derating_dict.csv`, then calls
+`update_derating_factor!` on each active project to apply per-type scalars from
+`cc_scalar.csv` and set the final derating on each product.
 """
 function update_simulation_derating_data!(
     simulation::Union{AgentSimulation, AgentSimulationData},
     scenario::String,
-    iteration_year::Int64,
-    derating_scale::Float64;
+    iteration_year::Int64;
     methodology::String = "ELCC",
     ra_metric::String = "LOLE",
     marginal_cc::Bool = true)
-    @info "Updating derating factors for scenario $(scenario) and iteration year $(iteration_year) using methodology $(methodology) and RA metric $(ra_metric). Marginal CC is set to $(marginal_cc). Derating scale is set to $(derating_scale)."
+    @info "Updating derating factors for scenario $(scenario) and iteration year $(iteration_year) using methodology $(methodology) and RA metric $(ra_metric). Marginal CC is set to $(marginal_cc)."
     data_dir = get_data_dir(get_case(simulation))
     active_projects = get_activeprojects(simulation)
 
@@ -908,7 +955,6 @@ function update_simulation_derating_data!(
             scenario,
             iteration_year,
             active_projects,
-            derating_scale,
             marginal_cc,
         )
     else
@@ -916,7 +962,6 @@ function update_simulation_derating_data!(
             simulation,
             scenario,
             iteration_year,
-            derating_scale,
             methodology,
             ra_metric,
             marginal_cc,
