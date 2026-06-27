@@ -55,23 +55,6 @@ function outage_to_rate(outage_data::Tuple{Float64, Int64})
 end
 
 #######################################################
-# Structs to parse and store the outage information
-#######################################################
-struct outage_data
-    prime_mover::String
-    thermal_fuel::String
-    capacity::Int64
-    FOR::Float64
-    MTTR::Int64
-
-    outage_data(prime_mover  = "PrimeMovers.Default", thermal_fuel ="ThermalFuels.Default", capacity = 100, FOR=0.5,MTTR = 50) =new(prime_mover,thermal_fuel,capacity,FOR,MTTR)
-end 
-
-outage_values =[]
-for row in eachrow(df_outage)
-    push!(outage_values, outage_data(row.PrimeMovers,row.ThermalFuels,row.NameplateLimit_MW,(row.FOR/100),row.MTTR))
-end
-#######################################################
 # Aux Functions
 # Function to get Line Rating
 #######################################################
@@ -144,9 +127,14 @@ function outage_to_rate(outage_data::Tuple{Float64, Int64})
 end
 
 function make_pras_system(sys::PSY.System;
-                          system_model::Union{Nothing, String} = nothing,aggregation::Union{Nothing, String} = nothing,
-                          period_of_interest::Union{Nothing, UnitRange} = nothing,outage_flag=true,lump_pv_wind_gens=false,availability_flag=false, 
-                          outage_csv_location::Union{Nothing, String} = nothing) 
+                          system_model::Union{Nothing, String} = nothing,
+                          aggregation::Union{Nothing, String} = nothing,
+                          period_of_interest::Union{Nothing, UnitRange} = nothing,
+                          outage_flag=true,
+                          lump_pv_wind_gens=false,
+                          availability_flag=false, 
+                          outage_csv_location::Union{Nothing, String} = nothing,
+                          outage_ts_flag = false) 
     """
     make_pras_system(psy_sys,system_model)
     PSY System and System Model ("Single-Node","Zonal") are taken as arguments 
@@ -198,7 +186,7 @@ function make_pras_system(sys::PSY.System;
     sys_ts_types = unique(typeof.(PSY.get_time_series_multiple(sys)));
     # Time series information
     sys_for_int_in_hour = round(Dates.Millisecond(PSY.get_forecast_interval(sys)), Dates.Hour)
-    sys_res_in_hour = round(Dates.Millisecond(PSY.get_time_series_resolution(sys)), Dates.Hour)
+    sys_res_in_hour = round(Dates.Millisecond(PSY.get_time_series_resolutions(sys)[1]), Dates.Hour)
     interval_len = Int(sys_for_int_in_hour.value/sys_res_in_hour.value)
     sys_horizon =  PSY.get_forecast_horizon(sys)
     #######################################################
@@ -245,11 +233,11 @@ function make_pras_system(sys::PSY.System;
     #     error("Not all time series associated with components have scaling factor multipliers. This might lead to discrepancies in time series data in the PRAS System.")
     # end
     # if outage_csv_location is passed, perform some data checks
-    outage_ts_flag = false
-    if (outage_csv_location !== nothing)
-        outage_ts_data,outage_ts_flag = try
-            @info "Parsing the CSV with outage time series data ..."
-            DataFrames.DataFrame(CSV.File(outage_csv_location)), true
+    # outage_ts_flag = true
+    if outage_ts_flag && (outage_csv_location !== nothing) 
+        outage_ts_data = try
+            @info "Parsing the CSV with outage time series data from $(outage_csv_location)..."
+            DataFrames.DataFrame(CSV.File(outage_csv_location))
         catch ex
             error("Couldn't parse the CSV with outage data at $(outage_csv_location).") 
             throw(ex)
@@ -489,12 +477,12 @@ function make_pras_system(sys::PSY.System;
 
         if (outage_ts_flag)
             try
-                # @info "Using FOR time series data for $(PSY.get_name(g)) of type $(gen_categories[idx]). Assuming the mean time to recover (MTTR) is 24 hours to compute the λ and μ time series data ..."
+                @info "Using FOR time series data for $(PSY.get_name(g)) of type $(gen_categories[idx]). Assuming the mean time to recover (MTTR) is 24 hours to compute the λ and μ time series data ..."
                 g_λ_μ_ts_data = outage_to_rate.(zip(outage_ts_data[!,PSY.get_name(g)],fill(24,length(outage_ts_data[!,PSY.get_name(g)]))))
                 λ_gen[idx,:] = getfield.(g_λ_μ_ts_data,:λ)[period_of_interest]
                 μ_gen[idx,:] = getfield.(g_λ_μ_ts_data,:μ)[period_of_interest] # This assumes a mean time to recover of 24 hours.
             catch ex
-                # @warn "FOR time series data for $(PSY.get_name(g)) of type $(gen_categories[idx]) is not available in the CSV. Using nominal outage and recovery probabilities for this generator." 
+                @warn "FOR time series data for $(PSY.get_name(g)) of type $(gen_categories[idx]) is not available in the CSV. Using nominal outage and recovery probabilities for this generator." 
                 λ_gen[idx,:] = fill.(λ,1,N); 
                 μ_gen[idx,:] = fill.(μ,1,N);
             end
@@ -1067,7 +1055,7 @@ function add_csv_time_series!(sys_DA::PSY.System,sys_RT::PSY.System, outage_csv_
     # Timestamps
     #######################################################
     start_datetime_DA = PSY.IS.get_initial_timestamp(first_ts_temp_DA);
-    sys_DA_res_in_hour = PSY.get_time_series_resolution(sys_DA)
+    sys_DA_res_in_hour = PSY.get_time_series_resolutions(sys_DA)[1]
     start_datetime_DA = start_datetime_DA + Dates.Hour((period_of_interest.start-1)*sys_DA_res_in_hour);
     finish_datetime_DA = start_datetime_DA +  Dates.Hour((N-1)*sys_DA_res_in_hour);
     all_timestamps = StepRange(start_datetime_DA, sys_DA_res_in_hour, finish_datetime_DA);
