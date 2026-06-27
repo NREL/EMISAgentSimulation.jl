@@ -45,6 +45,113 @@ end
 
 PSI.should_write_resulting_value(::Type{SSI.StorageEnergyShortageVariable}) = false
 
+# PSI's InitialEnergyLevel IC update propagates the raw solver value with no clamping, unlike
+# DevicePower which has isapprox bounds checks. When Xpress returns EnergyVariable = soc_max + ε
+# (within default FEASTOL ~1e-6), the IC for the next step has soc_max - ic = -ε < 0, making
+# ReserveCoverageConstraint at t=1 a single-constraint IIS. This override clamps to [soc_min, soc_max].
+function PSI.update_initial_conditions!(
+    ics::T,
+    state::PSI.SimulationState,
+    ::Dates.Millisecond,
+) where {
+    T <: Union{
+        Vector{
+            Union{
+                PSI.InitialCondition{PSI.InitialEnergyLevel, Nothing},
+                PSI.InitialCondition{PSI.InitialEnergyLevel, Float64},
+            },
+        },
+        Vector{
+            Union{
+                PSI.InitialCondition{PSI.InitialEnergyLevel, Nothing},
+                PSI.InitialCondition{PSI.InitialEnergyLevel, JuMP.VariableRef},
+            },
+        },
+    },
+}
+    for ic in ics
+        storage = PSI.get_component(ic)
+        var_val = PSI.get_system_state_value(
+            state,
+            PSI.EnergyVariable(),
+            PSI.get_component_type(ic),
+        )
+        raw = var_val[PSI.get_component_name(ic)]
+        capacity = PSY.get_storage_capacity(storage)
+        cf = PSY.get_conversion_factor(storage)
+        limits = PSY.get_storage_level_limits(storage)
+        soc_min_mwh = limits.min * capacity * cf
+        soc_max_mwh = limits.max * capacity * cf
+        clamped = clamp(raw, soc_min_mwh, soc_max_mwh)
+        if clamped != raw
+            @warn "InitialEnergyLevel for $(PSI.get_component_name(ic)) clamped $(raw) → $(clamped) MWh (solver bound violation)"
+        end
+        PSI.set_ic_quantity!(ic, clamped)
+    end
+    return
+end
+
+# DeviceStatus IC override for ThermalBasicUnitCommitment units in the ED.
+# ThermalMultiStart currently uses ThermalBasicDispatch (no DeviceStatus ICs), so this
+# override is a no-op for those units. It remains as a safety net in case the formulation
+# changes, and applies to any other type dispatched here (e.g. ThermalFastStartSIIP if it
+# ever exhibits the same startup-boundary IC issue).
+#
+# Problem: CommitmentConstraint On = IC + Start - Stop can become infeasible if the UC and
+# ED IC chains diverge. Example: ED lookahead sets IC=1, but UC also fixes Start=1, giving
+# On = 1+1-0 = 2 > 1. Fix: if On[τ-1]=0 in decision state (unit was actually off), clamp
+# IC→0 so On = 0+1-0 = 1 ✓. The try/catch handles the UC context where τ-sim_resolution
+# falls outside the decision dataset range.
+const DS = PSI.DeviceStatus
+
+function PSI.update_initial_conditions!(
+    ics::T,
+    state::PSI.SimulationState,
+    sim_resolution::Dates.Millisecond,
+) where {
+    T <: Union{
+        Vector{Union{
+            PSI.InitialCondition{DS, Nothing},
+            PSI.InitialCondition{DS, Float64},
+        }},
+        Vector{
+            Union{
+                PSI.InitialCondition{DS, Nothing},
+                PSI.InitialCondition{DS, JuMP.VariableRef},
+            },
+        },
+    },
+}
+    for ic in ics
+        isnothing(PSI.get_value(ic)) && continue
+        comp_type = PSI.get_component_type(ic)
+        comp_name = PSI.get_component_name(ic)
+        var_val = PSI.get_system_state_value(state, PSI.OnVariable(), comp_type)
+        raw = var_val[comp_name]
+
+        if PSI.get_component(ic) isa PSY.ThermalMultiStart && raw ≈ 1.0
+            try
+                key = PSI.VariableKey(PSI.OnVariable, comp_type)
+                sys_data = PSI.get_system_state_data(state, key)
+                current_ts = PSI.get_update_timestamp(sys_data)
+                prev_ts = current_ts - sim_resolution
+                decision_data = PSI.get_decision_state_data(state, key)
+                prev_val = PSI.get_dataset_value(decision_data, prev_ts)
+                if prev_val[comp_name] ≈ 0.0
+                    @warn "DeviceStatus IC for ThermalMultiStart $comp_name clamped 1.0 → 0.0 (startup at $current_ts: On[$prev_ts]=0)"
+                    PSI.set_ic_quantity!(ic, 0.0)
+                    continue
+                end
+            catch
+                # prev_ts outside decision dataset range (UC context) — use raw IC
+            end
+        end
+
+        PSI.set_ic_quantity!(ic, raw)
+    end
+    return
+end
+
 function adjust_reserve_voll!(sys::PSY.System,
     problem::PSI.OperationModel,
     simulation_dir::String,
@@ -1716,7 +1823,7 @@ function create_simulation(sys_MD::PSY.System,
     push!(siip_system, sys_UC)
 
     @info "Building Sienna simulation..."
-    build_out = PSI.build!(sim; serialize = false)
+    build_out = PSI.build!(sim)
 
     #TODO: not sure if adjust_reserve_voll! function is working.
     # in particular, there does not seem to be additional terms added to the objective function.
