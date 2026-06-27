@@ -14,7 +14,9 @@ function construct_ordc(sys::PSY.System,
     rep_period_interval::Int64,
     ordc_curved::Bool,
     ordc_unavailability_method::String,
-    reserve_penalty::String)
+    reserve_penalty::String,
+    timeseries_data_dir::String)
+
     products = split(
         read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[
             1,
@@ -39,12 +41,12 @@ function construct_ordc(sys::PSY.System,
         generators,
         zonal,
         ordc_unavailability_method,
+        timeseries_data_dir
     )
 
     load_n_vg_df = read_data(
         joinpath(
-            simulation_dir,
-            "timeseries_data_files",
+            timeseries_data_dir,
             scenario,
             "sim_year_$(sim_year)",
             "Net Load Data",
@@ -53,8 +55,7 @@ function construct_ordc(sys::PSY.System,
     )
     load_n_vg_df_rt = read_data(
         joinpath(
-            simulation_dir,
-            "timeseries_data_files",
+            timeseries_data_dir,
             scenario,
             "sim_year_$(sim_year)",
             "Net Load Data",
@@ -94,6 +95,7 @@ function construct_ordc(sys::PSY.System,
             generators,
             MRR_scale,
             zonal,
+            timeseries_data_dir
         )
 
         #println("MRR_$(product): ", MRR)
@@ -166,6 +168,7 @@ function construct_ordc(sys::PSY.System,
                         months,
                         hours,
                         zonal,
+                        timeseries_data_dir,
                     )
                 #println("$(product), $(months_key): error_mean is $(error_mean) & error_var is $(error_var) & meanload is $(meanload)")
                 unavail_mean, unavail_std = construct_gen_unavail_distribution(
@@ -177,6 +180,7 @@ function construct_ordc(sys::PSY.System,
                     conv_unavail_std,
                     months,
                     hours,
+                    timeseries_data_dir,
                 )
                 #println("$(product), $(months_key): unavail_mean is $(unavail_mean) & unavail_std is $(unavail_std)")
 
@@ -305,8 +309,7 @@ function construct_ordc(sys::PSY.System,
 
         write_data(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(sim_year)",
                 "Reserves",
@@ -316,8 +319,7 @@ function construct_ordc(sys::PSY.System,
         )
         write_data(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(sim_year)",
                 "Reserves",
@@ -337,8 +339,7 @@ function construct_ordc(sys::PSY.System,
 
         write_data(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(sim_year)",
                 "Reserves",
@@ -412,7 +413,8 @@ function add_psy_ordc!(simulation_dir::String,
     iteration_year::Int64,
     da_resolution::Int64,
     rt_resolution::Int64,
-    reserve_penalty::String)
+    reserve_penalty::String,
+    timeseries_data_dir::String)
     return
 end
 
@@ -425,6 +427,7 @@ function add_psy_ordc!(simulation_dir::String,
     da_resolution::Int64,
     rt_resolution::Int64,
     reserve_penalty::String,
+    timeseries_data_dir::String
 )
     products = split(
         read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[
@@ -528,8 +531,7 @@ function add_psy_ordc!(simulation_dir::String,
             if type == "ED"
                 product_ts_raw = read_data(
                     joinpath(
-                        simulation_dir,
-                        "timeseries_data_files",
+                        timeseries_data_dir,
                         scenario,
                         "sim_year_$(iteration_year)",
                         "Reserves",
@@ -542,8 +544,7 @@ function add_psy_ordc!(simulation_dir::String,
             elseif type in ["UC", "MD"]
                 product_ts_raw = read_data(
                     joinpath(
-                        simulation_dir,
-                        "timeseries_data_files",
+                        timeseries_data_dir,
                         scenario,
                         "sim_year_$(iteration_year)",
                         "Reserves",

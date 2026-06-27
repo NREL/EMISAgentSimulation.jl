@@ -50,7 +50,7 @@ function create_rts_sys(rts_dir::String,
                         )
 
     ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
-    ntp_ts_data_dir = POINTER_FILE[:NTPS_TS_DATA_DIR]
+    # ntp_ts_data_dir = POINTER_FILE[:NTPS_TS_DATA_DIR]
     runchecks = false
 
     ##TODO: revert back to original system after checking storage capacities
@@ -717,6 +717,17 @@ function create_PRAS_sys_json(
     end
 
     remove_time_series!(sys_PRAS, Deterministic)    
+
+    # # Add GeometricDistributionForcedOutage 
+    # ## TODO: AA: replace with actual FOR/λ
+    # for branch in PSY.get_available_components(PSY.Branch, sys_PRAS)
+    #     outage_data = PSY.GeometricDistributionForcedOutage(;
+    #         outage_transition_probability = 0.01,   # replace with real FOR/λ if available
+    #         mean_time_to_recovery = 24,
+    #     )
+    #     PSY.add_supplemental_attribute!(sys_PRAS, branch, outage_data)
+    # end
+
     to_json(sys_PRAS, output_file, force=true)
 
     return
@@ -771,7 +782,7 @@ end
 function fix_multistart_cost_curves!(sys::PSY.System)
     base_power = PSY.get_base_power(sys)
     for unit in PSY.get_components(PSY.ThermalMultiStart, sys)
-        @info "Checking cost curve for multi-start unit $(PSY.get_name(unit))"
+        # @info "Checking cost curve for multi-start unit $(PSY.get_name(unit))"
         cost = PSY.get_operation_cost(unit)
         vc = PSY.get_variable(cost)
         curve = PSY.get_value_curve(vc)
@@ -780,8 +791,8 @@ function fix_multistart_cost_curves!(sys::PSY.System)
         if curve isa PSY.PiecewisePointCurve
             points = PSY.get_points(curve)
             if points[end].x < pmax_mw
-                @warn "$(PSY.get_name(unit)): PiecewisePointCurve ends at $(points[end].x) MW < Pmax $(pmax_mw) MW — extending"
-                @info "Original points: $(points)"
+                # @warn "$(PSY.get_name(unit)): PiecewisePointCurve ends at $(points[end].x) MW < Pmax $(pmax_mw) MW — extending"
+                # @info "Original points: $(points)"
                 slope = points[end].x > 0 ? points[end].y / points[end].x : 1.0
                 new_points = vcat(points, [(x = pmax_mw, y = pmax_mw * slope)])
                 new_curve = PSY.PiecewisePointCurve(new_points)
@@ -793,11 +804,11 @@ function fix_multistart_cost_curves!(sys::PSY.System)
 
         elseif curve isa PSY.PiecewiseIncrementalCurve
             x_coords = PSY.get_x_coords(curve)
-            if x_coords[end] < pmax_mw
-                @warn "$(PSY.get_name(unit)): PiecewiseIncrementalCurve ends at $(x_coords[end]) MW < Pmax $(pmax_mw) MW — extending"
-                @info "Original x coords: $(x_coords)"
+            if x_coords[end] < pmax_mw - 1e-3 # allow small numerical tolerance
+                # @warn "$(PSY.get_name(unit)): PiecewiseIncrementalCurve ends at $(x_coords[end]) MW < Pmax $(pmax_mw) MW — extending"
+                # @info "Original x coords: $(x_coords)"
                 slopes = PSY.get_slopes(curve)
-                @info "Original slopes: $(slopes)"
+                # @info "Original slopes: $(slopes)"
                 new_x = vcat(x_coords, pmax_mw)
                 new_slopes = vcat(slopes, slopes[end])  # extend with last slope
                 new_curve = PSY.PiecewiseIncrementalCurve(
@@ -808,9 +819,8 @@ function fix_multistart_cost_curves!(sys::PSY.System)
                     new_vc, PSY.get_fixed(cost), PSY.get_start_up(cost), PSY.get_shut_down(cost)
                 ))
             end
-
         else
-            @warn "$(PSY.get_name(unit)): unhandled curve type $(typeof(curve)) — skipping"
+        # @debug "$(PSY.get_name(unit)): $(typeof(curve)) — no extension needed"
         end
     end
 end

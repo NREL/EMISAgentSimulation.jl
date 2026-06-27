@@ -26,7 +26,8 @@ function create_expected_marketdata(investor_dir::String,
                                     yearly_horizon::Int64,
                                     solver::JuMP.MOI.OptimizerWithAttributes,
                                     sys_results_dir::String,
-                                    investor_name::String)
+                                    investor_name::String,
+                                    timeseries_data_dir::String)
 
     system = create_cem_mkt_clr_problem(investor_dir,
                                         sys_data_dir,
@@ -50,7 +51,8 @@ function create_expected_marketdata(investor_dir::String,
                                         average_capital_cost_multiplier,
                                         scenario,
                                         iteration_year,
-                                        yearly_horizon)
+                                        yearly_horizon,
+                                        timeseries_data_dir)
 
     jump_model_dir = joinpath(sys_results_dir, investor_name, "expected_market_data")
 

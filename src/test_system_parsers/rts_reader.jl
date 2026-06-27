@@ -15,7 +15,8 @@ function read_rts(data_dir::String,
                   sim_year::Int64,
                   rep_period_interval::Int64,
                   n_rep_periods::Int64,
-                  rep_checkpoint::Int64)
+                  rep_checkpoint::Int64,
+                  timeseries_data_dir::String)
 
     @assert (start_year - base_year) == size(annual_growth_past)[2]
     
@@ -160,13 +161,13 @@ function read_rts(data_dir::String,
         gen_availability_df_rt[:, existing_generator_data[i, "GEN UID"]] = ones(DataFrames.nrow(gen_availability_df_rt))
     end
 
-    write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Availability"), "DAY_AHEAD_availability.csv", gen_availability_df)
-    write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Availability"), "REAL_TIME_availability.csv", gen_availability_df_rt)
+    write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Availability"), "DAY_AHEAD_availability.csv", gen_availability_df)
+    write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Availability"), "REAL_TIME_availability.csv", gen_availability_df_rt)
 
-    write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data"), "load_n_vg_data.csv", net_load_df)
-    write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data"), "load_n_vg_data_rt.csv", net_load_df_rt)
+    write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Net Load Data"), "load_n_vg_data.csv", net_load_df)
+    write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Net Load Data"), "load_n_vg_data_rt.csv", net_load_df_rt)
 
-    representative_periods, cluster_indices = find_representative_periods(data_dir, test_system_dir, base_dir, scenario, sim_year, rep_period_interval, n_rep_periods)
+    representative_periods, cluster_indices = find_representative_periods(data_dir, test_system_dir, base_dir, scenario, sim_year, rep_period_interval, n_rep_periods, timeseries_data_dir)
 
     scaled_test_sys_load[!, "Period_Number"] = 1:size(scaled_test_sys_load, 1)
     scaled_test_sys_load[!, "Representative_Period"] = add_representative_period.(scaled_test_sys_load[:, "Period_Number"], rep_period_interval)
@@ -226,8 +227,8 @@ function read_rts(data_dir::String,
     select!(scaled_test_sys_load, Not(["Period_Number", "Representative_Period"]))
     select!(rep_load_data, Not(["Period_Number", "Representative_Period"]))
 
-    write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Load"), "load.csv", scaled_test_sys_load)
-    write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Load"), "rep_load.csv", rep_load_data)
+    write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Load"), "load.csv", scaled_test_sys_load)
+    write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Load"), "rep_load.csv", rep_load_data)
 
     system_peak_load = maximum(sum(scaled_test_sys_load[:, zone] for zone in zone_numbers))
 
@@ -243,8 +244,8 @@ function read_rts(data_dir::String,
         select!(scaled_test_system_reserves_data[product], Not(["Period_Number", "Representative_Period"]))
         select!(rep_system_reserves_data[product], Not(["Period_Number", "Representative_Period"]))
 
-        write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Reserves"), "$(product).csv", scaled_test_system_reserves_data[product])
-        write_data(joinpath(data_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Reserves"), "rep_$(product).csv", rep_system_reserves_data[product])
+        write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Reserves"), "$(product).csv", scaled_test_system_reserves_data[product])
+        write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Reserves"), "rep_$(product).csv", rep_system_reserves_data[product])
     end
     
     # Create zonal lines

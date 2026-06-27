@@ -13,7 +13,8 @@ function read_test_system(data_dir::String,
                           sim_year::Int64,
                           rep_period_interval::Int64,
                           n_rep_periods::Int64,
-                          rep_checkpoint::Int64)
+                          rep_checkpoint::Int64,
+                          timeseries_data_dir::String)
 
     test_sys_hour_weight = nothing
     zones = nothing
@@ -43,7 +44,8 @@ function read_test_system(data_dir::String,
                                sim_year,
                                rep_period_interval,
                                n_rep_periods,
-                               rep_checkpoint)
+                               rep_checkpoint,
+                               timeseries_data_dir)
     end
 
     return zones, representative_periods, rep_hour_weight, chron_weights, system_peak_load, test_sys_hour_weight, zonal_lines

@@ -6,15 +6,6 @@ function cem(system::MarketClearingProblem{Z, T},
 
     include(joinpath(@__DIR__, "..", "representative_days", "chronological_clustering.jl"))
 
-    # HiGHS_optimizer = JuMP.optimizer_with_attributes(HiGHS.Optimizer,
-    #                                             "output_flag" => false,
-    #                                             "presolve" => "on",
-    #                                             "solver" => "ipm",   # ipm
-    #                                             "parallel" => "on",
-    #                                             "ipm_optimality_tolerance" => 1e-8,
-    #                                             "run_crossover" => "off",
-    #                                             "mip_rel_gap" => 1e-2)
-
     lines = [line.name for line in system.lines] # Lines
     projects = [project.name for project in system.projects] # Projects
     invperiods = 1:length(system.inv_periods)     # Investment periods
@@ -72,12 +63,9 @@ function cem(system::MarketClearingProblem{Z, T},
     :capacity_eligible, :rec_eligible, :rec_correction,
     :inertia_constant, :synchronous_inertia, :zone])
     life_range = AxisArrays.AxisArray(convert.(Int64, ones(length(projects))), projects)
-
     tech_types = unique(tech_type)
-
     option_projects = String[]
     decided_projects = String[]
-
     option_projects_by_type = Dict(t => Vector{String}() for t in tech_types)
 
     for g in projects
@@ -101,7 +89,6 @@ function cem(system::MarketClearingProblem{Z, T},
     end
 
     social_discount_rate = maximum(project_discount_rate)   # Social discount rate is kept as the max of all projects' discount rates
-
     social_npv_array = [(1 / (1 + social_discount_rate)) ^ p for p in invperiods]
 
     α = AxisArrays.AxisArray(zeros(length(projects)), projects)
@@ -123,11 +110,14 @@ function cem(system::MarketClearingProblem{Z, T},
         end
     end
 
-    capcost_segmentsize, capcost_segmentgrad, capcost_price_points, capcost_numsegments = make_capital_cost_curve(option_projects_by_type,
-                                                                                                              annualized_cap_cost,
-                                                                                                              base_cost_units,
-                                                                                                              max_new_options,
-                                                                                                              capital_cost_multiplier)
+    capcost_segmentsize,
+    capcost_segmentgrad,
+    capcost_price_points,
+    capcost_numsegments = make_capital_cost_curve(option_projects_by_type,
+                                                annualized_cap_cost,
+                                                base_cost_units,
+                                                max_new_options,
+                                                capital_cost_multiplier)
 
     # Populate markets data
     zones = system.zones
@@ -199,7 +189,6 @@ function cem(system::MarketClearingProblem{Z, T},
     ramp_lim_projects = Vector{String}()
 
     for project in projects
-
         if ramp_limits[project] !== nothing
             push!(ramp_lim_projects, project)
         end
@@ -272,7 +261,6 @@ function cem(system::MarketClearingProblem{Z, T},
             start_index = 0
         end
         block_size = avg_block_size
-
         @assert start_index <= avg_block_size
 
         TB, opperiods,
@@ -341,11 +329,9 @@ function cem(system::MarketClearingProblem{Z, T},
     opperiod_map = [[find_index(i, time_blocks[p]) for i in ophours] for p in invperiods]
 
     m = JuMP.Model(solver)
-
-    # m = JuMP.Model(HiGHS_optimizer)
     JuMP.set_optimizer_attribute(m, "PRESOLVE", 1)
-    # INVESTMENT DECISION VARIABLES
 
+    # INVESTMENT DECISION VARIABLES
     JuMP.@variable(m, n[g in projects, p in invperiods] >= 0)  # New units built
     JuMP.@variable(m, n_by_type[type in tech_types, p in invperiods, s in 1:capcost_numsegments[type, p]] >= 0) # New units by technology type for capital cost multiplier
     JuMP.@variable(m, r[g in projects, p in invperiods] >= 0)  # Units retired
@@ -359,7 +345,6 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@variable(m, d_cap[p in invperiods, s in 1:cap_numsegments[p]] >= 0)
 
     # OPERATION DECISION VARIABLES
-
     JuMP.@variable(m, p_e[g in projects, p in invperiods, t in opperiods] >= 0) # Unit energy production [MW]
     JuMP.@variable(m, p_in[g in storage_projects, p in invperiods, t in opperiods] >= 0) # Storage charging [MW]
     JuMP.@variable(m, p_ru[g in projects, rp in reserve_up_products, p in invperiods, t in opperiods] >= 0) # reserve up provided [MW]
@@ -381,7 +366,6 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@variable(m, flow[l in lines, p in invperiods, t in opperiods])     # Line flow
 
     # SHORTFALL VARIABLES
-
     JuMP.@variable(m, v_e[z in zones, p in invperiods, t in opperiods] >= 0) # Load shortfall [MW]
     JuMP.@variable(m, v_ru[rp in reserve_up_products, p in invperiods, t in opperiods] >= 0) # reserve down shortfall [MW]
     JuMP.@variable(m, v_rd[rp in reserve_down_products, p in invperiods, t in opperiods] >= 0) # reserve down shortfall [MW]
@@ -394,11 +378,8 @@ function cem(system::MarketClearingProblem{Z, T},
                            - r[g, p])
 
     JuMP.@expression(m, unitsmustretire[g in projects, p in invperiods], 0 + temp)
-
     JuMP.@expression(m, yearly_cap_cost_decided[g in decided_projects, p in invperiods], 0 + temp)
-
     JuMP.@expression(m, yearly_cap_cost_options[type in tech_types, p in invperiods], 0 + temp ^ 2)
-
     JuMP.@expression(m, yearly_queue_cost[g in projects, p in invperiods], 0 + temp)
 
     # Storage level evolution
@@ -406,7 +387,6 @@ function cem(system::MarketClearingProblem{Z, T},
                     (p_in[g, p, t] * efficiency_in[g] - p_e[g, p, t] / efficiency_out[g]) * block_size_vec[p][t])
 
     for g in projects
-
         min_life_time = min(life_time[g], remaining_life_time[g])
         remaining_queuetime = max(0, remaining_buildtime[g] - build_lead_time[g])
         total_queuetime = length(queue_cost[g])
@@ -419,15 +399,14 @@ function cem(system::MarketClearingProblem{Z, T},
         # Calculate yearly capital costs allowing different technology costs each year
         for p in invperiods
             start_year = max(1, p - remaining_buildtime[g] - min_life_time + 1)
+            for i in start_year:(p - remaining_buildtime[g])
 
-                for i in start_year:(p - remaining_buildtime[g])
-
-                    JuMP.add_to_expression!(yearly_queue_cost[g, p], α[g] * adjusted_queue_cost[g] * n[g, i])
-                    if in(g, decided_projects)
-                        JuMP.add_to_expression!(yearly_cap_cost_decided[g, p], n[g, i] * annualized_cap_cost[g, i + remaining_queuetime])
-                    end
-
+                JuMP.add_to_expression!(yearly_queue_cost[g, p], α[g] * adjusted_queue_cost[g] * n[g, i])
+                if in(g, decided_projects)
+                    JuMP.add_to_expression!(yearly_cap_cost_decided[g, p], n[g, i] * annualized_cap_cost[g, i + remaining_queuetime])
                 end
+
+            end
             if in(g, storage_projects)
                 for t in opperiods
                     if t == 1 || in(t, end_of_period + ones(length(end_of_period)))
@@ -470,8 +449,8 @@ function cem(system::MarketClearingProblem{Z, T},
                               + sum(p_ordc[g, rp, p, t] * marginal_reserve_cost[g][rp] for rp in ordc_products)) * rep_block_weight[p][t] for t in opperiods))
 
     # OBJECTIVE FUNCTION
-
     JuMP.@objective(m, Max,
+    # OBJ_SCALE * (
 
     # Capacity market welfare
     sum(sum(d_cap[p, s] * cap_price_points[p][s] for s in 1:cap_numsegments[p]) * social_npv_array[p] for p in invperiods)
@@ -508,17 +487,15 @@ function cem(system::MarketClearingProblem{Z, T},
 
              - sum(v_inertia[p, t] * price_cap_inertia[p] * rep_block_weight[p][t] * social_npv_array[p]
                 for p in invperiods, t in opperiods))
-
-        )
+        # )
+    )
 
 
     # CONSTRAINTS
-
     JuMP.@constraint(m, maxoptions[g in projects],
         sum(n[g, p] for p in invperiods) - max_new_options[g] <= 0) # Maximum options purchased
 
     for p in invperiods
-
         for type in tech_types
             JuMP.@constraint(m, sum(n_by_type[type, p, s] for s in 1:capcost_numsegments[type, p]) == sum(n[g, p] for g in option_projects_by_type[type]))
 
@@ -635,23 +612,10 @@ function cem(system::MarketClearingProblem{Z, T},
     end
 
     if isempty(first(values(chron_weights)))
-        println("no checkpoints")
-        #= for g in storage_projects
-            println(g)
-            println(max_gen[g])
-            println(max_storage[g])
-            for p in invperiods
-                for t in opperiods
-
-                    #= if in(t, end_of_day)
-                        JuMP.@constraint(m, storage_level[g, p, t] == init_storage[g] * max_storage[g] * unitsdispatchable[g, p])
-                    end =#
-                end
-            end
-        end =#
+        @info "no checkpoints"
     else
         num_chron_checkpoints = size(first(values(chron_weights))s, 1)
-        println("number of chronological checkpoints: $(num_chron_checkpoints)")
+        @info "number of chronological checkpoints: $(num_chron_checkpoints)"
 
         JuMP.@expression(m, chron_storage_level[g in storage_projects, p in invperiods, c in 1:num_chron_checkpoints], 
                         sum((p_in[g, p, t] * efficiency_in[g] - p_e[g, p, t] / efficiency_out[g]) * chron_weights[p][c, t] * block_size_vec[p][t] for t in opperiods))
@@ -674,7 +638,6 @@ function cem(system::MarketClearingProblem{Z, T},
     end
 
     # Market Clearing Constraints:
-
     # Energy market
     JuMP.@constraint(m, energy_market[z in zones, p in invperiods, t in opperiods], # Power balance
         sum(p_e[g ,p, t] for g in zone_projects[z])
@@ -707,41 +670,32 @@ function cem(system::MarketClearingProblem{Z, T},
     JuMP.@constraint(m, inertia_market[p in invperiods, t in opperiods],
         sum(p_inertia[g, p, t] * inertia_constant[g] for g in projects) + v_inertia[p, t] >= inertia_requirement[p])
 
+    _cem_log(msg) = println(stderr, "[CEM worker $(Distributed.myid())] $(Dates.format(Dates.now(), "HH:MM:SS")) | $msg")
 
-    # Storage construction limitation in CEM
-    # for p in invperiods
-    #     for g in storage_projects
-    #         JuMP.@constraint(m, n[g, p] <= 1.0)
-    #     end
-    # end
-
-    #= filename = "jump_model.txt"
-    open(filename, "w") do file
-        write(file, string(m))
-    end =#
-
-    println("Price Projection:")
+    @info "Price Projection:"
     @time JuMP.optimize!(m)
-    println(JuMP.termination_status(m))
-    if Int(JuMP.termination_status(m)) != 1
+    _s1 = JuMP.termination_status(m)
+    @info "Initial solve termination status: $(_s1)"
+    if Int(_s1) != 1
+        @info "Attempting to resolve with PRESOLVE = 0"
         JuMP.set_optimizer_attribute(m, "PRESOLVE", 0)
-        # JuMP.set_optimizer_attribute(m, "presolve", "off")
+        JuMP.set_optimizer_attribute(m, "TIMELIMIT", 7200)
         @time JuMP.optimize!(m)
-        println(JuMP.termination_status(m))
-        # f = open(joinpath(jump_model_dir, "failed_cem_jump_model.txt"),"w"); print(f, m); close(f)
-        # JuMP.compute_conflict!(m)
+        _s2 = JuMP.termination_status(m)
+        @info "Retry-2 (PRESOLVE=0) termination status: $(_s2)"
     end
 
-    println(JuMP.objective_value(m))
+    objective_value = JuMP.objective_value(m) / OBJ_SCALE
+    @info "Objective value: $objective_value"
 
     #Post processing--------------------------------------------------------------------------------------------------------
-    capacity_price = JuMP.dual.(capacity_market)
-    energy_price = JuMP.dual.(energy_market)
-    reserve_up_price = JuMP.dual.(reserve_up_market)
-    reserve_down_price = JuMP.dual.(reserve_down_market)
-    ordc_price = JuMP.dual.(ordc_market)
-    REC_price = JuMP.dual.(rps_compliance)
-    inertia_price = JuMP.dual.(inertia_market)
+    capacity_price = JuMP.dual.(capacity_market) ./ OBJ_SCALE
+    energy_price = JuMP.dual.(energy_market) ./ OBJ_SCALE
+    reserve_up_price = JuMP.dual.(reserve_up_market) ./ OBJ_SCALE
+    reserve_down_price = JuMP.dual.(reserve_down_market) ./ OBJ_SCALE
+    ordc_price = JuMP.dual.(ordc_market) ./ OBJ_SCALE
+    REC_price = JuMP.dual.(rps_compliance) ./ OBJ_SCALE
+    inertia_price = JuMP.dual.(inertia_market) ./ OBJ_SCALE
 
     capacity_factor = Dict([g => zeros(length(invperiods), length(ophours)) for g in projects])
     total_utilization = Dict([g => zeros(length(invperiods), length(ophours)) for g in projects])
@@ -780,7 +734,6 @@ function cem(system::MarketClearingProblem{Z, T},
                 end
             end
         end
-
 
         if in(g, option_projects)
             for i in 0:base_cost_units[g]:max_new_options[g] + base_cost_units[g]
@@ -834,7 +787,6 @@ function cem(system::MarketClearingProblem{Z, T},
     p_out_inertia_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
     p_out_rd_detail = AxisArrays.AxisArray(zeros(length(storage_projects), length(invperiods), T), storage_projects, invperiods, ophours)
 
-
     for p in invperiods
         nominal_capacity_price[p] = capacity_price[p] / social_npv_array[p]
         nominal_REC_price[p] = REC_price[p] / social_npv_array[p]
@@ -868,42 +820,9 @@ function cem(system::MarketClearingProblem{Z, T},
         end
     end
 
-    #= for p in invperiods
-
-        println(p)
-        println("Energy")
-        println(Statistics.mean(nominal_energy_price[:, p, :]))
-        println(maximum(nominal_energy_price[:, p, :]))
-        for product in keys(nominal_reserve_price)
-            println(product)
-            println(Statistics.mean(nominal_reserve_price[product][p, :]))
-            println(maximum(nominal_reserve_price[product][p, :]))
-        end
-        println("Inertia")
-        println(Statistics.mean(nominal_inertia_price[p, :]))
-        println(maximum(nominal_inertia_price[p, :]))
-
-
-        println("Total Demand")
-        println(sum(demand_e_agg[z, p, t] * rep_block_weight[p][t] for z in zones, t in opperiods))
-
-        println("Total Generation")
-        println(sum(value.(p_e[g, p, t]) * rep_block_weight[p][t] for g in generator_projects, t in opperiods))
-
-        println("Total Clean Generation")
-        println(sum(value.(p_e[g, p, t]) * rep_block_weight[p][t] for g in rps_compliant_projects, t in opperiods))
-
-        println("RPS Target")
-        println(rec_requirement[p])
-
-        println("RPS Achieved")
-        println(sum(value.(p_e[g, p, t]) * rep_block_weight[p][t] for g in rps_compliant_projects, t in opperiods) / (sum(demand_e_agg[z, p, t] * rep_block_weight[p][t] for z in zones, t in opperiods)))
-
-    end =#
-
-    println(nominal_capacity_price)
-    println(nominal_REC_price)
-    println(new_options_by_type)
+    @info "Nominal capacity price: $(nominal_capacity_price)"
+    @info "Nominal REC price: $(nominal_REC_price)"
+    @info "New options by type: $(new_options_by_type)"
 
     for z in zones
         for p in invperiods
@@ -988,5 +907,4 @@ function cem(system::MarketClearingProblem{Z, T},
             p_out_ordc_detail,
             p_out_inertia_detail,
             p_out_rd_detail;
-
 end

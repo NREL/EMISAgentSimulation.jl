@@ -245,6 +245,7 @@ function write_vg_data(sys::PSY.System,
     availability_raw_rt::Vector{Float64},
     scenario_names::Vector{String},
     year::Int64,
+    timeseries_data_dir::String,
 ) where {D <: Union{PSY.ThermalGen, PSY.HydroGen, PSY.Storage}}
 end
 
@@ -260,14 +261,15 @@ function write_vg_data(sys_UC::PSY.System,
     availability_raw_rt::Vector{Float64},
     scenario_names::Vector{String},
     year::Int64,
+    timeseries_data_dir::String,
 ) where {D <: PSY.RenewableGen}
 
     ########## Adding to Net Load Data File ##############
+    @info "write_vg_data: writing column '$(get_name(device_ED))' for sim_year=$(year) to $(length(scenario_names)) scenario(s) in $(simulation_dir)"
     for scenario in scenario_names
         load_n_vg_df = read_data(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(year)",
                 "Net Load Data",
@@ -279,8 +281,7 @@ function write_vg_data(sys_UC::PSY.System,
             PSY.get_base_power(sys_UC)
         load_n_vg_df_rt = read_data(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(year)",
                 "Net Load Data",
@@ -293,8 +294,7 @@ function write_vg_data(sys_UC::PSY.System,
 
         write_data(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(year)",
                 "Net Load Data",
@@ -304,8 +304,7 @@ function write_vg_data(sys_UC::PSY.System,
         )
         write_data(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(year)",
                 "Net Load Data",
@@ -345,7 +344,11 @@ function update_PSY_timeseries!(
     iteration_year::Int64,
     da_resolution::Int64,
     rt_resolution::Int64)
+
     total_active_power = 0.0
+
+    results_dir = get_results_dir(simulation)
+    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
 
     first_ts_temp = first(PSY.get_time_series_multiple(sys))
     start_datetime = PSY.IS.get_initial_timestamp(first_ts_temp)
@@ -375,9 +378,9 @@ function update_PSY_timeseries!(
 
             # time_stamps = StepRange(start_datetime, Dates.Hour(1), finish_datetime);
             # if type == "ED"
-            #     product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name)_REAL_TIME.csv"))[:, service_name]
+            #     product_ts_raw = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name)_REAL_TIME.csv"))[:, service_name]
             # else
-            #     product_ts_raw = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name).csv"))[:, service_name]
+            #     product_ts_raw = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "$(service_name).csv"))[:, service_name]
             # end
             # product_data_ts = process_ordc_data_for_siip(product_ts_raw)
             # dates = time_stamps
@@ -391,8 +394,7 @@ function update_PSY_timeseries!(
             # reserve_scaling_factor = calculate_reserve_scaling_factor(simulation)
             load_initial = read_data(
                 joinpath(
-                    simulation_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     pcm_scenario,
                     "sim_year_1",
                     "Load",
@@ -401,8 +403,7 @@ function update_PSY_timeseries!(
             )
             load_current = read_data(
                 joinpath(
-                    simulation_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     pcm_scenario,
                     "sim_year_$(iteration_year)",
                     "Load",
@@ -479,7 +480,7 @@ function update_PSY_outage_timeseries!(sys_UC::PSY.System,
             )
             N = length(period_of_interest);
             start_datetime_DA = PSY.IS.get_initial_timestamp(first_ts_temp_DA);
-            sys_DA_res_in_hour = PSY.get_time_series_resolution(sys_UC)
+            sys_DA_res_in_hour = PSY.get_time_series_resolutions(sys_UC)[1]
             start_datetime_DA =
                 start_datetime_DA +
                 Dates.Hour((period_of_interest.start-1)*sys_DA_res_in_hour);
@@ -598,6 +599,7 @@ function transform_psy_timeseries!(sys_MD::Nothing,
     sys_ED::Nothing,
     da_resolution::Int64,
     rt_resolution::Int64,
+    md_horizon::Int64,
     da_horizon::Int64,
     rt_horizon::Int64,
     md_interval::Int64,

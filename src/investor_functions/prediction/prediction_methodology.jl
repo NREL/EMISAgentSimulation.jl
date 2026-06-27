@@ -55,6 +55,7 @@ function create_investor_predictions(investors::Vector{Investor},
                                           yearly_horizon::Int64,
                                           sys_data_dir::String,
                                           sys_results_dir::String,
+                                          timeseries_data_dir::String,
                                           average_capital_cost_multiplier::Float64,
                                           zones::Vector{String},
                                           lines::Vector{ZonalLine},
@@ -156,7 +157,8 @@ function create_investor_predictions(investors::Vector{Investor},
                  repeat([yearly_horizon], num_tasks),
                  repeat([solver], num_tasks),
                  repeat([sys_results_dir], num_tasks),
-                 investor_name_pmap)
+                 investor_name_pmap,
+                 repeat([timeseries_data_dir], num_tasks))
 
         else
 
@@ -177,7 +179,8 @@ function create_investor_predictions(investors::Vector{Investor},
                             repeat([yearly_horizon], num_tasks),
                             repeat([solver], num_tasks),
                             repeat([sys_results_dir], num_tasks),
-                            get_name.(investors))
+                            get_name.(investors),
+                            repeat([timeseries_data_dir], num_tasks))
         end
 
     else
@@ -227,7 +230,8 @@ function create_investor_predictions(investors::Vector{Investor},
                     repeat([yearly_horizon], num_scenarios),
                     repeat([solver], num_scenarios),
                     repeat([sys_results_dir], num_scenarios),
-                    repeat([investor_name], num_scenarios))
+                    repeat([investor_name], num_scenarios),
+                    repeat([timeseries_data_dir], num_scenarios))
 
             else
 
@@ -257,7 +261,8 @@ function create_investor_predictions(investors::Vector{Investor},
                                             yearly_horizon,
                                             solver,
                                             sys_results_dir,
-                                            investor_name)
+                                            investor_name,
+                                            timeseries_data_dir)
                 end
 
             end

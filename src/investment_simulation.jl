@@ -14,6 +14,7 @@ function run_agent_simulation(
     installed_capacity = zeros(simulation_years)
     capacity_forward_years = get_capacity_forward_years(simulation)
     results_dir = get_results_dir(simulation)
+    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
     simulation_dir = get_data_dir(get_case(simulation))
     total_sim_time = 0.0
 
@@ -83,32 +84,28 @@ function run_agent_simulation(
         # save existing net load csv file for potential checkpoint re-runs
         for scenario in scenario_names
             pre_update_da_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
                 "load_n_vg_data_pre_update.csv",
             )
             pre_update_rt_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
                 "load_n_vg_data_rt_pre_update.csv",
             )
             post_update_da_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
                 "load_n_vg_data.csv",
             )
             post_update_rt_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
@@ -212,6 +209,7 @@ function run_agent_simulation(
             yearly_horizon,
             get_data_dir(case),
             get_results_dir(simulation),
+            timeseries_data_dir,
             average_capital_cost_multiplier,
             get_zones(simulation),
             get_lines(simulation),
@@ -238,6 +236,7 @@ function run_agent_simulation(
                 sys_PRAS,
                 case,
                 scenario_names,
+                timeseries_data_dir,
             )
         end
 
@@ -434,7 +433,8 @@ function run_agent_simulation(
                     iteration_year,
                     step_size,
                     scenario_names,
-                    total_horizon)
+                    total_horizon,
+                    timeseries_data_dir)
             end
 
             update_portfolio_preference_multipliers!(investor, iteration_year)
@@ -442,14 +442,14 @@ function run_agent_simulation(
 
         @info "Updating derating data for all scenarios in the simulation based on updated resource adequacy and market conditions"
         simulations, iteration_years, derating_scales,
-        methodologies, ra_metric_list, marginal_cc_switches =  repeat_arguments(num_scenarios,
+        methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list =  repeat_arguments(num_scenarios,
         simulation, iteration_year, get_derating_scale(case),
         get_accreditation_methodology(case), get_accreditation_metric(case),
-        get_marginal_cc_switch(case))
+        get_marginal_cc_switch(case), timeseries_data_dir)
         
         @time Distributed.pmap(parallelize_update_derating_data,
          zip(scenario_names, simulations, iteration_years,
-        derating_scales, methodologies, ra_metric_list, marginal_cc_switches))
+        derating_scales, methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list))
 
         for scenario in scenario_names
             derating_factors = read_data(
@@ -500,8 +500,7 @@ function run_agent_simulation(
 
             save_simulation(simulation, results_dir, iteration_year)
         end
-
-        save_shortfall_data(joinpath(results_dir,"shortfall_data_year$(iteration_year).h5"), shortfall)
+        
         t_end = time()
         iteration_time_hours = round((t_end - t_start) / 3600, digits=2)
         total_sim_time += iteration_time_hours

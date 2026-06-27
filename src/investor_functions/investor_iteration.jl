@@ -9,20 +9,25 @@ function run_investor_iteration(investor::Investor,
                                  sys_EDs::Union{Nothing, Vector{PSY.System}},
                                  sys_PRAS::Dict{String, PSY.System},
                                  case::CaseDefinition,
-                                 scenario_names::Vector{String}
+                                 scenario_names::Vector{String},
+                                 timeseries_data_dir::String
                             )
+
+    @info "Running investor $(get_name(investor)) iteration with queue: $(get_name.(get_queue(investor)))"
 
     sys_data_dir = get_data_dir(case)
     solver = get_solver(case)
-
     step_size = get_step_size(case)
-
     investor_dir = get_data_dir(investor)
     projects = get_projects(investor)
-
     active_projects_copy = deepcopy(active_projects)
-
+    active_project_names = get_name.(active_projects_copy)
     market_names = get_markets(investor)
+    pcm_scenario = get_pcm_scenario(case)
+    total_horizon = get_total_horizon(case)
+    da_resolution = get_da_resolution(case)
+    rt_resolution = get_rt_resolution(case)
+
 
     # Create empty market prices struct
     market_prices = MarketPrices()
@@ -32,11 +37,10 @@ function run_investor_iteration(investor::Investor,
     max_new_options_by_type = Dict(t => 0.0 for t in unique(get_type.(get_tech.(option_projects))))
 
     scenarios = get_scenario_data(get_forecast(investor))
-
     for scenario in scenarios
         scenario_name = get_name(scenario)
-        output_file = joinpath(investor_dir, "expected_market_data", "$(scenario_name)_year_$(iteration_year).jld2")
-        expected_data = FileIO.load(output_file)
+        output_file = joinpath(investor_dir, "expected_market_data", "$(scenario_name)_year_$(iteration_year).h5")
+        expected_data = load_expected_market_data(output_file)
 
         set_energy_price!(market_prices, scenario_name, expected_data["energy_price"])
 
@@ -55,14 +59,11 @@ function run_investor_iteration(investor::Investor,
         end
 
         for project in projects
-            if in(get_name(project), get_name.(active_projects_copy))
+            if in(get_name(project), active_project_names)
                 update_capacity_factors!(project, scenario_name, expected_data["capacity_factors"])
                 update_total_utilization!(project, scenario_name, expected_data["total_utilization"])
-            end
-            if in(get_name(project), get_name.(active_projects_copy))
                 update_capacity_accepted_perc!(project, scenario_name, expected_data["capacity_accepted_perc"])
             end
-
         end
 
          max_new_options = update_max_new_options!(max_new_options, expected_data["new_options"], option_projects)
@@ -82,7 +83,8 @@ function run_investor_iteration(investor::Investor,
                          simulation_years,
                          scenario_names,
                          capacity_forward_years,
-                         solver)
+                         solver,
+                         timeseries_data_dir)
 
     make_investments!(investor,
                       max_new_options,
@@ -93,13 +95,8 @@ function run_investor_iteration(investor::Investor,
                       capacity_forward_years,
                       solver)
 
-    println(get_name.(get_queue(investor)))
-
-    pcm_scenario = get_pcm_scenario(case)
-    total_horizon = get_total_horizon(case)
-
     for (i, project) in enumerate(projects)
-        # println("current investor is $(get_name(investor)), current project is $(get_name(project))")
+        @info "current investor is $(get_name(investor)), current project is $(get_name(project))"
         start_construction!(projects,
                             i,
                             project,
@@ -119,8 +116,9 @@ function run_investor_iteration(investor::Investor,
                             pcm_scenario,
                             total_horizon,
                             scenario_names,
-                            get_da_resolution(case),
-                            get_rt_resolution(case))
+                            da_resolution,
+                            rt_resolution,
+                            timeseries_data_dir)
 
         update_lifecycle!(project,
                           iteration_year,

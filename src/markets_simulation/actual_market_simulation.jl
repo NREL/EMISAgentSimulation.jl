@@ -338,7 +338,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
     cases,
     iteration_years,
     rolling_horizons,
-    simulation_years_list = repeat_arguments(
+    simulation_years_list, timeseries_data_dir_list = repeat_arguments(
         num_scenarios,
         deepcopy(sys_UC),
         simulation_dir,
@@ -349,6 +349,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
         iteration_year,
         get_rolling_horizon(case),
         get_total_horizon(case),
+        joinpath(get_results_dir(simulation), "timeseries_data_files"),
     )
     @time Distributed.pmap(
         parallelize_ordc_construction,
@@ -363,6 +364,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
             iteration_years .+ step_size,
             rolling_horizons,
             simulation_years_list,
+            timeseries_data_dir_list,
         ),
     )
 
@@ -416,8 +418,11 @@ end
 
 function reserve_ts_scaling(simulation::AgentSimulation,
     iteration_year::Int64, step_size::Int64)
+
     simulation_dir = get_data_dir(get_case(simulation))
     all_scenarios = String.(get_all_scenario_names(simulation_dir))
+    results_dir = get_results_dir(simulation)
+    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
 
     reserve_products = split(
         read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[
@@ -440,8 +445,7 @@ function reserve_ts_scaling(simulation::AgentSimulation,
             reserve_timeseries_data = Dict(
                 r => read_data(
                     joinpath(
-                        simulation_dir,
-                        "timeseries_data_files",
+                        timeseries_data_dir,
                         scenario,
                         "sim_year_$(iteration_year + step_size)",
                         "Reserves",
@@ -452,8 +456,7 @@ function reserve_ts_scaling(simulation::AgentSimulation,
             rep_reserve_timeseries_data = Dict(
                 r => read_data(
                     joinpath(
-                        simulation_dir,
-                        "timeseries_data_files",
+                        timeseries_data_dir,
                         scenario,
                         "sim_year_$(iteration_year + step_size)",
                         "Reserves",
@@ -464,8 +467,7 @@ function reserve_ts_scaling(simulation::AgentSimulation,
 
             load_initial = read_data(
                 joinpath(
-                    simulation_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     scenario,
                     "sim_year_1",
                     "Load",
@@ -474,8 +476,7 @@ function reserve_ts_scaling(simulation::AgentSimulation,
             )
             load_current = read_data(
                 joinpath(
-                    simulation_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     scenario,
                     "sim_year_$(iteration_year + step_size)",
                     "Load",
@@ -498,8 +499,7 @@ function reserve_ts_scaling(simulation::AgentSimulation,
 
                 CSV.write(
                     joinpath(
-                        simulation_dir,
-                        "timeseries_data_files",
+                        timeseries_data_dir,
                         scenario,
                         "sim_year_$(iteration_year + step_size)",
                         "Reserves",
@@ -509,8 +509,7 @@ function reserve_ts_scaling(simulation::AgentSimulation,
                 )
                 CSV.write(
                     joinpath(
-                        simulation_dir,
-                        "timeseries_data_files",
+                        timeseries_data_dir,
                         scenario,
                         "sim_year_$(iteration_year + step_size)",
                         "Reserves",

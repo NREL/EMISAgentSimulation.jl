@@ -23,7 +23,8 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     average_capital_cost_multiplier::Float64,
     scenario::Scenario,
     iteration_year::Int64,
-    yearly_horizon::Int64)
+    yearly_horizon::Int64,
+    timeseries_data_dir::String)
 
     @info "Function create_cem_clr_problem"
     @info "Creating CEM market clearing problem for $(investor_dir) in year $(iteration_year) with solver."
@@ -57,8 +58,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         sim_year = iteration_year + p - 1
         load_data = read_data(
             joinpath(
-                sys_data_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario_name,
                 "sim_year_$(sim_year)",
                 "Load",
@@ -117,8 +117,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         reserve_timeseries_data = Dict(
             r => read_data(
                 joinpath(
-                    sys_data_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     scenario_name,
                     "sim_year_$(sim_year)",
                     "Reserves",
@@ -292,8 +291,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
             availability_df_vec,
             read_data(
                 joinpath(
-                    sys_data_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     scenario_name,
                     "sim_year_$(sim_year)",
                     "Availability",

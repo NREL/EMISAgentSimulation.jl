@@ -7,16 +7,17 @@ function construct_net_load_forecast_error_distribution(simulation_dir::String,
                                                         renewable_generators::Vector{Project},
                                                         months::Vector{Int64},
                                                         hours::Vector{Int64},
-                                                        zonal::Bool)
-    load_n_vg_df = read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))
-    load_n_vg_df_rt = read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data_rt.csv"))
+                                                        zonal::Bool,
+                                                        timeseries_data_dir::String)
+
+    load_n_vg_df = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))
+    load_n_vg_df_rt = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data_rt.csv"))
     zones = chop.(filter(n -> occursin("load", n), names(load_n_vg_df)), head = 5, tail = 0)
 
     num_rt_intervals = round(Int, DataFrames.nrow(load_n_vg_df_rt)/DataFrames.nrow(load_n_vg_df))
 
     rt_periods = find_rt_periods(hours, num_rt_intervals)
     filter!(row -> in(row["Month"], months) && in(row["Period"], hours), load_n_vg_df)
-
     filter!(row -> in(row["Month"], months) && in(row["Period"], rt_periods), load_n_vg_df_rt)
 
     #half hourly forecasts
@@ -25,11 +26,9 @@ function construct_net_load_forecast_error_distribution(simulation_dir::String,
     # load_n_vg_df_extrap = repeat(load_n_vg_df; inner = 2, outer = 1)
     # load_n_vg_df_extrap[:, "Period"] = load_n_vg_df_rt[:, "Period"]
     load_n_vg_df_extrap = load_n_vg_df
-
     net_load_forecast_error = load_n_vg_df_extrap[:, 1:4]
 
     if zonal
-
         zonal_gens = Dict{String, Vector{Project}}()
         error_mean = Dict{String, Float64}()
         error_std = Dict{String, Float64}()
@@ -79,7 +78,6 @@ function construct_net_load_forecast_error_distribution(simulation_dir::String,
         load_n_vg_df_rt[:, "Net Load"] = total_load_rt - total_gen_rt
         load_n_vg_df_extrap[:, "Net Load"] = total_load_extrap - total_gen_extrap
 
-
         net_load_forecast_error[:, "Total"] = load_n_vg_df_rt[:, "Net Load"] - load_n_vg_df_extrap[:, "Net Load"]
 
         error_mean = Statistics.mean(net_load_forecast_error[:, "Total"])
@@ -99,10 +97,11 @@ function construct_conv_unavailabilities(simulation_dir::String,
                                             sim_year::Int64,
                                             generators::Vector{Project},
                                             zonal::Bool,
-                                            ordc_unavailability_method::String)
+                                            ordc_unavailability_method::String,
+                                            timeseries_data_dir::String)
 
     if ordc_unavailability_method == "Convolution"
-        load_n_vg_df = read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))
+        load_n_vg_df = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))
         zones = chop.(filter(n -> occursin("load", n), names(load_n_vg_df)), head = 5, tail = 0)
 
         if zonal
@@ -145,9 +144,10 @@ function construct_gen_unavail_distribution(simulation_dir::String,
                                             conv_unavailability_mean::Nothing,
                                             conv_unavailability_std::Nothing,
                                             months::Vector{Int64},
-                                            hours::Vector{Int64})
+                                            hours::Vector{Int64},
+                                            timeseries_data_dir::String)
 
-    gen_unavail_df = read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))[:, 1:4]
+    gen_unavail_df = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))[:, 1:4]
     @assert DataFrames.nrow(gen_unavail_df) == size(smc_unavailability_timeseries, 2)
     for i in 1:size(smc_unavailability_timeseries, 1)
         gen_unavail_df[!, "$(i)"] = smc_unavailability_timeseries[1, :]
@@ -166,7 +166,8 @@ function construct_gen_unavail_distribution(simulation_dir::String,
                                             conv_unavailability_mean::Float64,
                                             conv_unavailability_std::Float64,
                                             months::Vector{Int64},
-                                            hours::Vector{Int64})
+                                            hours::Vector{Int64},
+                                            timeseries_data_dir::String)
 
     unavail_mean = conv_unavailability_mean
     unavail_std = conv_unavailability_std
@@ -179,9 +180,10 @@ function calculate_min_reserve_req(simulation_dir::String,
                                    sim_year::Int64,
                                    generators::Vector{Project},
                                    MRR_scale::Real,
-                                   zonal::Bool)
+                                   zonal::Bool,
+                                   timeseries_data_dir::String)
 
-    load_n_vg_df = read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))
+    load_n_vg_df = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Net Load Data", "load_n_vg_data.csv"))
     zones = chop.(filter(n -> occursin("load", n), names(load_n_vg_df)), head = 5, tail = 0)
 
     thermal_generators = filter(p -> typeof(p) == ThermalGenEMIS{Existing}, generators)

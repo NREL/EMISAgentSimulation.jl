@@ -39,6 +39,7 @@ function remove_renewable_gen_data!(project::P,
                                      iteration_year::Int64,
                                      total_horizon::Int64,
                                      scenario_names::Vector{String},
+                                     timeseries_data_dir::String,
                                      ) where P <: Project{<:BuildPhase}
     return
  end
@@ -51,21 +52,21 @@ This function removes the PSY System timeseries data for Existing RenewableGen p
                                      iteration_year::Int64,
                                      total_horizon::Int64,
                                      scenario_names::Vector{String},
-                                     )
+                                     timeseries_data_dir::String)
 
         for scenario in scenario_names
             for year in 1:total_horizon
-                load_n_vg_df =  read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data.csv"))
+                load_n_vg_df =  read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data.csv"))
                 if in(get_name(project), names(load_n_vg_df))
                     DataFrames.select!(load_n_vg_df, DataFrames.Not(get_name(project)))
                 end
-                write_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(year)", "Net Load Data"), "load_n_vg_data.csv", load_n_vg_df)
+                write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data"), "load_n_vg_data.csv", load_n_vg_df)
 
-                load_n_vg_df_rt =  read_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data_rt.csv"))
+                load_n_vg_df_rt =  read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data_rt.csv"))
                 if in(get_name(project), names(load_n_vg_df_rt))
                     DataFrames.select!(load_n_vg_df_rt, DataFrames.Not(get_name(project)))
                 end
-                write_data(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(year)", "Net Load Data"), "load_n_vg_data_rt.csv", load_n_vg_df_rt)
+                write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data"), "load_n_vg_data_rt.csv", load_n_vg_df_rt)
             end
         end
     return
@@ -109,7 +110,8 @@ function take_retirement_decision(project::P,
                                   rep_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   capacity_forward_years::Int64,
                                   retirement_lookback::Int64,
-                                  solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{<: BuildPhase}, R <: RiskPreference}
+                                  solver::JuMP.MOI.OptimizerWithAttributes,
+                                  timeseries_data_dir::String) where {P <: Project{<: BuildPhase}, R <: RiskPreference}
 
     return
 end
@@ -136,13 +138,13 @@ function take_retirement_decision(project::P,
                                   rep_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   capacity_forward_years::Int64,
                                   retirement_lookback::Int64,
-                                  solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{Existing}, R <: RiskPreference}
+                                  solver::JuMP.MOI.OptimizerWithAttributes,
+                                  timeseries_data_dir::String) where {P <: Project{Existing}, R <: RiskPreference}
 
     finance_data = get_finance_data(project)
     queue_cost = get_queue_cost(finance_data)
 
     if  (get_construction_year(project) <= simulation_years)
-
         update_project_utility!(project,
                               scenario_data,
                               market_prices,
@@ -181,7 +183,7 @@ function take_retirement_decision(project::P,
                 for scenario in keys(sys_PRAS)
                     remove_system_component!(sys_PRAS[scenario], project)
                 end
-                remove_renewable_gen_data!(project, simulation_dir, iteration_year, simulation_years, scenario_names)
+                remove_renewable_gen_data!(project, simulation_dir, iteration_year, simulation_years, scenario_names, timeseries_data_dir)
                 remove_future_profits!(project, iteration_year)
             end
         end
@@ -214,7 +216,8 @@ function take_retirement_decision(project::P,
                                   rep_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   capacity_forward_years::Int64,
                                   retirement_lookback::Int64,
-                                  solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{Planned}, R <: RiskPreference}
+                                  solver::JuMP.MOI.OptimizerWithAttributes,
+                                  timeseries_data_dir::String) where {P <: Project{Planned}, R <: RiskPreference}
 
     finance_data = get_finance_data(project)
     queue_cost = get_queue_cost(finance_data)
@@ -260,7 +263,8 @@ function take_retirement_decision(project::P,
                                   rep_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   capacity_forward_years::Int64,
                                   retirement_lookback::Int64,
-                                  solver::JuMP.MOI.OptimizerWithAttributes) where {P <: Project{Queue}, R <: RiskPreference}
+                                  solver::JuMP.MOI.OptimizerWithAttributes,
+                                  timeseries_data_dir::String) where {P <: Project{Queue}, R <: RiskPreference}
 
     finance_data = get_finance_data(project)
     queue_cost = get_queue_cost(finance_data)
@@ -308,7 +312,8 @@ function retire_unprofitable!(investor::Investor,
                               simulation_years::Int64,
                               scenario_names::Vector{String},
                               capacity_forward_years::Int64,
-                              solver::JuMP.MOI.OptimizerWithAttributes)
+                              solver::JuMP.MOI.OptimizerWithAttributes,
+                              timeseries_data_dir::String)
 
     scenario_data = get_scenario_data(get_forecast(investor))
     market_prices = get_market_prices(investor)
@@ -335,7 +340,8 @@ function retire_unprofitable!(investor::Investor,
                                     get_rep_hour_weight(investor),
                                     capacity_forward_years,
                                     get_retirement_lookback(investor),
-                                    solver)
+                                    solver,
+                                    timeseries_data_dir)
 
         end
     return

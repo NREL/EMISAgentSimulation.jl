@@ -1,13 +1,14 @@
 """
 This function returns a vector of investors in the simulation.
 """
-function create_investors(simulation_data::AgentSimulationData)
+function create_investors(simulation_data::AgentSimulationData, timeseries_data_dir::String)
     horizon = get_total_horizon(get_case(simulation_data))
     simulation_data_dir = get_data_dir(get_case(simulation_data))
     dir_name = joinpath(get_data_dir(get_case(simulation_data)), "investors")
     investor_names = readdir(dir_name)
     investors = Vector{Investor}(undef, length(investor_names))
     test_system_dir = get_sys_dir(get_case(simulation_data))
+
     for i = 1:length(investor_names)
         investor_dir = joinpath(dir_name, "$(investor_names[i])")
         @info "Creating investor: $(investor_names[i])"
@@ -151,7 +152,7 @@ function create_investors(simulation_data::AgentSimulationData)
         for scenario in scenario_names
             for sim_year in collect(1:horizon)
                 @info "Adding availability data for investor $(investor_names[i]) for scenario $(scenario) and simulation year $(sim_year)"          
-                add_investor_project_availability!(test_system_dir, simulation_data_dir, scenario, sim_year, projects, sys_UC)
+                add_investor_project_availability!(test_system_dir, simulation_data_dir, scenario, sim_year, projects, sys_UC, timeseries_data_dir)
             end
         end
 

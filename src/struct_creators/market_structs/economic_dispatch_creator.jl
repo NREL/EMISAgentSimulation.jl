@@ -12,7 +12,9 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
     simulation_dir = get_data_dir(get_case(simulation))
     delta_irm = get_delta_irm(get_resource_adequacy(simulation)[pcm_scenario], iteration_year)
     irm_scalar = get_irm_scalar(get_case(simulation))
-    load_data = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Load", "load.csv"))
+    results_dir = get_results_dir(simulation)
+    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
+    load_data = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(iteration_year)", "Load", "load.csv"))
     num_hours = DataFrames.nrow(load_data)
     zones = get_zones(simulation)
     zonal_load = AxisArrays.AxisArray(zeros(length(zones), num_hours), zones, (1:num_hours))
@@ -58,8 +60,8 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
         end
 
         # Gather markets data-------------------------------------------------------------------------------
-        reserve_up_demand_data = read_data(joinpath(simulation_dir,  "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "reserve_up_.csv"))
-        reserve_down_demand_data = read_data(joinpath(simulation_dir,  "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "reserve_down.csv"))
+        reserve_up_demand_data = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "reserve_up_.csv"))
+        reserve_down_demand_data = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(iteration_year)", "Reserves", "reserve_down.csv"))
 
         energy_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "energy_mkt_param.csv"))
         price_cap_energy = AxisArrays.AxisArray(energy_mkt_params.price_cap * 1.0, zones)
@@ -144,7 +146,7 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
                                     rec_markets)
         #--------------------------------------------------------------------------------------------------------------
 
-        availability_df = read_data(joinpath(simulation_dir, "timeseries_data_files", pcm_scenario, "sim_year_$(iteration_year)", "Availability", "DAY_AHEAD_availability.csv"))
+        availability_df = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(iteration_year)", "Availability", "DAY_AHEAD_availability.csv"))
 
         ed_projects = MarketProject[]
 
