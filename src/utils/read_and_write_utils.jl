@@ -2,6 +2,11 @@
 This function returns a dataframe of given csv data.
 """
 function read_data(file_name::String)
+    for attempt in 1:5
+        isfile(file_name) && break
+        @warn "File not yet visible (attempt $attempt/5): $file_name"
+        sleep(2)
+    end
     projectdata = DataFrames.DataFrame(CSV.File(file_name;
                         truestrings=["T", "TRUE", "true"],
                         falsestrings=["F", "FALSE", "false"]));
