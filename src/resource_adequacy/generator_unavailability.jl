@@ -5,7 +5,8 @@ function construct_smc_unavailabilities(sys::PSY.System, ordc_unavailability_met
                                        system_model = "Single-Node",
                                        aggregation = "Area",
                                        period_of_interest = system_period_of_interest,
-                                       outage_flag = false);
+                                       outage_flag = false,
+                                       outage_ts_flag = true);
                                        
         nsamples = 100
         timeseries = unavailabilities(pras_system, nsamples)
