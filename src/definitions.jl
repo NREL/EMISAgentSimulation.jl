@@ -18,6 +18,7 @@ const PENALTY_COST = 5000.0
 
 # PRAS constants
 const PRAS_N_SAMPLES = 100
+const PRAS_WORKER = Ref{Union{Nothing, Int}}(nothing)
 
 const SIM_START_DATE = Dates.DateTime("2018-01-01T00:00:00")
 const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
