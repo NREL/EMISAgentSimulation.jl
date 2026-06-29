@@ -20,7 +20,9 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     scenario::String,
     iteration_year::Int64,
     active_projects::Vector{Project},
-    marginal_cc::Bool)
+    derating_scale::Float64,
+    marginal_cc::Bool,
+    timeseries_data_dir::String)
     @info "Calculating derating data using top net load hour methodology - iteration year: $(iteration_year), scenario: $(scenario)"
     cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
 
@@ -39,8 +41,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         [
             read_data(
                 joinpath(
-                    simulation_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     scenario,
                     "sim_year_$(sim_year)",
                     "Net Load Data",
@@ -53,8 +54,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         [
             read_data(
                 joinpath(
-                    simulation_dir,
-                    "timeseries_data_files",
+                    timeseries_data_dir,
                     scenario,
                     "sim_year_$(sim_year)",
                     "Availability",
@@ -71,6 +71,12 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
 
     load = vec(sum(Matrix(load_n_vg_data[:, r"load"]); dims = 2))
 
+    load_n_vg_cols = Set(names(load_n_vg_data))
+    missing_cols =
+        [get_name(g) for g in renewable_existing if !(get_name(g) in load_n_vg_cols)]
+    if !isempty(missing_cols)
+        @warn "calculate_derating_data (year=$iteration_year, scenario=$scenario): columns missing from net-load CSV: $missing_cols"
+    end
     for g in renewable_existing
         existing_vg_power += load_n_vg_data[!, get_name(g)]
     end
@@ -398,6 +404,7 @@ function build_augmented_pras_system(
     capacity_market_year::Int64,
     rt_resolution,
     simulation_years,
+    timeseries_data_dir::String,
 )::PRAS.SystemModel
     augmented_sys = deepcopy(base_system)
     for project in projects_to_add
@@ -409,6 +416,7 @@ function build_augmented_pras_system(
             capacity_market_year,
             rt_resolution,
             simulation_years,
+            timeseries_data_dir,
         )
     end
     return SPI.generate_pras_system(augmented_sys, PSY.Area, false)
@@ -425,8 +433,9 @@ function calculate_derating_factors(
     scenario::String,
     iteration_year::Int64,
     methodology::String,
-    ra_metric::String,
-    marginal_cc::Bool)
+    ra_matric::String,
+    marginal_cc::Bool,
+    timeseries_data_dir::String)
     if methodology == "ELCC"
         methodology = PRAS.ELCC
     elseif methodology == "EFC"
@@ -541,6 +550,7 @@ function calculate_derating_factors(
                         capacity_market_year,
                         rt_resolution,
                         simulation_years,
+                        timeseries_data_dir,
                     )
 
                     # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
@@ -675,6 +685,7 @@ function calculate_derating_factors(
                 capacity_market_year,
                 rt_resolution,
                 simulation_years,
+                timeseries_data_dir,
             )
 
             # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
@@ -940,7 +951,9 @@ Dispatches to `calculate_derating_data` (TopNetLoad) or `calculate_derating_fact
 function update_simulation_derating_data!(
     simulation::Union{AgentSimulation, AgentSimulationData},
     scenario::String,
-    iteration_year::Int64;
+    iteration_year::Int64,
+    derating_scale::Float64,
+    timeseries_data_dir::String;
     methodology::String = "ELCC",
     ra_metric::String = "LOLE",
     marginal_cc::Bool = true)
@@ -956,6 +969,7 @@ function update_simulation_derating_data!(
             iteration_year,
             active_projects,
             marginal_cc,
+            timeseries_data_dir,
         )
     else
         calculate_derating_factors(
@@ -965,6 +979,7 @@ function update_simulation_derating_data!(
             methodology,
             ra_metric,
             marginal_cc,
+            timeseries_data_dir,
         )
     end
 

@@ -1695,9 +1695,7 @@ function load_sienna_systems!(
     end
 
     simulation_years = get_total_horizon(case)
-    timeseries_data_dir = get_timeseries_data_dir(case)
     rts_dir = get_sys_dir(case)
-    ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
     runchecks = false
     MD_horizon = get_md_horizon(case)
     MD_interval = get_md_interval(case)
