@@ -39,8 +39,10 @@ function save_simulation(simulation::AgentSimulation, save_dir::String, iteratio
         save_simulation!(f, simulation)
     end
 
-    @info "Saving Sienna systems..."
-    save_Sienna_systems(simulation, save_dir, iteration_year)
+    if !isnothing(iteration_year)
+        @info "Saving Sienna systems..."
+        save_Sienna_systems(simulation, save_dir, iteration_year)
+    end
 end
 
 """
