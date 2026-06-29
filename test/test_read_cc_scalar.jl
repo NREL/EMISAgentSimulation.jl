@@ -1,5 +1,12 @@
-# Tests for read_cc_scalar
+# Tests for read_cc_scalar.
 # src: src/derating_factor_updates/derating_factor_calculator.jl
+# Run from REPL after loading the package:
+#   using EMISAgentSimulation
+#   include("test/test_read_cc_scalar.jl")
+
+using Test
+using EMISAgentSimulation
+include(joinpath(@__DIR__, "helpers.jl"))
 
 @testset "read_cc_scalar" begin
     @testset "T1: cc_scalar.csv present, column present → returns value" begin

@@ -1,5 +1,12 @@
-# Tests for update_derating_factor! overloads
+# Tests for update_derating_factor! overloads.
 # src: src/derating_factor_updates/derating_factor_calculator.jl
+# Run from REPL after loading the package:
+#   using EMISAgentSimulation
+#   include("test/test_update_derating_factor.jl")
+
+using Test
+using EMISAgentSimulation
+include(joinpath(@__DIR__, "helpers.jl"))
 
 @testset "update_derating_factor!" begin
 
