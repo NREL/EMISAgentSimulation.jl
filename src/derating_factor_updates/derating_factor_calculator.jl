@@ -432,7 +432,7 @@ function calculate_derating_factors(
     scenario::String,
     iteration_year::Int64,
     methodology::String,
-    ra_matric::String,
+    ra_metric::String,
     marginal_cc::Bool,
     timeseries_data_dir::String)
     if methodology == "ELCC"
@@ -505,22 +505,22 @@ function calculate_derating_factors(
     regional_load_shares = collect(get_regional_load_shares(base_pras_system))
 
     ##TODO: AA remove debug code after validation
-    temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
-    @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    PSY.to_json(
-        base_pras_system,
-        joinpath(
-            temp_dir,
-            "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
-        ),
-    )
-    PSY.to_json(
-        adjusted_base_system,
-        joinpath(
-            temp_dir,
-            "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
-        ),
-    )
+    # temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
+    # @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
+    # PSY.to_json(
+    #     base_pras_system,
+    #     joinpath(
+    #         temp_dir,
+    #         "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
+    #     ),
+    # )
+    # PSY.to_json(
+    #     adjusted_base_system,
+    #     joinpath(
+    #         temp_dir,
+    #         "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
+    #     ),
+    # )
 
     if marginal_cc
         for zone in zones
