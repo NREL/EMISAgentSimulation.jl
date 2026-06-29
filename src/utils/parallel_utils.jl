@@ -145,45 +145,20 @@ end
 This function runs the construct_ordc function in parallel for different scenarios.
 """
 function parallelize_ordc_construction(args)
-    scenario,
-   
-    sys_UC,
-   
-    data_dir,
-   
-    investors,
-   
-    representative_periods,
-   
-    rep_period_interval,
-   
-    case,
-   
-    iteration_year,
-   
-    rolling_horizon,
-   
-    simulation_years,
+    scenario, sys_UC, data_dir, investors, representative_periods, rep_period_interval,
+    case, iteration_year, rolling_horizon, simulation_years,
     time_series_data_dir = args
     for sim_year in
-       
         collect(iteration_year:min(iteration_year + rolling_horizon - 1, simulation_years))
         construct_ordc(
             sys_UC,
             data_dir,
             scenario,
-            sim_year,
-           
-            investors,
+            sim_year, investors,
             0,
-            representative_periods[scenario][sim_year],
-           
-            rep_period_interval,
-            get_ordc_curved(case),
-           
-            get_ordc_unavailability_method(case),
+            representative_periods[scenario][sim_year], rep_period_interval,
+            get_ordc_curved(case), get_ordc_unavailability_method(case),
             get_reserve_penalty(case),
-        ,
             time_series_data_dir)
     end
 end
@@ -244,7 +219,6 @@ function parallelize_update_derating_data(args)
     scenario,
     simulation,
     iteration_year,
-    derating_scale,
     methodology,
     ra_metric,
     marginal_cc,
@@ -253,7 +227,6 @@ function parallelize_update_derating_data(args)
         simulation,
         scenario,
         iteration_year,
-        derating_scale,
         timeseries_data_dir;
         methodology = methodology,
         ra_metric = ra_metric,

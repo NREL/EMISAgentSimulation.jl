@@ -443,16 +443,16 @@ function run_agent_simulation(
         end
 
         @info "Updating derating data for all scenarios in the simulation based on updated resource adequacy and market conditions"
-        simulations, iteration_years, derating_scales,
+        simulations, iteration_years,
         methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list =
             repeat_arguments(num_scenarios,
-                simulation, iteration_year, get_derating_scale(case),
+                simulation, iteration_year,
                 get_accreditation_methodology(case), get_accreditation_metric(case),
                 get_marginal_cc_switch(case), timeseries_data_dir)
 
         @time Distributed.pmap(parallelize_update_derating_data,
             zip(scenario_names, simulations, iteration_years,
-                derating_scales, methodologies, ra_metric_list, marginal_cc_switches,
+                methodologies, ra_metric_list, marginal_cc_switches,
                 timeseries_data_dir_list))
 
         for scenario in scenario_names

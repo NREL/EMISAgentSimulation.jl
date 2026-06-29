@@ -5,6 +5,8 @@
 #   include("test/test_read_cc_scalar.jl")
 
 using Test
+using DataFrames
+using CSV
 using EMISAgentSimulation
 include(joinpath(@__DIR__, "helpers.jl"))
 

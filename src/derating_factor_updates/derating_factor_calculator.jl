@@ -20,7 +20,6 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     scenario::String,
     iteration_year::Int64,
     active_projects::Vector{Project},
-    derating_scale::Float64,
     marginal_cc::Bool,
     timeseries_data_dir::String)
     @info "Calculating derating data using top net load hour methodology - iteration year: $(iteration_year), scenario: $(scenario)"
@@ -952,7 +951,6 @@ function update_simulation_derating_data!(
     simulation::Union{AgentSimulation, AgentSimulationData},
     scenario::String,
     iteration_year::Int64,
-    derating_scale::Float64,
     timeseries_data_dir::String;
     methodology::String = "ELCC",
     ra_metric::String = "LOLE",

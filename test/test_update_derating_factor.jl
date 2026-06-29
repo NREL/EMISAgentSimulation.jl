@@ -5,6 +5,9 @@
 #   include("test/test_update_derating_factor.jl")
 
 using Test
+using DataFrames
+using CSV
+using AxisArrays
 using EMISAgentSimulation
 include(joinpath(@__DIR__, "helpers.jl"))
 

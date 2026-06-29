@@ -1,4 +1,5 @@
-# Shared test helpers — included by runtests.jl before any test files.
+# Shared test helpers — safe to include multiple times (const re-declaration
+# with the same value is a no-op warning in Julia, not an error).
 
 const TEST_DATA_DIR = joinpath(@__DIR__, "test_data")
 
