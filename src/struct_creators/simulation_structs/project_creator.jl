@@ -78,7 +78,8 @@ function add_investor_project_availability!(test_system_dir::String,
     scenario::String,
     sim_year::Int64,
     projects::Vector{Project},
-    sys_UC::Union{Nothing, PSY.System})
+    sys_UC::Union{Nothing, PSY.System},
+    timeseries_data_dir::String)
 
     # pv_availability_file = CSV.read(joinpath(test_system_dir, "RTS_Data", "upv_availability.csv"), DataFrame)
     # wind_availability_file = CSV.read(joinpath(test_system_dir, "RTS_Data", "wind_availability.csv"), DataFrame)
@@ -86,8 +87,7 @@ function add_investor_project_availability!(test_system_dir::String,
     system_availability_data = DataFrames.DataFrame(
         CSV.File(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(sim_year)",
                 "Availability",
@@ -98,8 +98,7 @@ function add_investor_project_availability!(test_system_dir::String,
     system_availability_data_rt = DataFrames.DataFrame(
         CSV.File(
             joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(sim_year)",
                 "Availability",
@@ -260,8 +259,7 @@ function add_investor_project_availability!(test_system_dir::String,
 
     write_data(
         joinpath(
-            simulation_dir,
-            "timeseries_data_files",
+            timeseries_data_dir,
             scenario,
             "sim_year_$(sim_year)",
             "Availability",
@@ -271,8 +269,7 @@ function add_investor_project_availability!(test_system_dir::String,
     )
     write_data(
         joinpath(
-            simulation_dir,
-            "timeseries_data_files",
+            timeseries_data_dir,
             scenario,
             "sim_year_$(sim_year)",
             "Availability",
@@ -556,12 +553,18 @@ function _build_heat_rate_curve(projectdata, project_size)
         heat_rate[1] = (heat_rate[1][1] / project_scale, heat_rate[1][2] * project_size)
         for i in 2:length(heat_rate)
             heat_rate[i] =
-                (heat_rate[i - 1][1] + heat_rate[i][1] / project_scale, heat_rate[i][2] * project_size)
+                (
+                    heat_rate[i - 1][1] + heat_rate[i][1] / project_scale,
+                    heat_rate[i][2] * project_size,
+                )
         end
         pushfirst!(heat_rate, (fixed / project_scale, 0.0))
     elseif length(heat_rate) == 1
         # if there is only one point, use it to determine the constant $/MW cost
-        heat_rate = (heat_rate[1][1] * heat_rate[1][2] / project_scale, heat_rate[1][2] * project_size)
+        heat_rate = (
+            heat_rate[1][1] * heat_rate[1][2] / project_scale,
+            heat_rate[1][2] * project_size,
+        )
     else
         heat_rate = [(0.0, 0.0)]
     end
@@ -618,7 +621,7 @@ function create_tech_type(name::String,
 
     if type in ["ST", "CT", "CC", "NU_ST", "GT", "RE_CT"]
         heat_rate = _build_heat_rate_curve(projectdata, size)
-        
+
         tech = ThermalTech(type,
             projectdata["Fuel"],
             active_power_limits,
@@ -753,7 +756,7 @@ function create_tech_type(name::String,
     FOR = projectdata["FOR"]
     MTTR = projectdata["MTTR Hr"]
     heat_rate = _build_heat_rate_curve(projectdata, size)
-    
+
     tech = ThermalTech(prime_mover,
         fuel,
         (min = min_cap, max = size),
@@ -835,7 +838,6 @@ function create_tech_type(name::String,
     products::Vector{Product},
     finance_data::Finance,
 ) where {P <: PSY.HydroGen}
-
     min_cap = deepcopy(PSY.get_active_power_limits(device)[:min]) * base_power
     bus = deepcopy(PSY.get_bus(device))
 
@@ -911,7 +913,7 @@ function create_tech_type(name::String,
     # @info "storage_level_limits: $(storage_level_limits), storage_capacity_mwh: $(storage_capacity_mwh), device_base_power: $(device_base_power)"
     # @info "initial_storage_capacity_level: $(initial_storage_capacity_level), rating: $(rating), efficiency: $(efficiency)"
 
-tech = BatteryTech(type,
+    tech = BatteryTech(type,
         (
             min = input_active_power_limits[:min] * device_base_power,
             max = input_active_power_limits[:max] * device_base_power,

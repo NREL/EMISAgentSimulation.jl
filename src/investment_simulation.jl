@@ -14,6 +14,7 @@ function run_agent_simulation(
     installed_capacity = zeros(simulation_years)
     capacity_forward_years = get_capacity_forward_years(simulation)
     results_dir = get_results_dir(simulation)
+    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
     simulation_dir = get_data_dir(get_case(simulation))
     total_sim_time = 0.0
 
@@ -62,7 +63,7 @@ function run_agent_simulation(
     clean_energy_percentage_vector = zeros(simulation_years)
     carbon_tax = get_carbon_tax(simulation)
 
-     # Update operation cost for all projects based on carbon tax in the first year
+    # Update operation cost for all projects based on carbon tax in the first year
 
     for iteration_year in current_year:step_size:simulation_years
         t_start = time()
@@ -83,32 +84,28 @@ function run_agent_simulation(
         # save existing net load csv file for potential checkpoint re-runs
         for scenario in scenario_names
             pre_update_da_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
                 "load_n_vg_data_pre_update.csv",
             )
             pre_update_rt_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
                 "load_n_vg_data_rt_pre_update.csv",
             )
             post_update_da_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
                 "load_n_vg_data.csv",
             )
             post_update_rt_net_load = joinpath(
-                simulation_dir,
-                "timeseries_data_files",
+                timeseries_data_dir,
                 scenario,
                 "sim_year_$(iteration_year)",
                 "Net Load Data",
@@ -118,7 +115,8 @@ function run_agent_simulation(
             # On a fresh run or for years beyond the restart year, always save so that
             # stale pre_update files copied from a prior run don't clobber retirements
             # and new builds applied in earlier years of this run.
-            if isfile(pre_update_da_net_load) && iteration_year == current_year && current_year > 1
+            if isfile(pre_update_da_net_load) && iteration_year == current_year &&
+               current_year > 1
                 cp(pre_update_da_net_load, post_update_da_net_load; force = true)
                 cp(pre_update_rt_net_load, post_update_rt_net_load; force = true)
             else
@@ -212,6 +210,7 @@ function run_agent_simulation(
             yearly_horizon,
             get_data_dir(case),
             get_results_dir(simulation),
+            timeseries_data_dir,
             average_capital_cost_multiplier,
             get_zones(simulation),
             get_lines(simulation),
@@ -238,6 +237,7 @@ function run_agent_simulation(
                 sys_PRAS,
                 case,
                 scenario_names,
+                timeseries_data_dir,
             )
         end
 
@@ -316,23 +316,24 @@ function run_agent_simulation(
         capacity_accepted_bids,
         rec_accepted_bids,
         clean_energy_percentage_vector[iteration_year],
-        cet_achieved_ratio = @timeit EMIS_TIMER "realized_marketdata" create_realized_marketdata(simulation,
-            sys_MDs[iteration_year],
-            sys_UCs[iteration_year],
-            sys_EDs[iteration_year],
-            markets,
-            get_rps_target(case),
-            get_reserve_penalty(case),
-            get_ordc_curved(case),
-            all_existing_projects,
-            capacity_market_projects,
-            capacity_forward_years,
-            iteration_year,
-            simulation_years,
-            get_solver(case),
-            get_results_dir(simulation),
-            current_siip_sim,
-            siip_system)
+        cet_achieved_ratio =
+            @timeit EMIS_TIMER "realized_marketdata" create_realized_marketdata(simulation,
+                sys_MDs[iteration_year],
+                sys_UCs[iteration_year],
+                sys_EDs[iteration_year],
+                markets,
+                get_rps_target(case),
+                get_reserve_penalty(case),
+                get_ordc_curved(case),
+                all_existing_projects,
+                capacity_market_projects,
+                capacity_forward_years,
+                iteration_year,
+                simulation_years,
+                get_solver(case),
+                get_results_dir(simulation),
+                current_siip_sim,
+                siip_system)
 
         existing_project_types = unique(get_type.(get_tech.(all_existing_projects)))
         rt_products = String.(
@@ -434,7 +435,8 @@ function run_agent_simulation(
                     iteration_year,
                     step_size,
                     scenario_names,
-                    total_horizon)
+                    total_horizon,
+                    timeseries_data_dir)
             end
 
             update_portfolio_preference_multipliers!(investor, iteration_year)
@@ -442,14 +444,16 @@ function run_agent_simulation(
 
         @info "Updating derating data for all scenarios in the simulation based on updated resource adequacy and market conditions"
         simulations, iteration_years, derating_scales,
-        methodologies, ra_metric_list, marginal_cc_switches =  repeat_arguments(num_scenarios,
-        simulation, iteration_year, get_derating_scale(case),
-        get_accreditation_methodology(case), get_accreditation_metric(case),
-        get_marginal_cc_switch(case))
-        
+        methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list =
+            repeat_arguments(num_scenarios,
+                simulation, iteration_year, get_derating_scale(case),
+                get_accreditation_methodology(case), get_accreditation_metric(case),
+                get_marginal_cc_switch(case), timeseries_data_dir)
+
         @time Distributed.pmap(parallelize_update_derating_data,
-         zip(scenario_names, simulations, iteration_years,
-        derating_scales, methodologies, ra_metric_list, marginal_cc_switches))
+            zip(scenario_names, simulations, iteration_years,
+                derating_scales, methodologies, ra_metric_list, marginal_cc_switches,
+                timeseries_data_dir_list))
 
         for scenario in scenario_names
             derating_factors = read_data(
@@ -488,7 +492,11 @@ function run_agent_simulation(
         end
 
         # reserve_ts_scaling_factor = calculate_reserve_scaling_factor(simulation)
-        @timeit EMIS_TIMER "reserve_ts_scaling" reserve_ts_scaling(simulation, iteration_year, step_size)
+        @timeit EMIS_TIMER "reserve_ts_scaling" reserve_ts_scaling(
+            simulation,
+            iteration_year,
+            step_size,
+        )
 
         @timeit EMIS_TIMER "save_year_data" begin
             @info "COMPLETED ITERATION YEAR $(iteration_year)"
@@ -501,16 +509,14 @@ function run_agent_simulation(
             save_simulation(simulation, results_dir, iteration_year)
         end
 
-        save_shortfall_data(joinpath(results_dir,"shortfall_data_year$(iteration_year).h5"), shortfall)
         t_end = time()
-        iteration_time_hours = round((t_end - t_start) / 3600, digits=2)
+        iteration_time_hours = round((t_end - t_start) / 3600; digits = 2)
         total_sim_time += iteration_time_hours
         ts_now = Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS")
         @info "Finished iteration year $(iteration_year) @ $(ts_now)"
         @info "Iteration year $(iteration_year) took $(iteration_time_hours) hours"
         @info "Total simulation time after completing iteration year $(iteration_year): $(round(total_sim_time, digits=2)) hours"
         print_timer(stderr, EMIS_TIMER)
-
     end
 
     final_portfolio = vcat(get_existing.(get_investors(simulation))...)

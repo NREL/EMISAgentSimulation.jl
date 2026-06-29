@@ -328,7 +328,8 @@ function save_nested_dict_vf!(g::HDF5.Group, vv::Vector{<:AbstractVector{<:Real}
 end
 
 function load_nested_dict_vf(g::HDF5.Group)
-    if haskey(HDF5.attributes(g), "format") && read_attribute(g, "format") == "vector_of_vectors"
+    if haskey(HDF5.attributes(g), "format") &&
+       read_attribute(g, "format") == "vector_of_vectors"
         n = read(g, "n")
         return [read(g, string(i)) for i in 1:n]
     end
@@ -1545,8 +1546,11 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 # Save Sienna Systems (MD, UC, ED, PRAS) to files or checkpoints
 # ─────────────────────────────────────────────────────────────────────────────
-function save_Sienna_systems(simulation::AgentSimulation, result_path::String, iteration_year::Int)
-
+function save_Sienna_systems(
+    simulation::AgentSimulation,
+    result_path::String,
+    iteration_year::Int,
+)
     scenario_names = String.(get_all_scenario_names(get_data_dir(get_case(simulation))))
     # Save from iteration_year onward only. Past years were already saved at their own
     # checkpoints and are immutable (finish_construction! only modifies construction_year:end,
@@ -1554,18 +1558,32 @@ function save_Sienna_systems(simulation::AgentSimulation, result_path::String, i
     all_years = length(simulation.system_MDs)
     for year in iteration_year:all_years
         @info "Saving systems for year $(year) to checkpoint."
-        PSY.to_json(simulation.system_MDs[year], joinpath(result_path, "sys_MD_year$(year).json"), force = true)
-        PSY.to_json(simulation.system_UCs[year], joinpath(result_path, "sys_UC_year$(year).json"), force = true)
-        PSY.to_json(simulation.system_EDs[year], joinpath(result_path, "sys_ED_year$(year).json"), force = true)
+        PSY.to_json(
+            simulation.system_MDs[year],
+            joinpath(result_path, "sys_MD_year$(year).json");
+            force = true,
+        )
+        PSY.to_json(
+            simulation.system_UCs[year],
+            joinpath(result_path, "sys_UC_year$(year).json");
+            force = true,
+        )
+        PSY.to_json(
+            simulation.system_EDs[year],
+            joinpath(result_path, "sys_ED_year$(year).json");
+            force = true,
+        )
     end
     # PRAS is a single object per scenario (not year-indexed). Only save for iteration_year;
     # load_sienna_systems! is updated to load only restore_year instead of 1:restore_year.
     for scenario in scenario_names
         PSY.to_json(simulation.system_PRAS[scenario],
-        joinpath(get_results_dir(simulation), "sys_PRAS_$(scenario)_year$(iteration_year).json"), force = true)
+            joinpath(
+                get_results_dir(simulation),
+                "sys_PRAS_$(scenario)_year$(iteration_year).json",
+            ); force = true)
     end
 end
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Load Sienna Systems (MD, UC, ED, PRAS) from files or checkpoints
@@ -1639,9 +1657,13 @@ function save_shortfall_data(path::String, sf)
     end
 end
 
-
-function load_sienna_systems!(simulation::AgentSimulation, result_path::String, restore_year::Int, simulation_settings::Dict, scratch_dir::String)
-
+function load_sienna_systems!(
+    simulation::AgentSimulation,
+    result_path::String,
+    restore_year::Int,
+    simulation_settings::Dict,
+    scratch_dir::String,
+)
     simulation.system_MDs = Vector{PSY.System}()
     simulation.system_UCs = Vector{PSY.System}()
     simulation.system_EDs = Vector{PSY.System}()
@@ -1652,26 +1674,30 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
 
     for year in 1:restore_year
         @info "Restoring systems for year $(year) from checkpoint."
-        sys_MD = PSY.System(joinpath(result_path, "sys_MD_year$(year).json"), runchecks = false)
+        sys_MD =
+            PSY.System(joinpath(result_path, "sys_MD_year$(year).json"); runchecks = false)
         push!(simulation.system_MDs, sys_MD)
 
-        sys_UC = PSY.System(joinpath(result_path, "sys_UC_year$(year).json"), runchecks = false)
+        sys_UC =
+            PSY.System(joinpath(result_path, "sys_UC_year$(year).json"); runchecks = false)
         push!(simulation.system_UCs, sys_UC)
 
-        sys_ED = PSY.System(joinpath(result_path, "sys_ED_year$(year).json"), runchecks = false)
+        sys_ED =
+            PSY.System(joinpath(result_path, "sys_ED_year$(year).json"); runchecks = false)
         push!(simulation.system_EDs, sys_ED)
     end
     # PRAS is not year-indexed; only the restore_year file exists and is needed.
     for scenario in scenarios
         @info "Restoring PRAS system for scenario $(scenario) from year $(restore_year) checkpoint."
-        sys_PRAS = PSY.System(joinpath(result_path, "sys_PRAS_$(scenario)_year$(restore_year).json"), runchecks = false)
+        sys_PRAS = PSY.System(
+            joinpath(result_path, "sys_PRAS_$(scenario)_year$(restore_year).json");
+            runchecks = false,
+        )
         simulation.system_PRAS[scenario] = sys_PRAS
     end
 
     simulation_years = get_total_horizon(case)
-    timeseries_data_dir = get_timeseries_data_dir(case)
     rts_dir = get_sys_dir(case)
-    ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
     runchecks = false
     MD_horizon = get_md_horizon(case)
     MD_interval = get_md_interval(case)
@@ -1694,7 +1720,7 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
         "Not a pre-defined scenario."
     end
 
-    for sim_year in restore_year+1:simulation_years
+    for sim_year in (restore_year + 1):simulation_years
         md_json = joinpath(result_path, "sys_MD_year$(sim_year).json")
         uc_json = joinpath(result_path, "sys_UC_year$(sim_year).json")
         ed_json = joinpath(result_path, "sys_ED_year$(sim_year).json")
@@ -1704,37 +1730,79 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
             # from finish_construction! calls in years 1..restore_year, plus all post-load
             # modifications (fix_multistart_cost_curves!, component removals, renaming, units).
             @info "Restoring systems for year $(sim_year) from checkpoint."
-            sys_MD = PSY.System(md_json, time_series_directory = scratch_dir, runchecks = runchecks)
-            sys_UC = PSY.System(uc_json, time_series_directory = scratch_dir, runchecks = runchecks)
-            sys_ED = PSY.System(ed_json, time_series_directory = scratch_dir, runchecks = runchecks)
+            sys_MD = PSY.System(
+                md_json;
+                time_series_directory = scratch_dir,
+                runchecks = runchecks,
+            )
+            sys_UC = PSY.System(
+                uc_json;
+                time_series_directory = scratch_dir,
+                runchecks = runchecks,
+            )
+            sys_ED = PSY.System(
+                ed_json;
+                time_series_directory = scratch_dir,
+                runchecks = runchecks,
+            )
         else
             # Fallback: no checkpoint for this year — load base system and re-apply modifications.
             @info "No checkpoint found for year $(sim_year), reading from constructed_systems."
             MD_sys_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
-            "sim_year_$(sim_year)", "MD_sys_EMIS_$(MD_horizon)hor_$(MD_interval)int.json")
+                "sim_year_$(sim_year)",
+                "MD_sys_EMIS_$(MD_horizon)hor_$(MD_interval)int.json")
             UC_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
-            "sim_year_$(sim_year)",
-            "DA_sys_EMIS_$(UC_horizon)hor_$(UC_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
+                "sim_year_$(sim_year)",
+                "DA_sys_EMIS_$(UC_horizon)hor_$(UC_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json",
+            )
             ED_filename = joinpath(rts_dir, "constructed_systems", pcm_scenario,
-            "sim_year_$(sim_year)", "RT_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json")
+                "sim_year_$(sim_year)",
+                "RT_sys_EMIS_$(ED_horizon)hor_$(ED_interval)int_$(MD_horizon)mdhor_$(MD_interval)mdint.json",
+            )
 
-            sys_MD = PSY.System(MD_sys_filename, time_series_directory = scratch_dir, runchecks = runchecks)
-            sys_UC = PSY.System(UC_filename, time_series_directory = scratch_dir, runchecks = runchecks)
-            sys_ED = PSY.System(ED_filename, time_series_directory = scratch_dir, runchecks = runchecks)
+            sys_MD = PSY.System(
+                MD_sys_filename;
+                time_series_directory = scratch_dir,
+                runchecks = runchecks,
+            )
+            sys_UC = PSY.System(
+                UC_filename;
+                time_series_directory = scratch_dir,
+                runchecks = runchecks,
+            )
+            sys_ED = PSY.System(
+                ED_filename;
+                time_series_directory = scratch_dir,
+                runchecks = runchecks,
+            )
 
             fix_multistart_cost_curves!(sys_MD)
             fix_multistart_cost_curves!(sys_UC)
             fix_multistart_cost_curves!(sys_ED)
 
-            removegen_name = ["AUSTIN_1","AUSTIN_2"]
+            removegen_name = ["AUSTIN_1", "AUSTIN_2"]
             for sys in [sys_MD, sys_UC, sys_ED]
                 for d in PSY.get_components(PSY.Generator, sys)
                     d.name in removegen_name && PSY.remove_component!(sys, d)
                 end
-                PSY.remove_component!(sys, PSY.get_component(PSY.VariableReserve, sys, "SPIN"))
-                PSY.remove_component!(sys, PSY.get_component(PSY.VariableReserveNonSpinning, sys, "NONSPIN"))
-                PSY.set_name!(sys, PSY.get_component(PSY.VariableReserve, sys, "REG_DN"), "Reg_Down")
-                PSY.set_name!(sys, PSY.get_component(PSY.VariableReserve, sys, "REG_UP"), "Reg_Up")
+                PSY.remove_component!(
+                    sys,
+                    PSY.get_component(PSY.VariableReserve, sys, "SPIN"),
+                )
+                PSY.remove_component!(
+                    sys,
+                    PSY.get_component(PSY.VariableReserveNonSpinning, sys, "NONSPIN"),
+                )
+                PSY.set_name!(
+                    sys,
+                    PSY.get_component(PSY.VariableReserve, sys, "REG_DN"),
+                    "Reg_Down",
+                )
+                PSY.set_name!(
+                    sys,
+                    PSY.get_component(PSY.VariableReserve, sys, "REG_UP"),
+                    "Reg_Up",
+                )
                 PSY.set_units_base_system!(sys, PSY.IS.UnitSystem.DEVICE_BASE)
             end
         end
@@ -1746,17 +1814,27 @@ function load_sienna_systems!(simulation::AgentSimulation, result_path::String, 
 
     # Propagate ThermalMultiStart end-of-year-restore_year states into year restore_year+1 fresh systems
     if restore_year + 1 <= length(simulation.system_UCs)
-        for gen_prev in PSY.get_components(PSY.ThermalMultiStart, simulation.system_UCs[restore_year])
+        for gen_prev in
+            PSY.get_components(PSY.ThermalMultiStart, simulation.system_UCs[restore_year])
             name = PSY.get_name(gen_prev)
-            gen_next = PSY.get_component(PSY.ThermalMultiStart, simulation.system_UCs[restore_year + 1], name)
+            gen_next = PSY.get_component(
+                PSY.ThermalMultiStart,
+                simulation.system_UCs[restore_year + 1],
+                name,
+            )
             if gen_next !== nothing
                 PSY.set_status!(gen_next, PSY.get_status(gen_prev))
                 PSY.set_time_at_status!(gen_next, PSY.get_time_at_status(gen_prev))
             end
         end
-        for gen_prev in PSY.get_components(PSY.ThermalMultiStart, simulation.system_EDs[restore_year])
+        for gen_prev in
+            PSY.get_components(PSY.ThermalMultiStart, simulation.system_EDs[restore_year])
             name = PSY.get_name(gen_prev)
-            gen_next = PSY.get_component(PSY.ThermalMultiStart, simulation.system_EDs[restore_year + 1], name)
+            gen_next = PSY.get_component(
+                PSY.ThermalMultiStart,
+                simulation.system_EDs[restore_year + 1],
+                name,
+            )
             if gen_next !== nothing
                 PSY.set_status!(gen_next, PSY.get_status(gen_prev))
                 PSY.set_time_at_status!(gen_next, PSY.get_time_at_status(gen_prev))
@@ -1872,7 +1950,7 @@ function _save_axisarray_guarded!(g::HDF5.Group, a::AxisArrays.AxisArray)
         attributes(g)["is_empty"] = true
         # Store axis metadata so load can reconstruct the shape.
         axes_names = AxisArrays.axisnames(a)
-        axes_vals  = AxisArrays.axisvalues(a)
+        axes_vals = AxisArrays.axisvalues(a)
         write(g, "axis_count", length(axes_vals))
         for (i, (ax_name, ax_vals)) in enumerate(zip(axes_names, axes_vals))
             write(g, "axis$(i)_name", string(ax_name))
@@ -1901,7 +1979,7 @@ function _load_axisarray_guarded(g::HDF5.Group)
         for i in 1:axis_count
             ax_name = Symbol(read(g, "axis$(i)_name"))
             ax_type = read(g, "axis$(i)_type")
-            ax_raw  = read(g, "axis$(i)_values")
+            ax_raw = read(g, "axis$(i)_values")
             ax_vals = if ax_type == "Symbol"
                 Symbol.(ax_raw)
             elseif ax_type == "Int64"
@@ -1984,20 +2062,23 @@ function save_expected_market_data(path::String,
     h5open(path, "w") do f
         attributes(f)["schema_version"] = SCHEMA_VERSION
 
-        save_axisarray!(create_group(f, "capacity_price"),   capacity_price)
-        save_axisarray!(create_group(f, "energy_price"),     energy_price)
-        _save_dict_str_matrix!(create_group(f, "reserve_price"),         reserve_price)
-        save_axisarray!(create_group(f, "rec_price"),        rec_price)
-        save_axisarray!(create_group(f, "inertia_price"),    inertia_price)
+        save_axisarray!(create_group(f, "capacity_price"), capacity_price)
+        save_axisarray!(create_group(f, "energy_price"), energy_price)
+        _save_dict_str_matrix!(create_group(f, "reserve_price"), reserve_price)
+        save_axisarray!(create_group(f, "rec_price"), rec_price)
+        save_axisarray!(create_group(f, "inertia_price"), inertia_price)
 
-        _save_dict_str_matrix!(create_group(f, "capacity_factors"),      capacity_factors)
-        _save_dict_str_matrix!(create_group(f, "total_utilization"),     total_utilization)
-        _save_dict_str_vec_float!(create_group(f, "capacity_accepted_perc"), capacity_accepted_perc)
+        _save_dict_str_matrix!(create_group(f, "capacity_factors"), capacity_factors)
+        _save_dict_str_matrix!(create_group(f, "total_utilization"), total_utilization)
+        _save_dict_str_vec_float!(
+            create_group(f, "capacity_accepted_perc"),
+            capacity_accepted_perc,
+        )
 
-        _save_dict_str_int!(create_group(f, "new_options"),              new_options)
-        _save_dict_str_float!(create_group(f, "new_options_by_type"),    new_options_by_type)
+        _save_dict_str_int!(create_group(f, "new_options"), new_options)
+        _save_dict_str_float!(create_group(f, "new_options_by_type"), new_options_by_type)
 
-        save_axisarray!(create_group(f, "REC_slack"),  REC_slack)
+        save_axisarray!(create_group(f, "REC_slack"), REC_slack)
         save_axisarray!(create_group(f, "REC_supply"), REC_supply)
         save_axisarray!(create_group(f, "REC_demand"), REC_demand)
 
@@ -2007,46 +2088,52 @@ function save_expected_market_data(path::String,
         save_axisarray!(create_group(f, "investment"), investment)
         save_axisarray!(create_group(f, "retirement"), retirement)
 
-        _save_dict_str_float!(create_group(f, "max_new_options"),  max_new_options)
-        _save_dict_str_float!(create_group(f, "max_gen"),          max_gen)
+        _save_dict_str_float!(create_group(f, "max_new_options"), max_new_options)
+        _save_dict_str_float!(create_group(f, "max_gen"), max_gen)
 
         save_axisarray!(create_group(f, "demand_e"), demand_e)
         save_nested_dict_vf!(create_group(f, "rep_hour_weight"), rep_hour_weight)
 
-        save_axisarray!(create_group(f, "p_e_print"),         p_e_print)
-        save_axisarray!(create_group(f, "in_flow_print"),     in_flow_print)
-        save_axisarray!(create_group(f, "out_flow_print"),    out_flow_print)
-        save_axisarray!(create_group(f, "v_e_print"),         v_e_print)
-        save_axisarray!(create_group(f, "p_in_print"),        p_in_print)
+        save_axisarray!(create_group(f, "p_e_print"), p_e_print)
+        save_axisarray!(create_group(f, "in_flow_print"), in_flow_print)
+        save_axisarray!(create_group(f, "out_flow_print"), out_flow_print)
+        save_axisarray!(create_group(f, "v_e_print"), v_e_print)
+        save_axisarray!(create_group(f, "p_in_print"), p_in_print)
         save_axisarray!(create_group(f, "p_e_storage_print"), p_e_storage_print)
 
-        _save_dict_str_float!(create_group(f, "linepowerlimit"),  linepowerlimit)
-        _save_dict_str_float!(create_group(f, "rec_correction"),  rec_correction)
+        _save_dict_str_float!(create_group(f, "linepowerlimit"), linepowerlimit)
+        _save_dict_str_float!(create_group(f, "rec_correction"), rec_correction)
 
-        _save_dict_str_vec_str!(create_group(f, "zone_storage"),    zone_storage)
-        _save_dict_str_vec_str!(create_group(f, "zone_projects"),   zone_projects)
-        _save_dict_str_vec_str!(create_group(f, "lines_to_zone"),   lines_to_zone)
+        _save_dict_str_vec_str!(create_group(f, "zone_storage"), zone_storage)
+        _save_dict_str_vec_str!(create_group(f, "zone_projects"), zone_projects)
+        _save_dict_str_vec_str!(create_group(f, "lines_to_zone"), lines_to_zone)
         _save_dict_str_vec_str!(create_group(f, "lines_from_zone"), lines_from_zone)
 
-        _save_dict_str_float!(create_group(f, "init_storage"),      init_storage)
+        _save_dict_str_float!(create_group(f, "init_storage"), init_storage)
         save_axisarray!(create_group(f, "p_e_detail"), p_e_detail)
         _save_dict_str_float!(create_group(f, "remaining_buildtime"), remaining_buildtime)
 
-        write(f, "projects",             Vector{String}(projects))
-        write(f, "generator_projects",   Vector{String}(generator_projects))
-        write(f, "storage_projects",     Vector{String}(storage_projects))
-        write(f, "reserve_up_products",  Vector{String}(collect(reserve_up_products)))
-        write(f, "ordc_products",        Vector{String}(collect(ordc_products)))
-        write(f, "reserve_down_products",Vector{String}(collect(reserve_down_products)))
+        write(f, "projects", Vector{String}(projects))
+        write(f, "generator_projects", Vector{String}(generator_projects))
+        write(f, "storage_projects", Vector{String}(storage_projects))
+        write(f, "reserve_up_products", Vector{String}(collect(reserve_up_products)))
+        write(f, "ordc_products", Vector{String}(collect(ordc_products)))
+        write(f, "reserve_down_products", Vector{String}(collect(reserve_down_products)))
 
-        _save_axisarray_guarded!(create_group(f, "p_in_ru_detail"),      p_in_ru_detail)
-        _save_axisarray_guarded!(create_group(f, "p_in_ordc_detail"),    p_in_ordc_detail)
-        _save_axisarray_guarded!(create_group(f, "p_in_inertia_detail"), p_in_inertia_detail)
-        _save_axisarray_guarded!(create_group(f, "p_in_rd_detail"),      p_in_rd_detail)
-        _save_axisarray_guarded!(create_group(f, "p_out_ru_detail"),     p_out_ru_detail)
-        _save_axisarray_guarded!(create_group(f, "p_out_ordc_detail"),   p_out_ordc_detail)
-        _save_axisarray_guarded!(create_group(f, "p_out_inertia_detail"),p_out_inertia_detail)
-        _save_axisarray_guarded!(create_group(f, "p_out_rd_detail"),     p_out_rd_detail)
+        _save_axisarray_guarded!(create_group(f, "p_in_ru_detail"), p_in_ru_detail)
+        _save_axisarray_guarded!(create_group(f, "p_in_ordc_detail"), p_in_ordc_detail)
+        _save_axisarray_guarded!(
+            create_group(f, "p_in_inertia_detail"),
+            p_in_inertia_detail,
+        )
+        _save_axisarray_guarded!(create_group(f, "p_in_rd_detail"), p_in_rd_detail)
+        _save_axisarray_guarded!(create_group(f, "p_out_ru_detail"), p_out_ru_detail)
+        _save_axisarray_guarded!(create_group(f, "p_out_ordc_detail"), p_out_ordc_detail)
+        _save_axisarray_guarded!(
+            create_group(f, "p_out_inertia_detail"),
+            p_out_inertia_detail,
+        )
+        _save_axisarray_guarded!(create_group(f, "p_out_rd_detail"), p_out_rd_detail)
     end
 end
 
@@ -2060,62 +2147,60 @@ that call sites in investor_iteration.jl need no changes.
 function load_expected_market_data(path::String)
     h5open(path, "r") do f
         return Dict{String, Any}(
-            "capacity_price"          => load_axisarray(f["capacity_price"]),
-            "energy_price"            => load_axisarray(f["energy_price"]),
-            "reserve_price"           => _load_dict_str_matrix(f["reserve_price"]),
-            "rec_price"               => load_axisarray(f["rec_price"]),
-            "inertia_price"           => load_axisarray(f["inertia_price"]),
-            "capacity_factors"        => _load_dict_str_matrix(f["capacity_factors"]),
-            "total_utilization"       => _load_dict_str_matrix(f["total_utilization"]),
-            "capacity_accepted_perc"  => _load_dict_str_vec_float(f["capacity_accepted_perc"]),
-            "new_options"             => _load_dict_str_int(f["new_options"]),
-            "new_options_by_type"     => _load_dict_str_float(f["new_options_by_type"]),
-            "REC_slack"               => load_axisarray(f["REC_slack"]),
-            "REC_supply"              => load_axisarray(f["REC_supply"]),
-            "REC_demand"              => load_axisarray(f["REC_demand"]),
-            "rps_compliant_projects"  => read(f, "rps_compliant_projects"),
-            "rec_requirement"         => load_axisarray(f["rec_requirement"]),
-            "investment"              => load_axisarray(f["investment"]),
-            "retirement"              => load_axisarray(f["retirement"]),
-            "max_new_options"         => _load_dict_str_float(f["max_new_options"]),
-            "max_gen"                 => _load_dict_str_float(f["max_gen"]),
-            "demand_e"                => load_axisarray(f["demand_e"]),
-            "rep_hour_weight"         => load_nested_dict_vf(f["rep_hour_weight"]),
-            "p_e_print"               => load_axisarray(f["p_e_print"]),
-            "in_flow_print"           => load_axisarray(f["in_flow_print"]),
-            "out_flow_print"          => load_axisarray(f["out_flow_print"]),
-            "v_e_print"               => load_axisarray(f["v_e_print"]),
-            "p_in_print"              => load_axisarray(f["p_in_print"]),
-            "linepowerlimit"          => _load_dict_str_float(f["linepowerlimit"]),
-            "rec_correction"          => _load_dict_str_float(f["rec_correction"]),
-            "p_e_storage_print"       => load_axisarray(f["p_e_storage_print"]),
-            "zone_storage"            => _load_dict_str_vec_str(f["zone_storage"]),
-            "zone_projects"           => _load_dict_str_vec_str(f["zone_projects"]),
-            "lines_to_zone"           => _load_dict_str_vec_str(f["lines_to_zone"]),
-            "lines_from_zone"         => _load_dict_str_vec_str(f["lines_from_zone"]),
-            "init_storage"            => _load_dict_str_float(f["init_storage"]),
-            "p_e_detail"              => load_axisarray(f["p_e_detail"]),
-            "remaining_buildtime"     => _load_dict_str_float(f["remaining_buildtime"]),
-            "projects"                => read(f, "projects"),
-            "generator_projects"      => read(f, "generator_projects"),
-            "storage_projects"        => read(f, "storage_projects"),
-            "reserve_up_products"     => read(f, "reserve_up_products"),
-            "ordc_products"           => read(f, "ordc_products"),
-            "reserve_down_products"   => read(f, "reserve_down_products"),
-            "p_in_ru_detail"          => _load_axisarray_guarded(f["p_in_ru_detail"]),
-            "p_in_ordc_detail"        => _load_axisarray_guarded(f["p_in_ordc_detail"]),
-            "p_in_inertia_detail"     => _load_axisarray_guarded(f["p_in_inertia_detail"]),
-            "p_in_rd_detail"          => _load_axisarray_guarded(f["p_in_rd_detail"]),
-            "p_out_ru_detail"         => _load_axisarray_guarded(f["p_out_ru_detail"]),
-            "p_out_ordc_detail"       => _load_axisarray_guarded(f["p_out_ordc_detail"]),
-            "p_out_inertia_detail"    => _load_axisarray_guarded(f["p_out_inertia_detail"]),
-            "p_out_rd_detail"         => _load_axisarray_guarded(f["p_out_rd_detail"]),
+            "capacity_price" => load_axisarray(f["capacity_price"]),
+            "energy_price" => load_axisarray(f["energy_price"]),
+            "reserve_price" => _load_dict_str_matrix(f["reserve_price"]),
+            "rec_price" => load_axisarray(f["rec_price"]),
+            "inertia_price" => load_axisarray(f["inertia_price"]),
+            "capacity_factors" => _load_dict_str_matrix(f["capacity_factors"]),
+            "total_utilization" => _load_dict_str_matrix(f["total_utilization"]),
+            "capacity_accepted_perc" =>
+                _load_dict_str_vec_float(f["capacity_accepted_perc"]),
+            "new_options" => _load_dict_str_int(f["new_options"]),
+            "new_options_by_type" => _load_dict_str_float(f["new_options_by_type"]),
+            "REC_slack" => load_axisarray(f["REC_slack"]),
+            "REC_supply" => load_axisarray(f["REC_supply"]),
+            "REC_demand" => load_axisarray(f["REC_demand"]),
+            "rps_compliant_projects" => read(f, "rps_compliant_projects"),
+            "rec_requirement" => load_axisarray(f["rec_requirement"]),
+            "investment" => load_axisarray(f["investment"]),
+            "retirement" => load_axisarray(f["retirement"]),
+            "max_new_options" => _load_dict_str_float(f["max_new_options"]),
+            "max_gen" => _load_dict_str_float(f["max_gen"]),
+            "demand_e" => load_axisarray(f["demand_e"]),
+            "rep_hour_weight" => load_nested_dict_vf(f["rep_hour_weight"]),
+            "p_e_print" => load_axisarray(f["p_e_print"]),
+            "in_flow_print" => load_axisarray(f["in_flow_print"]),
+            "out_flow_print" => load_axisarray(f["out_flow_print"]),
+            "v_e_print" => load_axisarray(f["v_e_print"]),
+            "p_in_print" => load_axisarray(f["p_in_print"]),
+            "linepowerlimit" => _load_dict_str_float(f["linepowerlimit"]),
+            "rec_correction" => _load_dict_str_float(f["rec_correction"]),
+            "p_e_storage_print" => load_axisarray(f["p_e_storage_print"]),
+            "zone_storage" => _load_dict_str_vec_str(f["zone_storage"]),
+            "zone_projects" => _load_dict_str_vec_str(f["zone_projects"]),
+            "lines_to_zone" => _load_dict_str_vec_str(f["lines_to_zone"]),
+            "lines_from_zone" => _load_dict_str_vec_str(f["lines_from_zone"]),
+            "init_storage" => _load_dict_str_float(f["init_storage"]),
+            "p_e_detail" => load_axisarray(f["p_e_detail"]),
+            "remaining_buildtime" => _load_dict_str_float(f["remaining_buildtime"]),
+            "projects" => read(f, "projects"),
+            "generator_projects" => read(f, "generator_projects"),
+            "storage_projects" => read(f, "storage_projects"),
+            "reserve_up_products" => read(f, "reserve_up_products"),
+            "ordc_products" => read(f, "ordc_products"),
+            "reserve_down_products" => read(f, "reserve_down_products"),
+            "p_in_ru_detail" => _load_axisarray_guarded(f["p_in_ru_detail"]),
+            "p_in_ordc_detail" => _load_axisarray_guarded(f["p_in_ordc_detail"]),
+            "p_in_inertia_detail" => _load_axisarray_guarded(f["p_in_inertia_detail"]),
+            "p_in_rd_detail" => _load_axisarray_guarded(f["p_in_rd_detail"]),
+            "p_out_ru_detail" => _load_axisarray_guarded(f["p_out_ru_detail"]),
+            "p_out_ordc_detail" => _load_axisarray_guarded(f["p_out_ordc_detail"]),
+            "p_out_inertia_detail" => _load_axisarray_guarded(f["p_out_inertia_detail"]),
+            "p_out_rd_detail" => _load_axisarray_guarded(f["p_out_rd_detail"]),
         )
     end
 end
-
-
-
 
 # investor_iteration.jl calls save_expected_market_data
 # This code snippet transforms the jld2 to new h5 format
@@ -2123,15 +2208,19 @@ end
 # base_path = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/EMIS_RTS_Analysis_GS/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/investors"
 
 function transform_jld2_to_h5(base_path::String)
-
     for investor_id in 1:4
         investor_name = "investor$(investor_id)"
         for scenario_name in ["scenario_1", "scenario_2", "scenario_3"]
             for iteration_year in 1:15
                 @info "Loading OLD format expected market data for $(investor_name) iteration year $(iteration_year)"
-                data_path = joinpath(base_path, investor_name, "expected_market_data", "$(scenario_name)_year_$(iteration_year).jld2")
+                data_path = joinpath(
+                    base_path,
+                    investor_name,
+                    "expected_market_data",
+                    "$(scenario_name)_year_$(iteration_year).jld2",
+                )
                 expected_data = FileIO.load(data_path)
-                
+
                 capacity_price = expected_data["capacity_price"]
                 energy_price = expected_data["energy_price"]
                 reserve_price = expected_data["reserve_price"]
@@ -2159,7 +2248,7 @@ function transform_jld2_to_h5(base_path::String)
                 v_e_print = expected_data["v_e_print"]
                 p_in_print = expected_data["p_in_print"]
                 linepowerlimit = expected_data["linepowerlimit"]
-                rec_correction = expected_data["rec_correction"]    
+                rec_correction = expected_data["rec_correction"]
                 p_e_storage_print = expected_data["p_e_storage_print"]
                 zone_storage = expected_data["zone_storage"]
                 zone_projects = expected_data["zone_projects"]
@@ -2184,24 +2273,30 @@ function transform_jld2_to_h5(base_path::String)
                 p_out_rd_detail = expected_data["p_out_rd_detail"]
 
                 @info "Saving NEW format expected market data for $(investor_name) iteration year $(iteration_year)"
-                h5_data_path = joinpath(base_path, investor_name, "expected_market_data", "$(scenario_name)_year_$(iteration_year).h5")
+                h5_data_path = joinpath(
+                    base_path,
+                    investor_name,
+                    "expected_market_data",
+                    "$(scenario_name)_year_$(iteration_year).h5",
+                )
                 save_expected_market_data(h5_data_path,
-                capacity_price, energy_price, reserve_price, rec_price, inertia_price,
-                capacity_factors, total_utilization, capacity_accepted_perc,
-                new_options, new_options_by_type,
-                REC_slack, REC_supply, REC_demand,
-                rps_compliant_projects, rec_requirement,
-                investment, retirement,
-                max_new_options, max_gen, demand_e, rep_hour_weight,
-                p_e_print, in_flow_print, out_flow_print, v_e_print, p_in_print,
-                linepowerlimit, rec_correction, p_e_storage_print,
-                zone_storage, zone_projects, lines_to_zone, lines_from_zone,
-                init_storage, p_e_detail, remaining_buildtime,
-                projects, generator_projects, storage_projects,
-                reserve_up_products, ordc_products, reserve_down_products,
-                p_in_ru_detail, p_in_ordc_detail, p_in_inertia_detail, p_in_rd_detail,
-                p_out_ru_detail, p_out_ordc_detail, p_out_inertia_detail, p_out_rd_detail,
-            )
+                    capacity_price, energy_price, reserve_price, rec_price, inertia_price,
+                    capacity_factors, total_utilization, capacity_accepted_perc,
+                    new_options, new_options_by_type,
+                    REC_slack, REC_supply, REC_demand,
+                    rps_compliant_projects, rec_requirement,
+                    investment, retirement,
+                    max_new_options, max_gen, demand_e, rep_hour_weight,
+                    p_e_print, in_flow_print, out_flow_print, v_e_print, p_in_print,
+                    linepowerlimit, rec_correction, p_e_storage_print,
+                    zone_storage, zone_projects, lines_to_zone, lines_from_zone,
+                    init_storage, p_e_detail, remaining_buildtime,
+                    projects, generator_projects, storage_projects,
+                    reserve_up_products, ordc_products, reserve_down_products,
+                    p_in_ru_detail, p_in_ordc_detail, p_in_inertia_detail, p_in_rd_detail,
+                    p_out_ru_detail, p_out_ordc_detail, p_out_inertia_detail,
+                    p_out_rd_detail,
+                )
             end
         end
     end
@@ -2251,7 +2346,7 @@ function _save_supply_curve!(g::HDF5.Group, sc::Vector)
     if n == 0
         return
     end
-    write(g, "names",  String[row[1] for row in sc])
+    write(g, "names", String[row[1] for row in sc])
     ncols = length(sc[1]) - 1   # number of float columns
     write(g, "ncols", ncols)
     for c in 1:ncols
@@ -2323,8 +2418,8 @@ function save_realized_market_data(path::String,
         _save_dict_str_matrix!(create_group(f, "reserve_price_uc"), reserve_price_uc)
         _save_dict_str_matrix!(create_group(f, "reserve_price_md"), reserve_price_md)
 
-        save_axisarray!(create_group(f, "rec_price"),      rec_price)
-        save_axisarray!(create_group(f, "inertia_price"),  inertia_price)
+        save_axisarray!(create_group(f, "rec_price"), rec_price)
+        save_axisarray!(create_group(f, "inertia_price"), inertia_price)
 
         _save_dict_str_matrix!(create_group(f, "capacity_factors_md"), capacity_factors_md)
         _save_dict_str_matrix!(create_group(f, "capacity_factors_uc"), capacity_factors_uc)
@@ -2334,18 +2429,21 @@ function save_realized_market_data(path::String,
         _save_nested_dict_str_matrix!(create_group(f, "reserve_perc_uc"), reserve_perc_uc)
         _save_nested_dict_str_matrix!(create_group(f, "reserve_perc_ed"), reserve_perc_ed)
 
-        _save_dict_str_float!(create_group(f, "capacity_accepted_bids"), capacity_accepted_bids)
-        _save_dict_str_float!(create_group(f, "rec_accepted_bids"),      rec_accepted_bids)
+        _save_dict_str_float!(
+            create_group(f, "capacity_accepted_bids"),
+            capacity_accepted_bids,
+        )
+        _save_dict_str_float!(create_group(f, "rec_accepted_bids"), rec_accepted_bids)
 
-        _save_dict_str_matrix!(create_group(f, "inertia_perc"),   inertia_perc)
+        _save_dict_str_matrix!(create_group(f, "inertia_perc"), inertia_perc)
         _save_dict_str_matrix!(create_group(f, "start_up_costs"), start_up_costs)
         _save_dict_str_matrix!(create_group(f, "shut_down_costs"), shut_down_costs)
 
-        save_axisarray!(create_group(f, "energy_voll"),    energy_voll)
+        save_axisarray!(create_group(f, "energy_voll"), energy_voll)
         save_axisarray!(create_group(f, "energy_voll_uc"), energy_voll_uc)
         save_axisarray!(create_group(f, "energy_voll_md"), energy_voll_md)
 
-        _save_dict_str_matrix!(create_group(f, "reserve_voll"),    reserve_voll)
+        _save_dict_str_matrix!(create_group(f, "reserve_voll"), reserve_voll)
         _save_dict_str_matrix!(create_group(f, "reserve_voll_uc"), reserve_voll_uc)
         _save_dict_str_matrix!(create_group(f, "reserve_voll_md"), reserve_voll_md)
 
@@ -2353,7 +2451,7 @@ function save_realized_market_data(path::String,
 
         _save_supply_curve!(create_group(f, "rec_supply_curve"), rec_supply_curve)
         write(f, "rec_energy_requirment", Float64(rec_energy_requirment))
-        write(f, "cet_achieved_ratio",    Float64(cet_achieved_ratio))
+        write(f, "cet_achieved_ratio", Float64(cet_achieved_ratio))
     end
 end
 
@@ -2366,36 +2464,36 @@ Returns a `Dict{String, Any}` with the same keys as the old JLD2 format.
 function load_realized_market_data(path::String)
     h5open(path, "r") do f
         return Dict{String, Any}(
-            "capacity_price"        => load_axisarray(f["capacity_price"]),
-            "energy_price_ed"       => load_axisarray(f["energy_price_ed"]),
-            "energy_price_uc"       => load_axisarray(f["energy_price_uc"]),
-            "energy_price_md"       => load_axisarray(f["energy_price_md"]),
-            "reserve_price_ed"      => _load_dict_str_matrix(f["reserve_price_ed"]),
-            "reserve_price_uc"      => _load_dict_str_matrix(f["reserve_price_uc"]),
-            "reserve_price_md"      => _load_dict_str_matrix(f["reserve_price_md"]),
-            "rec_price"             => load_axisarray(f["rec_price"]),
-            "inertia_price"         => load_axisarray(f["inertia_price"]),
-            "capacity_factors_md"   => _load_dict_str_matrix(f["capacity_factors_md"]),
-            "capacity_factors_uc"   => _load_dict_str_matrix(f["capacity_factors_uc"]),
-            "capacity_factors_ed"   => _load_dict_str_matrix(f["capacity_factors_ed"]),
-            "reserve_perc_md"       => _load_nested_dict_str_matrix(f["reserve_perc_md"]),
-            "reserve_perc_uc"       => _load_nested_dict_str_matrix(f["reserve_perc_uc"]),
-            "reserve_perc_ed"       => _load_nested_dict_str_matrix(f["reserve_perc_ed"]),
-            "capacity_accepted_bids"=> _load_dict_str_float(f["capacity_accepted_bids"]),
-            "rec_accepted_bids"     => _load_dict_str_float(f["rec_accepted_bids"]),
-            "inertia_perc"          => _load_dict_str_matrix(f["inertia_perc"]),
-            "start_up_costs"        => _load_dict_str_matrix(f["start_up_costs"]),
-            "shut_down_costs"       => _load_dict_str_matrix(f["shut_down_costs"]),
-            "energy_voll"           => load_axisarray(f["energy_voll"]),
-            "energy_voll_uc"        => load_axisarray(f["energy_voll_uc"]),
-            "energy_voll_md"        => load_axisarray(f["energy_voll_md"]),
-            "reserve_voll"          => _load_dict_str_matrix(f["reserve_voll"]),
-            "reserve_voll_uc"       => _load_dict_str_matrix(f["reserve_voll_uc"]),
-            "reserve_voll_md"       => _load_dict_str_matrix(f["reserve_voll_md"]),
-            "inertia_voll"          => load_axisarray(f["inertia_voll"]),
-            "rec_supply_curve"      => _load_supply_curve(f["rec_supply_curve"]),
+            "capacity_price" => load_axisarray(f["capacity_price"]),
+            "energy_price_ed" => load_axisarray(f["energy_price_ed"]),
+            "energy_price_uc" => load_axisarray(f["energy_price_uc"]),
+            "energy_price_md" => load_axisarray(f["energy_price_md"]),
+            "reserve_price_ed" => _load_dict_str_matrix(f["reserve_price_ed"]),
+            "reserve_price_uc" => _load_dict_str_matrix(f["reserve_price_uc"]),
+            "reserve_price_md" => _load_dict_str_matrix(f["reserve_price_md"]),
+            "rec_price" => load_axisarray(f["rec_price"]),
+            "inertia_price" => load_axisarray(f["inertia_price"]),
+            "capacity_factors_md" => _load_dict_str_matrix(f["capacity_factors_md"]),
+            "capacity_factors_uc" => _load_dict_str_matrix(f["capacity_factors_uc"]),
+            "capacity_factors_ed" => _load_dict_str_matrix(f["capacity_factors_ed"]),
+            "reserve_perc_md" => _load_nested_dict_str_matrix(f["reserve_perc_md"]),
+            "reserve_perc_uc" => _load_nested_dict_str_matrix(f["reserve_perc_uc"]),
+            "reserve_perc_ed" => _load_nested_dict_str_matrix(f["reserve_perc_ed"]),
+            "capacity_accepted_bids" => _load_dict_str_float(f["capacity_accepted_bids"]),
+            "rec_accepted_bids" => _load_dict_str_float(f["rec_accepted_bids"]),
+            "inertia_perc" => _load_dict_str_matrix(f["inertia_perc"]),
+            "start_up_costs" => _load_dict_str_matrix(f["start_up_costs"]),
+            "shut_down_costs" => _load_dict_str_matrix(f["shut_down_costs"]),
+            "energy_voll" => load_axisarray(f["energy_voll"]),
+            "energy_voll_uc" => load_axisarray(f["energy_voll_uc"]),
+            "energy_voll_md" => load_axisarray(f["energy_voll_md"]),
+            "reserve_voll" => _load_dict_str_matrix(f["reserve_voll"]),
+            "reserve_voll_uc" => _load_dict_str_matrix(f["reserve_voll_uc"]),
+            "reserve_voll_md" => _load_dict_str_matrix(f["reserve_voll_md"]),
+            "inertia_voll" => load_axisarray(f["inertia_voll"]),
+            "rec_supply_curve" => _load_supply_curve(f["rec_supply_curve"]),
             "rec_energy_requirment" => read(f, "rec_energy_requirment"),
-            "cet_achieved_ratio"    => read(f, "cet_achieved_ratio"),
+            "cet_achieved_ratio" => read(f, "cet_achieved_ratio"),
         )
     end
 end

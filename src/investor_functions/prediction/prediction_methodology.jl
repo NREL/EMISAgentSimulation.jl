@@ -2,8 +2,8 @@
 This function gathers data for making price and other market data predictions.
 """
 function gather_prediction_parameters(investor::Investor,
-                                       sys_data_dir::String,
-                                       iteration_year::Int64)
+    sys_data_dir::String,
+    iteration_year::Int64)
     investor_name = get_name(investor)
     investor_dir = get_data_dir(investor)
 
@@ -15,7 +15,8 @@ function gather_prediction_parameters(investor::Investor,
     cp(joinpath(sys_data_dir, "timeseries_data_files", "Load", "rep_load_$(iteration_year - 1).csv"),
     joinpath(load_dir, "load_$(iteration_year - 1).csv"), force = true) =#
 
-    reserve_definition = read_data(joinpath(sys_data_dir, "markets_data", "reserve_products.csv"))
+    reserve_definition =
+        read_data(joinpath(sys_data_dir, "markets_data", "reserve_products.csv"))
 
     reserve_products = String.(split(reserve_definition[1, "all_products"], "; "))
     ordc_products = String.(split(reserve_definition[1, "ordc_products"], "; "))
@@ -27,7 +28,7 @@ function gather_prediction_parameters(investor::Investor,
         cp(joinpath(sys_data_dir, "timeseries_data_files", "Reserves", "rep_$(reserve)_$(iteration_year - 1).csv"),
         joinpath(reserve_dir, "$(reserve)_$(iteration_year - 1).csv"), force = true)
     end
- =#
+    =#
     market_names = get_markets(investor)
 
     carbon_tax = get_carbon_tax(investor)
@@ -43,34 +44,43 @@ function gather_prediction_parameters(investor::Investor,
 
     scenarios = get_scenario_data(get_forecast(investor))
 
-    return investor_name, investor_dir, market_names, carbon_tax, reserve_products, ordc_products, rep_period_interval, rep_hour_weight, avg_block_size, fixed_block_size, chron_weights, scenarios
+    return investor_name,
+    investor_dir,
+    market_names,
+    carbon_tax,
+    reserve_products,
+    ordc_products,
+    rep_period_interval,
+    rep_hour_weight,
+    avg_block_size,
+    fixed_block_size,
+    chron_weights,
+    scenarios
 end
 
 """
 This function runs CEM for price predictions based on user-defined parallelization settings.
 """
 function create_investor_predictions(investors::Vector{Investor},
-                                          active_projects::Vector{Project},
-                                          iteration_year::Int64,
-                                          yearly_horizon::Int64,
-                                          sys_data_dir::String,
-                                          sys_results_dir::String,
-                                          average_capital_cost_multiplier::Float64,
-                                          zones::Vector{String},
-                                          lines::Vector{ZonalLine},
-                                          peak_load::Dict{String, Dict{Int64, Float64}},
-                                          rps_target::String,
-                                          reserve_penalty::String,
-                                          resource_adequacy::Dict{String, ResourceAdequacy},
-                                          irm_scalar::Float64,
-                                          solver::JuMP.MOI.OptimizerWithAttributes,
-                                          parallelize_investors::Bool,
-                                          parallelize_scenarios::Bool)
-
+    active_projects::Vector{Project},
+    iteration_year::Int64,
+    yearly_horizon::Int64,
+    sys_data_dir::String,
+    sys_results_dir::String,
+    timeseries_data_dir::String,
+    average_capital_cost_multiplier::Float64,
+    zones::Vector{String},
+    lines::Vector{ZonalLine},
+    peak_load::Dict{String, Dict{Int64, Float64}},
+    rps_target::String,
+    reserve_penalty::String,
+    resource_adequacy::Dict{String, ResourceAdequacy},
+    irm_scalar::Float64,
+    solver::JuMP.MOI.OptimizerWithAttributes,
+    parallelize_investors::Bool,
+    parallelize_scenarios::Bool)
     if parallelize_investors
-
         if parallelize_scenarios
-
             scenarios_pmap = Scenario[]
             investor_name_pmap = String[]
             investor_dir_pmap = String[]
@@ -86,12 +96,11 @@ function create_investor_predictions(investors::Vector{Investor},
             rep_period_interval_pmap = Int64[]
             rep_hour_weight_pmap = Vector{Dict{String, Dict{Int64, Vector{Float64}}}}()
             avg_block_size_pmap = Vector{Int64}()
-            fixed_block_size_pmap = Vector{Bool}()    
+            fixed_block_size_pmap = Vector{Bool}()
             chron_weights_pmap = Vector{Dict{String, Dict{Int64, Matrix{Int64}}}}()
             expected_portfolio_pmap = Vector{Project}[]
 
             for investor in investors
-
                 investor_name,
                 investor_dir,
                 market_names,
@@ -103,7 +112,8 @@ function create_investor_predictions(investors::Vector{Investor},
                 avg_block_size,
                 fixed_block_size,
                 chron_weights,
-                scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
+                scenarios =
+                    gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
                 for scenario in scenarios
                     push!(scenarios_pmap, scenario)
@@ -124,66 +134,63 @@ function create_investor_predictions(investors::Vector{Investor},
                     push!(fixed_block_size_pmap, fixed_block_size)
                     push!(chron_weights_pmap, chron_weights)
                     push!(expected_portfolio_pmap, active_projects)
-
                 end
-
             end
 
             num_tasks = length(scenarios_pmap)
             Distributed.pmap(create_expected_marketdata,
-                 investor_dir_pmap,
-                 sys_data_dir_pmap,
-                 market_names_pmap,
-                 carbon_tax_pmap,
-                 reserve_products_pmap,
-                 ordc_products_pmap,
-                 rps_target_pmap,
-                 reserve_penalty_pmap,
-                 resource_adequacy_pmap,
-                 irm_scalar_pmap,
-                 expected_portfolio_pmap,
-                 repeat([zones], num_tasks),
-                 repeat([lines], num_tasks),
-                 repeat([peak_load], num_tasks),
-                 rep_period_interval_pmap,
-                 rep_hour_weight_pmap,
-                 avg_block_size_pmap,
-                 fixed_block_size_pmap,
-                 chron_weights_pmap,
-                 repeat([average_capital_cost_multiplier], num_tasks),
-                 scenarios_pmap,
-                 repeat([iteration_year], num_tasks),
-                 repeat([yearly_horizon], num_tasks),
-                 repeat([solver], num_tasks),
-                 repeat([sys_results_dir], num_tasks),
-                 investor_name_pmap)
+                investor_dir_pmap,
+                sys_data_dir_pmap,
+                market_names_pmap,
+                carbon_tax_pmap,
+                reserve_products_pmap,
+                ordc_products_pmap,
+                rps_target_pmap,
+                reserve_penalty_pmap,
+                resource_adequacy_pmap,
+                irm_scalar_pmap,
+                expected_portfolio_pmap,
+                repeat([zones], num_tasks),
+                repeat([lines], num_tasks),
+                repeat([peak_load], num_tasks),
+                rep_period_interval_pmap,
+                rep_hour_weight_pmap,
+                avg_block_size_pmap,
+                fixed_block_size_pmap,
+                chron_weights_pmap,
+                repeat([average_capital_cost_multiplier], num_tasks),
+                scenarios_pmap,
+                repeat([iteration_year], num_tasks),
+                repeat([yearly_horizon], num_tasks),
+                repeat([solver], num_tasks),
+                repeat([sys_results_dir], num_tasks),
+                investor_name_pmap,
+                repeat([timeseries_data_dir], num_tasks))
 
         else
-
             num_tasks = length(investors)
             Distributed.pmap(parallelize_only_investors,
-                            investors,
-                            repeat([sys_data_dir], num_tasks),
-                            repeat([active_projects], num_tasks),
-                            repeat([rps_target], num_tasks),
-                            repeat([reserve_penalty], num_tasks),
-                            repeat([resource_adequacy], num_tasks),
-                            repeat([irm_scalar], num_tasks),
-                            repeat([zones], num_tasks),
-                            repeat([lines], num_tasks),
-                            repeat([peak_load], num_tasks),
-                            repeat([average_capital_cost_multiplier], num_tasks),
-                            repeat([iteration_year], num_tasks),
-                            repeat([yearly_horizon], num_tasks),
-                            repeat([solver], num_tasks),
-                            repeat([sys_results_dir], num_tasks),
-                            get_name.(investors))
+                investors,
+                repeat([sys_data_dir], num_tasks),
+                repeat([active_projects], num_tasks),
+                repeat([rps_target], num_tasks),
+                repeat([reserve_penalty], num_tasks),
+                repeat([resource_adequacy], num_tasks),
+                repeat([irm_scalar], num_tasks),
+                repeat([zones], num_tasks),
+                repeat([lines], num_tasks),
+                repeat([peak_load], num_tasks),
+                repeat([average_capital_cost_multiplier], num_tasks),
+                repeat([iteration_year], num_tasks),
+                repeat([yearly_horizon], num_tasks),
+                repeat([solver], num_tasks),
+                repeat([sys_results_dir], num_tasks),
+                get_name.(investors),
+                repeat([timeseries_data_dir], num_tasks))
         end
 
     else
-
         for investor in investors
-
             investor_name,
             investor_dir,
             market_names,
@@ -198,7 +205,6 @@ function create_investor_predictions(investors::Vector{Investor},
             scenarios = gather_prediction_parameters(investor, sys_data_dir, iteration_year)
 
             if parallelize_scenarios
-
                 num_scenarios = length(scenarios)
 
                 Distributed.pmap(create_expected_marketdata,
@@ -227,43 +233,41 @@ function create_investor_predictions(investors::Vector{Investor},
                     repeat([yearly_horizon], num_scenarios),
                     repeat([solver], num_scenarios),
                     repeat([sys_results_dir], num_scenarios),
-                    repeat([investor_name], num_scenarios))
+                    repeat([investor_name], num_scenarios),
+                    repeat([timeseries_data_dir], num_scenarios))
 
             else
-
                 for scenario in scenarios
                     create_expected_marketdata(investor_dir,
-                                            sys_data_dir,
-                                            market_names,
-                                            carbon_tax,
-                                            reserve_products,
-                                            ordc_products,
-                                            rps_target,
-                                            reserve_penalty,
-                                            resource_adequacy,
-                                            irm_scalar,
-                                            active_projects,
-                                            zones,
-                                            lines,
-                                            peak_load,
-                                            rep_period_interval,
-                                            rep_hour_weight,
-                                            avg_block_size,
-                                            fixed_block_size,
-                                            chron_weights,
-                                            average_capital_cost_multiplier,
-                                            scenario,
-                                            iteration_year,
-                                            yearly_horizon,
-                                            solver,
-                                            sys_results_dir,
-                                            investor_name)
+                        sys_data_dir,
+                        market_names,
+                        carbon_tax,
+                        reserve_products,
+                        ordc_products,
+                        rps_target,
+                        reserve_penalty,
+                        resource_adequacy,
+                        irm_scalar,
+                        active_projects,
+                        zones,
+                        lines,
+                        peak_load,
+                        rep_period_interval,
+                        rep_hour_weight,
+                        avg_block_size,
+                        fixed_block_size,
+                        chron_weights,
+                        average_capital_cost_multiplier,
+                        scenario,
+                        iteration_year,
+                        yearly_horizon,
+                        solver,
+                        sys_results_dir,
+                        investor_name,
+                        timeseries_data_dir)
                 end
-
             end
-
         end
-
     end
 
     return

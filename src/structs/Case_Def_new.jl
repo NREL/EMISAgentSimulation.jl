@@ -90,7 +90,6 @@ struct CaseDefinition
         parallel_investors,
         parallel_scenarios,
         solver_name)
-
         forecast_type = lowercase(forecast_type)
 
         @assert total_horizon >= simulation_years
@@ -181,7 +180,6 @@ function CaseDefinition(base_dir::String,
     parallel_investors::Bool = false,
     parallel_scenarios::Bool = false,
     solver_name::String)
-
     CaseDefinition(base_dir,
         sys_dir,
         timeseries_data_dir,
@@ -244,40 +242,6 @@ get_solver_name(case::CaseDefinition) = case.solver_name
 get_timeseries_data_dir(case::CaseDefinition) = case.timeseries_data_dir
 
 function get_name(case::CaseDefinition)
-    #=
-    if get_heterogeneity(case)
-        investors = "Heterogeneous"
-    else
-        investors = "Homogeneous"
-    end
-
-    if get_info_symmetry(case)
-        information = "InfoSym"
-    else
-        information = "InfoASym"
-    end
-
-    if get_belief_update(case)
-        update = "UpdateBelief"
-    else
-        update = "NoUpdate"
-    end
-
-    if get_uncertainty(case)
-        uncertainty = "Uncertain"
-    else
-        uncertainty = "Deterministic"
-    end
-
-    if get_risk_aversion(case)
-        risk = "RiskAverse"
-    else
-        risk = "RiskNeutral"
-    end
-
-    case_name = "$(investors)_$(information)_Forecast-$(get_forecast_type(case))_$(uncertainty)_$(update)_$(risk)_$(get_simulation_years(case))years"
-    =#
-    #New case name
     rps = "$(get_rps_target(case))_RPS"
 
     if get_markets(case)[:Capacity]
