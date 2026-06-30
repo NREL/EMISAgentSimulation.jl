@@ -2,12 +2,32 @@ function add_outage_info!(
     PSY_gen::T,
     tech::Union{ThermalTech, RenewableTech, HydroTech, BatteryTech},
 ) where {T <: Union{PSY.Generator, PSY.Storage}}
+
     (λ, μ) = outage_to_rate((get_FOR(tech), get_MTTR(tech)))
     ext = PSY.get_ext(PSY_gen)
     ext["outage_probability"] = λ
     ext["recovery_probability"] = μ
 
     return
+end
+
+function get_availability_df_rt(timeseries_data_dir::String, scenario::String, simulation_years::Int64)
+    availability_df_rt = DataFrames.DataFrame()
+    for sim_year in 1:simulation_years
+        availability_df_rt = vcat(
+            availability_df_rt,
+            read_data(
+                joinpath(
+                    timeseries_data_dir,
+                    scenario,
+                    "sim_year_$(sim_year)",
+                    "Availability",
+                    "REAL_TIME_availability.csv",
+                ),
+            ),
+        )
+    end
+    return availability_df_rt
 end
 
 function calculate_RA_metrics(sys::PSY.System,
@@ -35,18 +55,21 @@ function calculate_RA_metrics(sys::PSY.System,
     end
 
     ra_metrics = Dict{String, Float64}()
+    @info "Running PRAS.assess ($(samples) samples, seed=$(seed))..."
     if !isnothing(PRAS_WORKER[])
-        results_tuple = Distributed.remotecall_fetch(
-            PRAS_WORKER[], pras_system, samples, seed
-        ) do pras_system, samples, seed
+        t_pras = @elapsed @timeit EMIS_TIMER "PRAS.assess (remote)" results_tuple =
+            Distributed.remotecall_fetch(
+                PRAS_WORKER[], pras_system, samples, seed
+            ) do pras_system, samples, seed
+                PRAS.assess(pras_system,
+                    PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
+                    values(resultspec)...)
+            end
+    else
+        t_pras = @elapsed @timeit EMIS_TIMER "PRAS.assess (local)" results_tuple =
             PRAS.assess(pras_system,
                 PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
                 values(resultspec)...)
-        end
-    else
-        results_tuple = @time PRAS.assess(pras_system,
-            PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
-            values(resultspec)...)
     end
 
     results = Dict{String,Any}(zip(keys(resultspec), results_tuple))
@@ -57,7 +80,7 @@ function calculate_RA_metrics(sys::PSY.System,
 
     ra_metrics["LOLE"] = val(lole_overall) / simulation_years
     ra_metrics["NEUE"] = val(neue_overall)
-    @info "Finished PRAS simulation... "
+    @info "Finished PRAS simulation (elapsed: $(round(t_pras; digits=2))s)"
     @info "LOLE: $(ra_metrics["LOLE"])"
     @info "NEUE: $(ra_metrics["NEUE"])"
     
@@ -142,7 +165,8 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     target_year::Int64,
     rt_resolution::Int64,
     simulation_years::Int64,
-    timeseries_data_dir::String)
+    timeseries_data_dir::String, 
+    availability_df_rt::DataFrame)
 
     @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
 
@@ -155,32 +179,15 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
 
     type = get_type(get_tech(project))
     zone = get_zone(get_tech(project))
-
-    #max_year = maximum(map(s -> parse(Int, filter(x -> !isempty(x) && all(isdigit, x), split(s, "_"))[end]), readdir(joinpath(simulation_dir, "timeseries_data_files", scenario))))
-
-    availability_df_rt = DataFrames.DataFrame()
-    for sim_year in 1:simulation_years
-        availability_df_rt = vcat(
-            availability_df_rt,
-            read_data(
-                joinpath(
-                    timeseries_data_dir,
-                    scenario,
-                    "sim_year_$(sim_year)",
-                    "Availability",
-                    "REAL_TIME_availability.csv",
-                ),
-            ),
-        )
-    end
+    project_name = "$(type)_$(zone)"
 
     availability_raw_rt = ones(size(availability_df_rt, 1))
     if in(get_name(project), names(availability_df_rt))
         availability_raw_rt = availability_df_rt[:, Symbol(get_name(project))]
-    elseif in("$(type)_$(zone)", names(availability_df_rt))
-        availability_raw_rt = availability_df_rt[:, Symbol("$(type)_$(zone)")]
+    elseif in(project_name, names(availability_df_rt))
+        availability_raw_rt = availability_df_rt[:, Symbol(project_name)]
     else
-        @warn "No availability data found for $(type)_$(zone), using default availability of 1.0"
+        @warn "No availability data found for $(project_name), using default availability of 1.0"
     end
 
     add_device_forecast_PRAS!(
@@ -202,7 +209,8 @@ function create_capacity_mkt_system(initial_system::PSY.System,
     simulation_dir::String,
     rt_resolution::Int64,
     simulation_years::Int64,
-    timeseries_data_dir::String)
+    timeseries_data_dir::String,
+    availability_df_rt::DataFrame)
 
     @info "Creating Forward Capacity Market System"
     capacity_market_system = deepcopy(initial_system)
@@ -226,7 +234,7 @@ function create_capacity_mkt_system(initial_system::PSY.System,
 
                 add_capacity_market_project!(capacity_market_system, project,
                     simulation_dir, scenario,
-                    capacity_market_year, rt_resolution, simulation_years, timeseries_data_dir)
+                    capacity_market_year, rt_resolution, simulation_years, timeseries_data_dir, availability_df_rt)
                     
             end
         end
@@ -238,10 +246,9 @@ function create_capacity_mkt_system(initial_system::PSY.System,
         end
     end
 
+    #=
     nodal_loads = PSY.get_components(PSY.StandardLoad, capacity_market_system)
-
-    @warn "UPDATE PSY TIMESERIES!"
-    #= for load in nodal_loads
+    for load in nodal_loads
         zone = "zone_$(PSY.get_name(PSY.get_area(PSY.get_bus(load))))"
         scaled_active_power = deepcopy(PSY.get_max_active_power(load)) * (1 + load_growth["load_$(zone)"]) ^ (capacity_forward_years)
         PSY.set_max_active_power!(load, scaled_active_power)
@@ -292,6 +299,7 @@ function update_delta_irm!(initial_system::PSY.System,
 
     timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
 
+    availability_df_rt = get_availability_df_rt(timeseries_data_dir, scenario, simulation_years)
 
     if !(static_capacity_market)
         capacity_market_year = iteration_year + capacity_forward_years - 1
@@ -304,7 +312,8 @@ function update_delta_irm!(initial_system::PSY.System,
             simulation_dir,
             rt_resolution,
             simulation_years,
-            timeseries_data_dir)
+            timeseries_data_dir,
+            availability_df_rt)
 
         ra_targets = get_targets(resource_adequacy)
         delta_irm = 0.0
@@ -385,7 +394,8 @@ function update_delta_irm!(initial_system::PSY.System,
                                 capacity_market_year,
                                 rt_resolution,
                                 simulation_years,
-                                timeseries_data_dir
+                                timeseries_data_dir,
+                                availability_df_rt
                             )
                             count += 1
                         end
@@ -437,7 +447,6 @@ function update_delta_irm!(initial_system::PSY.System,
         end
 
         @info "delta_irm is $(delta_irm)."
-
         set_delta_irm!(resource_adequacy, iteration_year, delta_irm)
     end
 
@@ -453,7 +462,9 @@ function create_base_system(initial_system::PSY.System,
     simulation_dir::String,
     outage_dir::String,
     rt_resolution::Int64,
-    simulation::Union{AgentSimulation, AgentSimulationData})
+    simulation::Union{AgentSimulation, AgentSimulationData},
+    availability_df_rt::DataFrame)
+
     timeseries_data_dir = joinpath(get_results_dir(simulation), "timeseries_data_files")
     simulation_years = get_simulation_years(get_case(simulation))
     capacity_market_year = iteration_year + capacity_forward_years - 1
@@ -466,7 +477,8 @@ function create_base_system(initial_system::PSY.System,
         simulation_dir,
         rt_resolution,
         get_total_horizon(get_case(simulation)),
-        timeseries_data_dir
+        timeseries_data_dir,
+        availability_df_rt
     )
 
     ra_targets = get_targets(resource_adequacy)
@@ -543,7 +555,8 @@ function create_base_system(initial_system::PSY.System,
                             capacity_market_year,
                             rt_resolution,
                             get_total_horizon(get_case(simulation)),
-                            timeseries_data_dir
+                            timeseries_data_dir,
+                            availability_df_rt
                         )
                         count += 1
                     end

@@ -411,6 +411,8 @@ function calculate_derating_factors(
     rt_resolution = get_rt_resolution(get_case(simulation))
     zones = get_zones(simulation)
 
+    availability_df_rt = get_availability_df_rt(timeseries_data_dir, scenario, simulation_years)
+
     derating_factors = read_data(
         joinpath(
             simulation_dir,
@@ -422,10 +424,8 @@ function calculate_derating_factors(
     )
 
     active_projects = get_activeprojects(simulation)
-
     existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
     options = filter(p -> typeof(p) == RenewableGenEMIS{Option}, active_projects)
-
     existing_types = unique(get_type.(get_tech.(existing)))
     new_types = unique(get_type.(get_tech.(options)))
 
@@ -445,7 +445,8 @@ function calculate_derating_factors(
         simulation_dir,
         outage_dir,
         rt_resolution,
-        simulation)
+        simulation,
+        availability_df_rt)
 
     system_period_of_interest = range(1; length = DEFAULT_HOURS_PER_YEAR * simulation_years)
     # correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_2011.csv")
@@ -463,15 +464,15 @@ function calculate_derating_factors(
         outage_ts_flag = true)
 
     ##TODO: AA remove debug code after validation
-    temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
-    @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
-    PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
+    # temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
+    # @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
+    # PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
+    # PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
 
     if marginal_cc
         for zone in zones
             for type in new_types
-                println("$(type)_$(zone)")
+                @info "Adding to capacity market: $(type)_$(zone)"
                 idx = findfirst(
                     x -> (
                         (get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)
@@ -494,6 +495,7 @@ function calculate_derating_factors(
                             rt_resolution,
                             simulation_years,
                             timeseries_data_dir,
+                            availability_df_rt
                         )
                     end
 
@@ -655,6 +657,7 @@ function calculate_derating_factors(
                         rt_resolution,
                         simulation_years,
                         timeseries_data_dir,
+                        availability_df_rt
                     )
                 end
             end
