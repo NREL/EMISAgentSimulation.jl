@@ -357,6 +357,7 @@ function update_delta_irm!(initial_system::PSY.System,
                 total_added_capacity = 0.0
                 total_removed_capacity = 0.0
                 removed_capacity = 0.0
+                ct_project_template = first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
                 if !(adequacy_conditions_met)
                     while !(adequacy_conditions_met)
@@ -365,8 +366,7 @@ function update_delta_irm!(initial_system::PSY.System,
                         scalar = 2
                         ratio = 0
                         for metric in keys(ra_targets)
-                            @info metric
-                            @info "Updating delta IRM for scenario: $(scenario) - Year: $(iteration_year)"
+                            @info "Updating $(metric)"
                             ratio +=
                                 (ra_metrics[metric] - ra_targets[metric]) /
                                 ra_targets[metric]
@@ -376,14 +376,7 @@ function update_delta_irm!(initial_system::PSY.System,
                         for i in 1:ceil(ratio)
                             # @info i
                             @info "Updating delta IRM for scenario: $(scenario) - Year: $(iteration_year)"
-                            incremental_project = deepcopy(
-                                first(
-                                    filter(
-                                        p -> occursin("new_CT", get_name(p)),
-                                        active_projects,
-                                    ),
-                                ),
-                            )
+                            incremental_project = deepcopy(ct_project_template)
                             set_name!(incremental_project, "addition_CT_project_$(count)")
                             total_added_capacity += get_maxcap(incremental_project)
                             add_capacity_market_project!(
@@ -525,6 +518,7 @@ function create_base_system(initial_system::PSY.System,
             total_added_capacity = 0.0
             total_removed_capacity = 0.0
             removed_capacity = 0.0
+            ct_project_template = first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
             if !(adequacy_conditions_met)
                 while !(adequacy_conditions_met)
@@ -537,14 +531,7 @@ function create_base_system(initial_system::PSY.System,
                     ratio = max(1, scalar * ratio / length(keys(ra_targets)))
 
                     for i in 1:ceil(ratio)
-                        incremental_project = deepcopy(
-                            first(
-                                filter(
-                                    p -> occursin("new_CT", get_name(p)),
-                                    active_projects,
-                                ),
-                            ),
-                        )
+                        incremental_project = deepcopy(ct_project_template)
                         set_name!(incremental_project, "addition_CT_project_$(count)")
                         total_added_capacity += get_maxcap(incremental_project)
                         add_capacity_market_project!(
