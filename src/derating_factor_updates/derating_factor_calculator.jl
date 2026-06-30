@@ -46,7 +46,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
                     "Net Load Data",
                     "load_n_vg_data_rt.csv",
                 ),
-            ) for sim_year in simulation_years
+            ) for sim_year in 1:simulation_years
         ]...,
     )
     availability_data = vcat(
@@ -59,7 +59,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
                     "Availability",
                     "REAL_TIME_availability.csv",
                 ),
-            ) for sim_year in simulation_years
+            ) for sim_year in 1:simulation_years
         ]...,
     )
 

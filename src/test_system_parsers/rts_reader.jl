@@ -262,10 +262,6 @@ function read_rts(data_dir::String,
             gen_availability_df_rt[:, existing_generator_data[i, "GEN UID"]] =
                 ones(DataFrames.nrow(gen_availability_df_rt))
         end
-        gen_availability_df[:, existing_generator_data[i, "GEN UID"]] =
-            ones(DataFrames.nrow(gen_availability_df))
-        gen_availability_df_rt[:, existing_generator_data[i, "GEN UID"]] =
-            ones(DataFrames.nrow(gen_availability_df_rt))
     end
 
     write_data(
