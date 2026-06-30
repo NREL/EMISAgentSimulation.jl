@@ -24,56 +24,58 @@ function calculate_RA_metrics(sys::PSY.System,
 
     @info "Calculating RA metrics for iteration year: $(iteration_year) with system_period_of_interest: $(system_period_of_interest)"
 
-    total_load =
-        calculate_total_load(sys, DEFAULT_TIME_RESOLUTION, system_period_of_interest)
-
     # Build PRAS.SystemModel on the main process (needs PSY.System's live SQLite connection).
     # PRAS.SystemModel is plain arrays — safe to serialize and send to a remote worker.
     # generate_pras_system is in SiennaPRASInterface (SPI), not in PRASCore (PRAS).
     pras_system = SPI.generate_pras_system(sys, PSY.Area)
 
+    resultspec = Dict{String,Any}("shortfall" => PRAS.Shortfall())
+    if exportoutage == true
+        resultspec["gens_avail"] = PRAS.GeneratorAvailability()
+    end
+
     ra_metrics = Dict{String, Float64}()
     if !isnothing(PRAS_WORKER[])
-        shortfall, gens_avail = Distributed.remotecall_fetch(
+        results_tuple = Distributed.remotecall_fetch(
             PRAS_WORKER[], pras_system, samples, seed
         ) do pras_system, samples, seed
             PRAS.assess(pras_system,
                 PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
-                PRAS.Shortfall(), PRAS.GeneratorAvailability())
+                values(resultspec)...)
         end
     else
-        shortfall, gens_avail = @time PRAS.assess(pras_system,
+        results_tuple = @time PRAS.assess(pras_system,
             PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
-            PRAS.Shortfall(), PRAS.GeneratorAvailability())
+            values(resultspec)...)
     end
 
-    @info "Finished PRAS simulation... "
+    results = Dict{String,Any}(zip(keys(resultspec), results_tuple))
+    shortfall = results["shortfall"]
     eue_overall = PRAS.EUE(shortfall)
     lole_overall = PRAS.LOLE(shortfall)
     neue_overall = PRAS.NEUE(shortfall)
 
+    ra_metrics["LOLE"] = val(lole_overall) / simulation_years
+    ra_metrics["NEUE"] = val(neue_overall)
+    @info "Finished PRAS simulation... "
+    @info "LOLE: $(ra_metrics["LOLE"])"
+    @info "NEUE: $(ra_metrics["NEUE"])"
+    
     if exportoutage == true
+        gens_avail = results["gens_avail"]
         @info "Export outage profile from PRAS simulation... "
         scenarionum = 1
         df_outage = DataFrames.DataFrame()
         for (j, asset_name) in enumerate(gens_avail.generators)
             df_outage[!, asset_name] = Int.(gens_avail.available[j, :, scenarionum])
         end
-        outage_csv_location=joinpath(base_dir, "GeneratorOutage") #get_base_dir(case)
+        outage_csv_location=joinpath(base_dir, "GeneratorOutage") 
         CSV.write(
             joinpath(outage_csv_location, "1/Generator_year$(iteration_year+1).csv"),
             df_outage;
             writeheader = true,
         )
     end
-
-    ra_metrics["LOLE"] = val(lole_overall) / simulation_years
-    ra_metrics["NEUE"] = val(neue_overall)
-    ##TODO: remove after check
-    # ra_metrics["NEUE"] = val(eue_overall) * 1e6 / total_load
-    @info "Checking NEUE value:"
-    @info "NEUE value is $(ra_metrics["NEUE"])"
-    # @info "NEUE manual calculations: $(val(eue_overall) * 1e6 / total_load))"
 
     PSY.set_units_base_system!(sys, PSY.IS.UnitSystem.DEVICE_BASE)
     return ra_metrics, shortfall
