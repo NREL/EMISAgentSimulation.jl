@@ -231,11 +231,9 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
         for scenario in keys(sys_PRAS)
             PSY_project_PRAS = create_PSY_generator(project, sys_PRAS[scenario])
-            availability_df_rt = DataFrames.DataFrame()
 
-            for sim_year in 1:simulation_years
-                availability_df_rt = vcat(availability_df_rt, read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(sim_year)", "Availability", "REAL_TIME_availability.csv")))
-            end
+            availability_df_rt = get_availability_df_rt(timeseries_data_dir, scenario, simulation_years)
+
 
             if in(get_name(project), names(availability_df_rt))
                 availability_raw_rt = availability_df_rt[:, Symbol(get_name(project))]
@@ -259,7 +257,7 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
         end
 
      end
-     println("FINISHED CONSTRUCTING: $(get_name(project))")
+     @info "FINISHED CONSTRUCTING: $(get_name(project))"
 
      return
 end
