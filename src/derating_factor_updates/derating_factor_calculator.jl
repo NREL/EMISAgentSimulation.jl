@@ -739,10 +739,11 @@ function read_cc_scalar(simulation_dir::String, scenario::String, type_key::Stri
         return 1.0
     end
     df = read_data(filepath)
-    if type_key in names(df)
-        return df[1, type_key]
+    if nrow(df) == 0 || !(type_key in names(df))
+        return 1.0
     end
-    return 1.0
+    val = df[1, type_key]
+    return ismissing(val) ? 1.0 : Float64(val)
 end
 
 """
@@ -941,11 +942,10 @@ function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
 end
 
 """
-Orchestrates the full derating-factor update for a single scenario and iteration year.
-Dispatches to `calculate_derating_data` (TopNetLoad) or `calculate_derating_factors`
-(ELCC/EFC) to write raw CC values to `derating_dict.csv`, then calls
-`update_derating_factor!` on each active project to apply per-type scalars from
-`cc_scalar.csv` and set the final derating on each product.
+Writes raw (unscaled) capacity credit values to `derating_dict.csv` for a single
+scenario and iteration year. Dispatches to `calculate_derating_data` (TopNetLoad)
+or `calculate_derating_factors` (ELCC/EFC). Per-type scalars from `cc_scalar.csv`
+are applied separately by the caller via `update_derating_factor!`.
 """
 function update_simulation_derating_data!(
     simulation::Union{AgentSimulation, AgentSimulationData},

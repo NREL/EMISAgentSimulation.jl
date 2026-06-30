@@ -1,13 +1,20 @@
-*.csv
+# Julia artefacts
 *.jld2
-*.json
+*.jl.cov
+*.jl.mem
+
+# Python bytecode
 *.pyc
+__pycache__/
+
+# Logs and local runtime outputs
 *.log
+
+# OS / editor
 .DS_Store
-.vscode
-*.txt
-*.ipynb_checkpoints
-*.sh
+.vscode/
+.ipynb_checkpoints/
 *.ipynb
-*.json
+
+# Julia package manifest (not committed for packages)
 Manifest*.toml
