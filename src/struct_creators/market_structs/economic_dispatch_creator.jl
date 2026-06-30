@@ -114,12 +114,14 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
                 for point in 1:reserve_up_num_points[zone]
                     push!(
                         reserve_up_break_points[zone],
-                        reserve_up_mkt_params[idx, Symbol("ORDC_x$(1)")],
-                    ) * reserve_up_market_bool
+                        reserve_up_mkt_params[idx, Symbol("ORDC_x$(point)")] *
+                        reserve_up_market_bool,
+                    )
                     push!(
                         reserve_up_price_points[zone],
-                        reserve_up_mkt_params[idx, Symbol("ORDC_y$(1)")],
-                    ) * reserve_up_market_bool
+                        reserve_up_mkt_params[idx, Symbol("ORDC_y$(point)")] *
+                        reserve_up_market_bool,
+                    )
                 end
             else
                 reserve_up_break_points[zone] =
@@ -173,7 +175,7 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
             capacity_markets[p] = create_capacity_demand_curve(
                 capacity_mkt_param_file,
                 system_peak_load,
-                irms_scalar,
+                irm_scalar,
                 delta_irm,
                 capacity_market_bool,
             )
@@ -206,7 +208,8 @@ function create_economic_dispatch_problem(simulation::AgentSimulation,
 
         max_peak_loads = AxisArrays.AxisArray(
             [
-                maximum([maximum(market.demand[z, :]) for market in energy_markets]) for
+                maximum([maximum(market.demand[z, :]) for market in energy_markets])
+                for
                 z in zones
             ],
             zones,
