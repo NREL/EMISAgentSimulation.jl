@@ -28,7 +28,6 @@ function create_parallel_workers(case::CaseDefinition, hpc::Bool)
         investor_scenarios[investor] = num_scenarios
     end
 
-
     parallelize_investors = get_parallel_investors(case)
     parallelize_scenarios = get_parallel_scenarios(case)
 
@@ -48,13 +47,13 @@ function create_parallel_workers(case::CaseDefinition, hpc::Bool)
 
     if num_workers_required > 0
         if hpc
-          nodes = split(ENV["SLURM_NODELIST"], ",")
-          num_procs = min(Int(ceil(num_workers_required / length(nodes))), 4)
-          node_pairs = [(n, num_procs) for n in  nodes]
-          Distributed.addprocs(node_pairs)
+            nodes = split(ENV["SLURM_NODELIST"], ",")
+            num_procs = min(Int(ceil(num_workers_required / length(nodes))), 4)
+            node_pairs = [(n, num_procs) for n in nodes]
+            Distributed.addprocs(node_pairs)
         else
-          num_workers = min(Int(num_workers_required), 4)
-          Distributed.addprocs(num_workers, lazy=false)
+            num_workers = min(Int(num_workers_required), 4)
+            Distributed.addprocs(num_workers; lazy = false)
         end
     end
 
@@ -68,9 +67,9 @@ Sets PRAS_WORKER[] so calculate_RA_metrics dispatches to it automatically.
 function create_pras_worker(hpc::Bool; n_threads::Int = 16)
     if hpc
         node = first(split(ENV["SLURM_NODELIST"], ","))
-        workers = Distributed.addprocs([(node, 1)], exeflags="--threads=$(n_threads)")
+        workers = Distributed.addprocs([(node, 1)]; exeflags = "--threads=$(n_threads)")
     else
-        workers = Distributed.addprocs(1, lazy=false, exeflags="--threads=$(n_threads)")
+        workers = Distributed.addprocs(1; lazy = false, exeflags = "--threads=$(n_threads)")
     end
     PRAS_WORKER[] = first(workers)
     return PRAS_WORKER[]
@@ -80,23 +79,22 @@ end
 This function runs price prediction if investors are parallelized but scenarios are sequential.
 """
 function parallelize_only_investors(investor::Investor,
-                                    sys_data_dir::String,
-                                    expected_portfolio::Vector{<: Project{<: BuildPhase}},
-                                    rps_target::String,
-                                    reserve_penalty::String,
-                                    resource_adequacy::ResourceAdequacy,
-                                    irm_scalar::Float64,
-                                    zones::Vector{String},
-                                    lines::Vector{ZonalLine},
-                                    peak_load::Float64,
-                                    average_capital_cost_multiplier::Float64,
-                                    iteration_year::Int64,
-                                    yearly_horizon::Int64,
-                                    solver::JuMP.MOI.OptimizerWithAttributes,
-                                    sys_results_dir::String,
-                                    investor_name::String,
-                                    timeseries_data_dir::String)
-
+    sys_data_dir::String,
+    expected_portfolio::Vector{<: Project{<: BuildPhase}},
+    rps_target::String,
+    reserve_penalty::String,
+    resource_adequacy::ResourceAdequacy,
+    irm_scalar::Float64,
+    zones::Vector{String},
+    lines::Vector{ZonalLine},
+    peak_load::Float64,
+    average_capital_cost_multiplier::Float64,
+    iteration_year::Int64,
+    yearly_horizon::Int64,
+    solver::JuMP.MOI.OptimizerWithAttributes,
+    sys_results_dir::String,
+    investor_name::String,
+    timeseries_data_dir::String)
     investor_name,
     investor_dir,
     market_names,
@@ -112,32 +110,32 @@ function parallelize_only_investors(investor::Investor,
 
     for scenario in scenarios
         create_expected_marketdata(investor_dir,
-                                sys_data_dir,
-                                market_names,
-                                carbon_tax,
-                                reserve_products,
-                                ordc_products,
-                                rps_target,
-                                reserve_penalty,
-                                resource_adequacy,
-                                irm_scalar,
-                                expected_portfolio,
-                                zones,
-                                lines,
-                                peak_load,
-                                rep_period_interval,
-                                rep_hour_weight,
-                                avg_block_size,
-                                fixed_block_size,
-                                chron_weights,
-                                average_capital_cost_multiplier,
-                                scenario,
-                                iteration_year,
-                                yearly_horizon,
-                                solver,
-                                sys_results_dir,
-                                investor_name,
-                                timeseries_data_dir)
+            sys_data_dir,
+            market_names,
+            carbon_tax,
+            reserve_products,
+            ordc_products,
+            rps_target,
+            reserve_penalty,
+            resource_adequacy,
+            irm_scalar,
+            expected_portfolio,
+            zones,
+            lines,
+            peak_load,
+            rep_period_interval,
+            rep_hour_weight,
+            avg_block_size,
+            fixed_block_size,
+            chron_weights,
+            average_capital_cost_multiplier,
+            scenario,
+            iteration_year,
+            yearly_horizon,
+            solver,
+            sys_results_dir,
+            investor_name,
+            timeseries_data_dir)
     end
 
     return
@@ -147,13 +145,24 @@ end
 This function runs the construct_ordc function in parallel for different scenarios.
 """
 function parallelize_ordc_construction(args)
-    scenario, sys_UC, data_dir, investors, representative_periods, rep_period_interval, case, iteration_year, rolling_horizon, simulation_years, time_series_data_dir = args
-    for sim_year in collect(iteration_year:min(iteration_year + rolling_horizon - 1, simulation_years))
+    scenario,
+    sys_UC,
+    data_dir,
+    investors,
+    representative_periods,
+    rep_period_interval,
+    case,
+    iteration_year,
+    rolling_horizon,
+    simulation_years,
+    time_series_data_dir = args
+    for sim_year in
+        collect(iteration_year:min(iteration_year + rolling_horizon - 1, simulation_years))
         construct_ordc(sys_UC, data_dir, scenario, sim_year,
-                        investors, 0, representative_periods[scenario][sim_year],
-                        rep_period_interval, get_ordc_curved(case), 
-                        get_ordc_unavailability_method(case), get_reserve_penalty(case),
-                        time_series_data_dir)
+            investors, 0, representative_periods[scenario][sim_year],
+            rep_period_interval, get_ordc_curved(case),
+            get_ordc_unavailability_method(case), get_reserve_penalty(case),
+            time_series_data_dir)
     end
 end
 
@@ -161,13 +170,28 @@ end
 This function runs the update_delta_irm! function in parallel for different scenarios.
 """
 function parallelize_update_delta_irm!(args)
-    scenario, sys_PRAS, active_projects, capacity_forward_years, resource_adequacy, peak_load, static_capacity_bool, iteration_year, simulation_years, data_dir, rt_resolution, results_dir, outage_dir = args    
+    scenario,
+    sys_PRAS,
+    active_projects,
+    capacity_forward_years,
+    resource_adequacy,
+    peak_load,
+    static_capacity_bool,
+    iteration_year,
+    simulation_years,
+    data_dir,
+    rt_resolution,
+    results_dir,
+    outage_dir = args
     resource_adequacy = update_delta_irm!(
         sys_PRAS[scenario],
         active_projects,
         capacity_forward_years,
         resource_adequacy[scenario],
-        peak_load[scenario][min(iteration_year + capacity_forward_years - 1, simulation_years)],
+        peak_load[scenario][min(
+            iteration_year + capacity_forward_years - 1,
+            simulation_years,
+        )],
         static_capacity_bool,
         scenario,
         iteration_year,
@@ -175,8 +199,8 @@ function parallelize_update_delta_irm!(args)
         rt_resolution,
         results_dir,
         outage_dir,
-        simulation_years
-        )
+        simulation_years,
+    )
     return (scenario, resource_adequacy)
 end
 
@@ -195,16 +219,23 @@ end
 This function runs the update_simulation_derating_data! function in parallel for different scenarios.
 """
 function parallelize_update_derating_data(args)
-    scenario, simulation, iteration_year, derating_scale, methodology, ra_metric, marginal_cc, timeseries_data_dir = args    
+    scenario,
+    simulation,
+    iteration_year,
+    derating_scale,
+    methodology,
+    ra_metric,
+    marginal_cc,
+    timeseries_data_dir = args
     update_simulation_derating_data!(
         simulation,
         scenario,
         iteration_year,
         derating_scale,
-        timeseries_data_dir,
+        timeseries_data_dir;
         methodology = methodology,
         ra_metric = ra_metric,
-        marginal_cc = marginal_cc
-        )
+        marginal_cc = marginal_cc,
+    )
     return
 end
