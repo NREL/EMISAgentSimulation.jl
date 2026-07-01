@@ -20,7 +20,7 @@ end
 ##############################################
 # Converting FOR and MTTR to λ and μ
 ##############################################
-function outage_to_rate(outage_data::Tuple{Float64, Int64})
+function transform_outage_to_rate(outage_data::Tuple{Float64, Int64})
     for_gen = outage_data[1]
     mttr = outage_data[2]
     if (mttr != 0)
@@ -287,7 +287,7 @@ end
 # to Generator
 ##############################################
 function add_outage_info!(component::PSY.StaticInjection, gen)
-    outage_rates = outage_to_rate((gen.fotr, gen.mttr))
+    outage_rates = transform_outage_to_rate((gen.fotr, gen.mttr))
     outage_probability = outage_info(outage_rates.λ, outage_rates.μ)
 
     ext = PSY.get_ext(component)
