@@ -79,37 +79,15 @@ function add_investor_project_availability!(test_system_dir::String,
     sim_year::Int64,
     projects::Vector{Project},
     sys_UC::Union{Nothing, PSY.System},
-    timeseries_data_dir::String)
+    timeseries_data_dir::String,
+    system_availability_data::DataFrames.DataFrame,
+    system_availability_data_rt::DataFrames.DataFrame)
 
     # pv_availability_file = CSV.read(joinpath(test_system_dir, "RTS_Data", "upv_availability.csv"), DataFrame)
     # wind_availability_file = CSV.read(joinpath(test_system_dir, "RTS_Data", "wind_availability.csv"), DataFrame)
 
-    system_availability_data = DataFrames.DataFrame(
-        CSV.File(
-            joinpath(
-                timeseries_data_dir,
-                scenario,
-                "sim_year_$(sim_year)",
-                "Availability",
-                "DAY_AHEAD_availability.csv",
-            ),
-        ),
-    )
-    system_availability_data_rt = DataFrames.DataFrame(
-        CSV.File(
-            joinpath(
-                timeseries_data_dir,
-                scenario,
-                "sim_year_$(sim_year)",
-                "Availability",
-                "REAL_TIME_availability.csv",
-            ),
-        ),
-    )
     gennames = names(system_availability_data)[5:length(names(system_availability_data))] #################
-
     psy_gens = PSY.get_name.(PSY.get_components(PSY.Generator, sys_UC))
-
     gen_diff = setdiff(gennames, psy_gens)
 
     for project in projects
@@ -553,12 +531,18 @@ function _build_heat_rate_curve(projectdata, project_size)
         heat_rate[1] = (heat_rate[1][1] / project_scale, heat_rate[1][2] * project_size)
         for i in 2:length(heat_rate)
             heat_rate[i] =
-                (heat_rate[i - 1][1] + heat_rate[i][1] / project_scale, heat_rate[i][2] * project_size)
+                (
+                    heat_rate[i - 1][1] + heat_rate[i][1] / project_scale,
+                    heat_rate[i][2] * project_size,
+                )
         end
         pushfirst!(heat_rate, (fixed / project_scale, 0.0))
     elseif length(heat_rate) == 1
         # if there is only one point, use it to determine the constant $/MW cost
-        heat_rate = (heat_rate[1][1] * heat_rate[1][2] / project_scale, heat_rate[1][2] * project_size)
+        heat_rate = (
+            heat_rate[1][1] * heat_rate[1][2] / project_scale,
+            heat_rate[1][2] * project_size,
+        )
     else
         heat_rate = [(0.0, 0.0)]
     end
@@ -615,7 +599,7 @@ function create_tech_type(name::String,
 
     if type in ["ST", "CT", "CC", "NU_ST", "GT", "RE_CT"]
         heat_rate = _build_heat_rate_curve(projectdata, size)
-        
+
         tech = ThermalTech(type,
             projectdata["Fuel"],
             active_power_limits,
@@ -750,7 +734,7 @@ function create_tech_type(name::String,
     FOR = projectdata["FOR"]
     MTTR = projectdata["MTTR Hr"]
     heat_rate = _build_heat_rate_curve(projectdata, size)
-    
+
     tech = ThermalTech(prime_mover,
         fuel,
         (min = min_cap, max = size),
@@ -832,7 +816,6 @@ function create_tech_type(name::String,
     products::Vector{Product},
     finance_data::Finance,
 ) where {P <: PSY.HydroGen}
-
     min_cap = deepcopy(PSY.get_active_power_limits(device)[:min]) * base_power
     bus = deepcopy(PSY.get_bus(device))
 
@@ -908,7 +891,7 @@ function create_tech_type(name::String,
     # @info "storage_level_limits: $(storage_level_limits), storage_capacity_mwh: $(storage_capacity_mwh), device_base_power: $(device_base_power)"
     # @info "initial_storage_capacity_level: $(initial_storage_capacity_level), rating: $(rating), efficiency: $(efficiency)"
 
-tech = BatteryTech(type,
+    tech = BatteryTech(type,
         (
             min = input_active_power_limits[:min] * device_base_power,
             max = input_active_power_limits[:max] * device_base_power,
