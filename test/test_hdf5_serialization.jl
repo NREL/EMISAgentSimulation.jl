@@ -1,12 +1,8 @@
 # Test for HDF5 save/load roundtrip of AgentSimulation.
-# Run from REPL after loading the package:
+# Run from REPL:
 #   include("test/test_hdf5_serialization.jl")
 
-using Test
-using HDF5
-using AxisArrays
-using DataFrames
-import PowerSystems as PSY
+include(joinpath(@__DIR__, "includes.jl"))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Recursive value comparator — returns true and is silent on success;

@@ -1,9 +1,8 @@
-using Test
-using Logging
-using EMISAgentSimulation
+include("includes.jl")
 
 # Self-contained tests — run without any external setup.
 include("test_PSI.jl")
+include("test_PSI_build_solve.jl")
 include("test_hdf5_serialization.jl")
 
 # Context-dependent tests — require the caller to have defined:

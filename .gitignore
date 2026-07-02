@@ -17,3 +17,5 @@ Manifest.toml
 _*.jl
 TODO_thermalms_ed_dispatch.md
 unused_audit.md
+
+test/test_systems
