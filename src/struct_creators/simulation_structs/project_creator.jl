@@ -78,10 +78,9 @@ function add_investor_project_availability!(simulation_dir::String,
                                               scenario::String,
                                               sim_year::Int64,
                                               projects::Vector{Project},
-                                              sys_UC::Union{Nothing, PSY.System},
-                                              system_availability_data::DataFrames.DataFrame,
-                                              system_availability_data_rt::DataFrames.DataFrame)
-
+                                              sys_UC::Union{Nothing, PSY.System})
+    system_availability_data = DataFrames.DataFrame(CSV.File(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Availability", "DAY_AHEAD_availability.csv")))
+    system_availability_data_rt = DataFrames.DataFrame(CSV.File(joinpath(simulation_dir, "timeseries_data_files", scenario, "sim_year_$(sim_year)", "Availability", "REAL_TIME_availability.csv")))
     gennames = names(system_availability_data)[5:length(names(system_availability_data))] #################
 
     for project in projects
