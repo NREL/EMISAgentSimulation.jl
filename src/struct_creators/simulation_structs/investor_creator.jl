@@ -155,7 +155,7 @@ function create_investors(simulation_data::AgentSimulationData)
                         CSV.File(
                             joinpath(
                                 simulation_data_dir,
-                                "timeseries_data_dir",
+                                "timeseries_data_files",
                                 scenario,
                                 "sim_year_$(sim_year)",
                                 "Availability",
@@ -166,7 +166,7 @@ function create_investors(simulation_data::AgentSimulationData)
                         CSV.File(
                             joinpath(
                                 simulation_data_dir,
-                                "timeseries_data_dir",
+                                "timeseries_data_files",
                                 scenario,
                                 "sim_year_$(sim_year)",
                                 "Availability",
