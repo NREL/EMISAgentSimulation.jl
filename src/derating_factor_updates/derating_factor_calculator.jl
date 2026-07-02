@@ -514,7 +514,7 @@ function calculate_derating_factors(
                         base_pras_system,
                         augmented_pras_system,
                         methodology{ra_matric}(Int(ceil(max_cap)), "Region"),
-                        PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                        PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = 42),
                     )
                     cc_lower, cc_upper = extrema(cc_result)
                     cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)
@@ -566,7 +566,7 @@ function calculate_derating_factors(
                     pruned_base_pras_system,
                     augmented_pras_system,
                     PRAS.ELCC{ra_matric}(Int(ceil(total_capacity)), "Region"),
-                    PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                    PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = 42),
                 )
                 cc_lower, cc_upper = extrema(cc_result)
                 cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
@@ -630,7 +630,7 @@ function calculate_derating_factors(
             pruned_base_pras_system,
             augmented_pras_system,
             PRAS.ELCC{ra_matric}(Int(ceil(total_capacity)), "Region"),
-            PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+            PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = 42),
         )
         cc_lower, cc_upper = extrema(cc_result)
         cc_final = (cc_lower + cc_upper) * derating_scale / (2 * total_capacity)
@@ -677,7 +677,7 @@ function calculate_derating_factors(
                 base_pras_system,
                 augmented_pras_system,
                 methodology{ra_matric}(Int(ceil(max_cap)), "Region"),
-                PRAS.SequentialMonteCarlo(; samples = 10, seed = 42),
+                PRAS.SequentialMonteCarlo(; samples = PRAS_N_SAMPLES, seed = 42),
             )
             cc_lower, cc_upper = extrema(cc_result)
             cc_final = (cc_lower + cc_upper) * derating_scale / (2 * max_cap)

@@ -26,7 +26,7 @@ function unavailabilities(
                 StorageEnergySamples(), GeneratorStorageEnergySamples())
 
     gen_av, stor_av, genstor_av, stor_soc, genstor_soc =
-        PRAS.assess(sys, SequentialMonteCarlo(samples=nsamples), resultspecs...)
+        PRAS.assess(sys, SequentialMonteCarlo(samples=PRAS_N_SAMPLES), resultspecs...)
 
     result = Matrix{Float64}(undef, nsamples, N)
 
