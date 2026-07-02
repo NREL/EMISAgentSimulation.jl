@@ -7,6 +7,11 @@ function create_investors(simulation_data::AgentSimulationData)
     dir_name = joinpath(get_data_dir(get_case(simulation_data)), "investors")
     investor_names = readdir(dir_name)
     investors = Vector{Investor}(undef, length(investor_names))
+
+    # Build once and use for all investors
+    system_availability_dict = Dict{String, DataFrames.DataFrame}()
+    system_availability_rt_dict = Dict{String, DataFrames.DataFrame}()
+
     for i = 1:length(investor_names)
         investor_dir = joinpath(dir_name, "$(investor_names[i])")
 
@@ -143,9 +148,40 @@ function create_investors(simulation_data::AgentSimulationData)
                                                       
         for scenario in scenario_names
             for sim_year in collect(1:horizon)
-                println(scenario)
-                println(sim_year)          
-                add_investor_project_availability!(simulation_data_dir, scenario, sim_year, projects, sys_UC)
+                @info "Adding availability data for investor $(investor_names[i]) for scenario $(scenario) and simulation year $(sim_year)"
+                sys_name = "$(sim_year)_$(scenario)"
+                if !haskey(system_availability_dict, sys_name)
+                    system_availability_dict[sys_name] = DataFrames.DataFrame(
+                        CSV.File(
+                            joinpath(
+                                simulation_data_dir,
+                                "timeseries_data_files",
+                                scenario,
+                                "sim_year_$(sim_year)",
+                                "Availability",
+                                "DAY_AHEAD_availability.csv",
+                            ),
+                        ))
+                    system_availability_rt_dict[sys_name] = DataFrames.DataFrame(
+                        CSV.File(
+                            joinpath(
+                                simulation_data_dir,
+                                "timeseries_data_files",
+                                scenario,
+                                "sim_year_$(sim_year)",
+                                "Availability",
+                                "REAL_TIME_availability.csv",
+                            ),
+                        ))
+                end  
+                add_investor_project_availability!(
+                    simulation_data_dir,
+                    scenario,
+                    sim_year,
+                    projects,
+                    sys_UC,
+                    system_availability_dict[sys_name],
+                    system_availability_rt_dict[sys_name])
             end
         end
 
