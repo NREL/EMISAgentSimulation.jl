@@ -1524,6 +1524,10 @@ function create_simulation(sys_MD::PSY.System,
     siip_system;
     kwargs...)
 
+    # to_json(sys_MD, "/kfs2/projects/gmlcmarkets/Phase2_EMIS_Analysis/Feb2024_ERCOT_2011_MARKET_Test_NGUO_LDES/HPC_Analysis_Runs/storage_ff_debug/modified_test_sys/MD_sys.json", force=true)
+    # to_json(sys_UC, "/kfs2/projects/gmlcmarkets/Phase2_EMIS_Analysis/Feb2024_ERCOT_2011_MARKET_Test_NGUO_LDES/HPC_Analysis_Runs/storage_ff_debug/modified_test_sys/UC_sys.json", force=true)
+    # to_json(sys_ED, "/kfs2/projects/gmlcmarkets/Phase2_EMIS_Analysis/Feb2024_ERCOT_2011_MARKET_Test_NGUO_LDES/HPC_Analysis_Runs/storage_ff_debug/modified_test_sys/ED_sys.json", force=true)
+
     # hacky way to incorporate reserve voll
     base_power = PSY.get_base_power(sys_UC)
     reserve_data = read_data(
