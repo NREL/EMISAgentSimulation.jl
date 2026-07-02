@@ -2,7 +2,7 @@
 This function populates and returns the AgentSimulationData struct.
 """
 ### NY_change
-function gather_data(case::CaseDefinition)
+function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=nothing)
     
     reset_timer!(EMIS_TIMER)
     data_dir = get_data_dir(case)
@@ -15,7 +15,7 @@ function gather_data(case::CaseDefinition)
     simulation_years = get_total_horizon(case)
     rolling_horizon = get_rolling_horizon(case)
     pcm_scenario = get_pcm_scenario(case)
-    results_dir = make_results_dir(case)
+    results_dir = results_dir === nothing ? make_results_dir(case) : results_dir
     da_resolution = get_da_resolution(case)
     rt_resolution = get_rt_resolution(case)
     md_horizon = get_md_horizon(case)
@@ -523,8 +523,8 @@ end
 """
 This function returns the AgentSimulation struct which contains all the required data for running the simulation.
 """
-function create_agent_simulation(case::CaseDefinition)
-    simulation_data = gather_data(case)
+function create_agent_simulation(case::CaseDefinition; results_dir::Union{String,Nothing}=nothing)
+    simulation_data = gather_data(case; results_dir = results_dir)
     simulation = AgentSimulation(case,
         get_results_dir(simulation_data),
         1,
