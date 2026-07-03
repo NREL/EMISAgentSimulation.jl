@@ -11,6 +11,16 @@ function add_outage_info!(
     return
 end
 
+function get_generators(generator_type::String, projects)
+    return sort!(
+        filter(
+            project -> occursin(generator_type, string(PSY.get_prime_mover_type(project))),
+            projects,
+        );
+        by = x -> get_device_size(x),
+    )
+end
+
 function get_availability_df_rt(timeseries_data_dir::String, scenario::String, simulation_years::Int64)
     availability_df_rt = DataFrames.DataFrame()
     for sim_year in 1:simulation_years
@@ -84,7 +94,7 @@ function calculate_RA_metrics(sys::PSY.System,
     @info "LOLE: $(ra_metrics["LOLE"])"
     @info "NEUE: $(ra_metrics["NEUE"])"
     
-    if exportoutage == true
+    if exportoutage 
         gens_avail = results["gens_avail"]
         @info "Export outage profile from PRAS simulation... "
         scenarionum = 1
@@ -140,10 +150,8 @@ function add_capacity_market_device_forecast!(sys_PRAS::PSY.System,
             (sys_horizon - sys_interval/sys_resolution) - 1
         ))
     time_stamps = StepRange(start_datetime, Dates.Hour(1), finish_datetime);
+    additional_timestep = length(time_stamps) - DEFAULT_HOURS_PER_YEAR
 
-    additional_timestep = length(time_stamps) - 8760
-
-    # intervals = Int(36 * 60 / rt_resolution)
     append!(
         availability_raw,
         availability_raw[(length(availability_raw) - additional_timestep + 1):end],
@@ -154,7 +162,6 @@ function add_capacity_market_device_forecast!(sys_PRAS::PSY.System,
     )
     forecast = PSY.Deterministic("max_active_power", data, Dates.Minute(rt_resolution))
     PSY.add_time_series!(sys_PRAS, device_PRAS, forecast)
-
     return
 end
 
@@ -197,7 +204,6 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
         rt_resolution,
         simulation_years,
     )
-
     return
 end
 
@@ -298,7 +304,6 @@ function update_delta_irm!(initial_system::PSY.System,
     simulation_years::Int64)
 
     timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
-
     availability_df_rt = get_availability_df_rt(timeseries_data_dir, scenario, simulation_years)
 
     if !(static_capacity_market)
@@ -317,25 +322,12 @@ function update_delta_irm!(initial_system::PSY.System,
 
         ra_targets = get_targets(resource_adequacy)
         delta_irm = 0.0
-
         all_capacity_market_projects = get_all_techs(capacity_market_system)
         removeable_projects = PSY.Generator[]
 
-        CT_generators = sort!(
-            filter(
-                project -> occursin("CT", string(PSY.get_prime_mover_type(project))),
-                all_capacity_market_projects,
-            );
-            by = x -> get_device_size(x),
-        )
+        CT_generators = get_generators("CT", all_capacity_market_projects)
         append!(removeable_projects, CT_generators)
-        CC_generators = sort!(
-            filter(
-                project -> occursin("CC", string(PSY.get_prime_mover_type(project))),
-                all_capacity_market_projects,
-            );
-            by = x -> get_device_size(x),
-        )
+        CC_generators = get_generators("CC", all_capacity_market_projects)
         append!(removeable_projects, CC_generators)
 
         @info "Updating delta IRM for scenario: $(scenario) - Year: $(iteration_year)"
@@ -481,21 +473,9 @@ function create_base_system(initial_system::PSY.System,
     all_capacity_market_projects = get_all_techs(capacity_market_system)
     removeable_projects = PSY.Generator[]
 
-    CT_generators = sort!(
-        filter(
-            project -> occursin("CT", string(PSY.get_prime_mover_type(project))),
-            all_capacity_market_projects,
-        );
-        by = x -> get_device_size(x),
-    )
+    CT_generators = get_generators("CT", all_capacity_market_projects)
     append!(removeable_projects, CT_generators)
-    CC_generators = sort!(
-        filter(
-            project -> occursin("CC", string(PSY.get_prime_mover_type(project))),
-            all_capacity_market_projects,
-        );
-        by = x -> get_device_size(x),
-    )
+    CC_generators = get_generators("CC", all_capacity_market_projects)
     append!(removeable_projects, CC_generators)
 
     @time begin
@@ -582,8 +562,8 @@ function create_base_system(initial_system::PSY.System,
                             samples = PRAS_N_SAMPLES,
                             simulation_years = simulation_years,
                         )
-                        println("Removed Capacity")
-                        println(ra_metrics)
+                        @info "Base System: removed capacity: $(removed_capacity) MW from project $(get_name(removed_project))"
+                        @info "RA metrics after removal: $(ra_metrics)"
                         adequacy_conditions_met, scarcity_conditions_met =
                             check_ra_conditions(ra_targets, ra_metrics)
                         count += 1
