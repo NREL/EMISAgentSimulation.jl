@@ -134,13 +134,13 @@ include(joinpath(@__DIR__, "includes.jl"))
     # PowerLoad/StandardLoad mismatch fixed in PSI_definitions.jl). ──────────
     @testset "Load device models cover the load types present in the test system" begin
         sys = PSY.System(
-            joinpath(@__DIR__, "test_systems", "MD_sys_EMIS_73hor_72int.json");
+            joinpath(@__DIR__, "test_systems", "sys_MD_year1.json");
             runchecks = false,
         )
 
         function all_concrete_subtypes(T)
             out = DataType[]
-            for S in subtypes(T)
+            for S in InteractiveUtils.subtypes(T)
                 if isconcretetype(S)
                     push!(out, S)
                 else

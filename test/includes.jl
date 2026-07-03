@@ -13,6 +13,7 @@ using PowerSimulations
 using PowerSystems
 using StorageSystemsSimulations
 using HydroPowerSimulations
+using InfrastructureSystems
 using JuMP
 using Xpress
 using HDF5
@@ -28,3 +29,4 @@ PSI = PowerSimulations
 PSY = PowerSystems
 SSI = StorageSystemsSimulations
 HSI = HydroPowerSimulations
+IS = InfrastructureSystems

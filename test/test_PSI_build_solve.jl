@@ -46,6 +46,26 @@ function _load_test_system(json_name::String)
     return PSY.System(joinpath(TEST_SYSTEMS_DIR, json_name); runchecks = false)
 end
 
+# Matches the kwargs create_problem() uses in production (siip_simulation_definition.jl)
+# for every problem type. `initialize_model = false` in particular is required: without
+# it, PSI.DecisionModel defaults to running an internal warm-start sub-solve at build
+# time (build_initial_conditions! + initialize!) that these standalone (non-Simulation)
+# models aren't set up for and that fails with "Optimizer returned NO_SOLUTION".
+function _test_decision_model(template::PSI.ProblemTemplate, sys::PSY.System, name::String)
+    return PSI.DecisionModel(
+        template,
+        sys;
+        optimizer = _test_solver(),
+        name = name,
+        optimizer_solve_log_print = false,
+        warm_start = true,
+        calculate_conflict = true,
+        store_variable_names = true,
+        export_pwl_vars = true,
+        initialize_model = false,
+    )
+end
+
 # PSI only @warns (doesn't error) when a system component type has no
 # DeviceModel/ServiceModel in the template — those components are silently
 # dropped from the optimization instead of failing the build. This makes that
@@ -70,43 +90,31 @@ end
 @testset "PSI template build+solve against bundled test systems" begin
 
     @testset "UC template + DA test system" begin
-        sys = _load_test_system("DA_sys_EMIS_25hor_24int_73mdhor_72mdint.json")
+        sys = _load_test_system("sys_UC_year1.json")
         template = EMISAgentSimulation.create_uc_template()
 
         @testset "no unmodeled component types" begin
             @test isempty(_unmodeled_component_types(template, sys))
         end
 
-        model = PSI.DecisionModel(
-            template,
-            sys;
-            optimizer = _test_solver(),
-            name = "UC_test",
-            optimizer_solve_log_print = false,
-        )
+        model = _test_decision_model(template, sys, "UC_test")
         _build_and_solve!(model)
     end
 
     @testset "MD template + MD test system" begin
-        sys = _load_test_system("MD_sys_EMIS_73hor_72int.json")
+        sys = _load_test_system("sys_MD_year1.json")
         template = EMISAgentSimulation.create_md_template()
 
         @testset "no unmodeled component types" begin
             @test isempty(_unmodeled_component_types(template, sys))
         end
 
-        model = PSI.DecisionModel(
-            template,
-            sys;
-            optimizer = _test_solver(),
-            name = "MD_test",
-            optimizer_solve_log_print = false,
-        )
+        model = _test_decision_model(template, sys, "MD_test")
         _build_and_solve!(model)
     end
 
     @testset "ED template (no inertia) + RT test system" begin
-        sys = _load_test_system("RT_sys_EMIS_2hor_1int_73mdhor_72mdint.json")
+        sys = _load_test_system("sys_ED_year1.json")
         inertia_product = collect(PSY.get_components_by_name(PSY.Service, sys, "Inertia"))
         template = EMISAgentSimulation.create_ed_template(inertia_product)
 
@@ -121,13 +129,7 @@ end
             @test isempty(_unmodeled_component_types(template, sys))
         end
 
-        model = PSI.DecisionModel(
-            template,
-            sys;
-            optimizer = _test_solver(),
-            name = "ED_test",
-            optimizer_solve_log_print = false,
-        )
+        model = _test_decision_model(template, sys, "ED_test")
         _build_and_solve!(model)
     end
 
