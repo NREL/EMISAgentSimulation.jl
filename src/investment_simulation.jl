@@ -371,7 +371,7 @@ function run_agent_simulation(
 
         for scenario in keys(sys_PRAS)
             ra_metrics, shortfall = @timeit EMIS_TIMER "ra_metrics" calculate_RA_metrics(
-                deepcopy(sys_PRAS[scenario]),
+                sys_PRAS[scenario],
                 false,
                 results_dir,
                 get_outage_dir(case),
@@ -399,7 +399,7 @@ function run_agent_simulation(
         for investor in get_investors(simulation)
             projects = get_projects(investor)
             for (i, project) in enumerate(projects)
-                @info "$(i): Updating realized profits for $(get_name(project))"
+                # @info "$(i): Updating realized profits for $(get_name(project))"
                 update_realized_profits!(project,
                     realized_market_prices,
                     realized_capacity_factors_md,
