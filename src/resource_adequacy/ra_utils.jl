@@ -175,7 +175,7 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     timeseries_data_dir::String, 
     availability_df_rt::DataFrame)
 
-    @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
+    # @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
 
     PSY_project = create_PSY_generator(project, capacity_market_system)
     PSY.add_component!(capacity_market_system, PSY_project)

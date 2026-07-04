@@ -28,7 +28,6 @@ function run_investor_iteration(investor::Investor,
     da_resolution = get_da_resolution(case)
     rt_resolution = get_rt_resolution(case)
 
-
     # Create empty market prices struct
     market_prices = MarketPrices()
 
@@ -96,7 +95,7 @@ function run_investor_iteration(investor::Investor,
                       solver)
 
     for (i, project) in enumerate(projects)
-        @info "current investor is $(get_name(investor)), current project is $(get_name(project))"
+        # @info "current investor is $(get_name(investor)), current project is $(get_name(project))"
         start_construction!(projects,
                             i,
                             project,

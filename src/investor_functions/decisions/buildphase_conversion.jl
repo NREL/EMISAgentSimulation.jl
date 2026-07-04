@@ -166,11 +166,11 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
         for scenario in keys(sys_PRAS)
             PSY_project_PRAS = create_PSY_generator(project, sys_PRAS[scenario])
             bus_name = PSY.get_name(PSY.get_bus(PSY_project_PRAS))
-            @info "Adding project $(get_name(project)) to PRAS system for scenario $(scenario). - project bus name is $(bus_name)"
+            # @info "Adding project $(get_name(project)) to PRAS system for scenario $(scenario). - project bus name is $(bus_name)"
             PSY.add_component!(sys_PRAS[scenario], PSY_project_PRAS)
 
             for product in get_products(project)
-                @info "Adding product $(product) to project $(get_name(project)) in PRAS system for scenario $(scenario)."
+                # @info "Adding product $(product) to project $(get_name(project)) in PRAS system for scenario $(scenario)."
                 add_device_services!(sys_PRAS[scenario], PSY.get_component(typeof(PSY_project_PRAS), sys_PRAS[scenario], PSY.get_name(PSY_project_PRAS)), product)
             end            
 
