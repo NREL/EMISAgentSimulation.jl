@@ -411,7 +411,7 @@ function calculate_derating_factors(
     rt_resolution = get_rt_resolution(get_case(simulation))
     zones = get_zones(simulation)
 
-    availability_df_rt = get_availability_df_rt(timeseries_data_dir, scenario, simulation_years)
+    availability_df_rt = get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
     derating_factors = read_data(
         joinpath(

@@ -10,7 +10,9 @@ function run_investor_iteration(investor::Investor,
                                  sys_PRAS::Dict{String, PSY.System},
                                  case::CaseDefinition,
                                  scenario_names::Vector{String},
-                                 timeseries_data_dir::String
+                                 timeseries_data_dir::String,
+                                 availability_rt_by_scenario::Dict{String, DataFrames.DataFrame},
+                                 availability_by_scenario::Dict{String, DataFrames.DataFrame}
                             )
 
     @info "Running investor $(get_name(investor)) iteration with queue: $(get_name.(get_queue(investor)))"
@@ -117,7 +119,9 @@ function run_investor_iteration(investor::Investor,
                             scenario_names,
                             da_resolution,
                             rt_resolution,
-                            timeseries_data_dir)
+                            timeseries_data_dir,
+                            availability_rt_by_scenario,
+                            availability_by_scenario)
 
         update_lifecycle!(project,
                           iteration_year,

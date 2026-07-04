@@ -50,7 +50,10 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
                              scenario_names::Vector{String},
                              da_resolution::Int64,
                              rt_resolution::Int64,
-                             timeseries_data_dir::String) where P <: Project{<: BuildPhase}
+                             timeseries_data_dir::String,
+                             availability_rt_by_scenario::Dict{String, DataFrames.DataFrame},
+                             availability_by_scenario::Dict{String, DataFrames.DataFrame},
+                             ) where P <: Project{<: BuildPhase}
     return
 end
 
@@ -74,7 +77,9 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
                              scenario_names::Vector{String},
                              da_resolution::Int64,
                              rt_resolution::Int64,
-                             timeseries_data_dir::String) where P <: Project{Planned}
+                             timeseries_data_dir::String,
+                             availability_rt_by_scenario::Dict{String, DataFrames.DataFrame},
+                             availability_by_scenario::Dict{String, DataFrames.DataFrame}) where P <: Project{Planned}
 
     # check if project construction end year is within this iteration step
      if iteration_year <= get_construction_year(project) <= iteration_year + step_size - 1
@@ -85,9 +90,8 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
             zone = get_zone(get_tech(project))
 
             for scenario in scenario_names
-                
-                availability_df = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(iteration_year)", "Availability", "DAY_AHEAD_availability.csv"))
-                availability_df_rt = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(iteration_year)", "Availability", "REAL_TIME_availability.csv"))
+                availability_df_rt = slice_year(availability_rt_by_scenario[scenario], iteration_year, simulation_years)
+                availability_df = slice_year(availability_by_scenario[scenario], iteration_year, simulation_years)
 
                 if in(get_name(project), names(availability_df))
                     availability_raw = availability_df[:, Symbol(get_name(project))]
@@ -135,7 +139,9 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
                              scenario_names::Vector{String},
                              da_resolution::Int64,
                              rt_resolution::Int64,
-                             timeseries_data_dir::String) where P <: Project{Planned}
+                             timeseries_data_dir::String,
+                             availability_rt_by_scenario::Dict{String, DataFrames.DataFrame},
+                             availability_by_scenario::Dict{String, DataFrames.DataFrame}) where P <: Project{Planned}
                              
     # check if project construction end year is within this iteration step
      if iteration_year <= get_construction_year(project) <= iteration_year + step_size - 1
@@ -180,8 +186,8 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
         project_zone = get_zone(get_tech(project))
 
         for y in 1:simulation_years            
-            availability_df = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(y)", "Availability", "DAY_AHEAD_availability.csv"))
-            availability_df_rt = read_data(joinpath(timeseries_data_dir, pcm_scenario, "sim_year_$(y)", "Availability", "REAL_TIME_availability.csv"))
+            availability_df_rt = slice_year(availability_rt_by_scenario[pcm_scenario], y, simulation_years)
+            availability_df = slice_year(availability_by_scenario[pcm_scenario], y, simulation_years)
 
             project_name = get_name(project)
             availability_df_names = names(availability_df)
@@ -231,9 +237,7 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
         for scenario in keys(sys_PRAS)
             PSY_project_PRAS = create_PSY_generator(project, sys_PRAS[scenario])
-
-            availability_df_rt = get_availability_df_rt(timeseries_data_dir, scenario, simulation_years)
-
+            availability_df_rt = availability_rt_by_scenario[scenario]
 
             if in(get_name(project), names(availability_df_rt))
                 availability_raw_rt = availability_df_rt[:, Symbol(get_name(project))]
@@ -258,7 +262,6 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
      end
      @info "FINISHED CONSTRUCTING: $(get_name(project))"
-
      return
 end
 

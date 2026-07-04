@@ -21,23 +21,28 @@ function get_generators(generator_type::String, projects)
     )
 end
 
-function get_availability_df_rt(timeseries_data_dir::String, scenario::String, simulation_years::Int64)
-    availability_df_rt = DataFrames.DataFrame()
+function get_availability_df(timeseries_data_dir::String, scenario::String, simulation_years::Int64, availability_type::String)
+    availability_df = DataFrames.DataFrame()
     for sim_year in 1:simulation_years
-        availability_df_rt = vcat(
-            availability_df_rt,
+        availability_df = vcat(
+            availability_df,
             read_data(
                 joinpath(
                     timeseries_data_dir,
                     scenario,
                     "sim_year_$(sim_year)",
                     "Availability",
-                    "REAL_TIME_availability.csv",
+                    "$(availability_type)_availability.csv",
                 ),
             ),
         )
     end
-    return availability_df_rt
+    return availability_df
+end
+
+function slice_year(df::DataFrames.DataFrame, year::Int, simulation_years::Int)
+    rows_per_year = DataFrames.nrow(df) ÷ simulation_years
+    return df[((year - 1) * rows_per_year + 1):(year * rows_per_year), :]
 end
 
 function calculate_RA_metrics(sys::PSY.System,
@@ -304,7 +309,7 @@ function update_delta_irm!(initial_system::PSY.System,
     simulation_years::Int64)
 
     timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
-    availability_df_rt = get_availability_df_rt(timeseries_data_dir, scenario, simulation_years)
+    availability_df_rt = get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
     if !(static_capacity_market)
         capacity_market_year = iteration_year + capacity_forward_years - 1
