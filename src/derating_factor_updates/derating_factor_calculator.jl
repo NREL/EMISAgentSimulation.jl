@@ -433,10 +433,9 @@ function calculate_derating_factors(
     capacity_market_year = iteration_year + capacity_forward_years - 1
     resource_adequacy = get_resource_adequacy(simulation)
     sys_PRAS = get_system_PRAS(simulation)[scenario]
-    base_sys = deepcopy(sys_PRAS)
 
     # create adjusted base system (by iteratively adding or removing generators) such that it meets the RA targets
-    adjusted_base_system = create_base_system(base_sys,
+    adjusted_base_system = create_base_system(sys_PRAS,
         active_projects,
         capacity_forward_years,
         scenario,
@@ -462,12 +461,6 @@ function calculate_derating_factors(
         availability_flag = true,
         outage_csv_location = correlated_outage_csv_location,
         outage_ts_flag = true)
-
-    ##TODO: AA remove debug code after validation
-    # temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
-    # @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    # PSY.to_json(base_pras_system, joinpath(temp_dir, "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json"))
-    # PSY.to_json(adjusted_base_system, joinpath(temp_dir, "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json"))
 
     if marginal_cc
         for zone in zones
