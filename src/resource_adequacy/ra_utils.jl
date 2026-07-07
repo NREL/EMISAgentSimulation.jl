@@ -62,7 +62,8 @@ function calculate_RA_metrics(sys::PSY.System,
     # Build PRAS.SystemModel on the main process (needs PSY.System's live SQLite connection).
     # PRAS.SystemModel is plain arrays — safe to serialize and send to a remote worker.
     # generate_pras_system is in SiennaPRASInterface (SPI), not in PRASCore (PRAS).
-    pras_system = SPI.generate_pras_system(sys, PSY.Area)
+    @timeit EMIS_TIMER "attach_outage_data" attach_outage_data_from_ext!(sys)
+    pras_system = @timeit EMIS_TIMER "generate_pras_system" SPI.generate_pras_system(sys, PSY.Area)
 
     resultspec = Dict{String,Any}("shortfall" => PRAS.Shortfall())
     if exportoutage == true
