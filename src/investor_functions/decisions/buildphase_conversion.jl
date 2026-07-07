@@ -98,19 +98,20 @@ function finish_construction!(projects::Vector{<: Project{<: BuildPhase}},
                     availability_raw_rt = availability_df_rt[:, Symbol(get_name(project))]
                 elseif in("$(type)_$(zone)", names(availability_df))
                     availability_raw = availability_df[:, Symbol("$(type)_$(zone)")]
-                    availability_raw_rt = availability_df[:, Symbol("$(type)_$(zone)")]
+                    availability_raw_rt = availability_df_rt[:, Symbol("$(type)_$(zone)")]
                 end
 
                 for year in 1:simulation_years
-                    load_n_vg_df =  read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data.csv"))
+                    load_n_vg_df = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data.csv"))
                     load_n_vg_df[:, get_name(project)] = availability_raw * get_maxcap(project)
 
-                    load_n_vg_df_rt =  read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data_rt.csv"))
+                    load_n_vg_df_rt = read_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data", "load_n_vg_data_rt.csv"))
                     load_n_vg_df_rt[:, get_name(project)] = availability_raw_rt * get_maxcap(project)
 
                     write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data"), "load_n_vg_data.csv", load_n_vg_df)
                     write_data(joinpath(timeseries_data_dir, scenario, "sim_year_$(year)", "Net Load Data"), "load_n_vg_data_rt.csv", load_n_vg_df_rt)
                 end
+                
             end
         end
      end
