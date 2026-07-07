@@ -256,7 +256,7 @@ function run_agent_simulation(
         capacity_market_projects = Project[]
 
         for project in get_activeprojects(simulation)
-            @info "Year $(iteration_year): Updating operation costs for project $(get_name(project))"
+            # @info "Year $(iteration_year): Updating operation costs for project $(get_name(project))"
             end_life_year = get_end_life_year(project)
             construction_year = get_construction_year(project)
             if end_life_year >= capacity_market_year &&
