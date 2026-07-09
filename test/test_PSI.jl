@@ -1,20 +1,9 @@
 # PSI/PSY API compatibility tests.
 # Guards against regressions from the PSI 0.31→0.37 / PSY 4.x→5.11 upgrade.
-# Run from REPL after loading the package:
-#   using EMISAgentSimulation
+# Run from REPL:
 #   include("test/test_PSI.jl")
 
-using Test
-using PowerSimulations
-using PowerSystems
-using StorageSystemsSimulations
-using HydroPowerSimulations
-import EMISAgentSimulation
-
-const PSI = PowerSimulations
-const PSY = PowerSystems
-const SSI = StorageSystemsSimulations
-const HSI = HydroPowerSimulations
+include(joinpath(@__DIR__, "includes.jl"))
 
 @testset "PSI/PSY API compatibility (PSI ~0.37 / PSY ~5.11)" begin
 
@@ -123,8 +112,8 @@ const HSI = HydroPowerSimulations
     end
 
     # ── Template construction (no PSY system needed) ───────────────────────
-    @testset "UC template construction without error (no inertia)" begin
-        template = EMISAgentSimulation.create_uc_template([])
+    @testset "UC template construction without error" begin
+        template = EMISAgentSimulation.create_uc_template()
         @test template isa PSI.ProblemTemplate
     end
 
@@ -133,9 +122,62 @@ const HSI = HydroPowerSimulations
         @test template isa PSI.ProblemTemplate
     end
 
-    @testset "MD template construction without error (no inertia)" begin
-        template = EMISAgentSimulation.create_md_template([])
+    @testset "MD template construction without error" begin
+        template = EMISAgentSimulation.create_md_template()
         @test template isa PSI.ProblemTemplate
+    end
+
+    # ── Load types: confirm StaticPowerLoad is registered for the load type(s)
+    # actually present in the bundled test system, and surface any other load
+    # types present so they don't silently fall out of the optimization model
+    # (PSI only @warns, doesn't error, on an unmodeled component type — see the
+    # PowerLoad/StandardLoad mismatch fixed in PSI_definitions.jl). ──────────
+    @testset "Load device models cover the load types present in the test system" begin
+        sys = PSY.System(
+            joinpath(@__DIR__, "test_systems", "sys_MD_year1.json");
+            runchecks = false,
+        )
+
+        function all_concrete_subtypes(T)
+            out = DataType[]
+            for S in InteractiveUtils.subtypes(T)
+                if isconcretetype(S)
+                    push!(out, S)
+                else
+                    append!(out, all_concrete_subtypes(S))
+                end
+            end
+            return out
+        end
+
+        # Count every concrete PSY.StaticLoad subtype present in the system,
+        # not just the ones we expect (PowerLoad/StandardLoad) — this is what
+        # would have caught the original PowerLoad-vs-StandardLoad mismatch.
+        load_counts = Dict{DataType, Int}()
+        for T in all_concrete_subtypes(PSY.StaticLoad)
+            n = length(collect(PSY.get_components(T, sys)))
+            n > 0 && (load_counts[T] = n)
+        end
+
+        @info "Load component types present in MD test system" load_counts
+
+        # PSI_definitions.jl registers PSI.StaticPowerLoad for exactly these
+        # two load types across UC/MD/ED. Every load type actually present in
+        # the system must be one of them, or it's being silently dropped.
+        covered_load_types = Set([PSY.PowerLoad, PSY.StandardLoad])
+        uncovered = setdiff(keys(load_counts), covered_load_types)
+        @test isempty(uncovered)
+
+        # Sanity check this isn't vacuously passing against a system with no
+        # load components at all.
+        @test sum(values(load_counts); init = 0) > 0
+
+        # Today's test system is expected to be PowerLoad-only. This isn't a
+        # correctness requirement (StandardLoad would also be fine, it's
+        # covered above) — it's a canary: if this flips, the "PowerLoad-only"
+        # assumption elsewhere (e.g. this test's own framing) is stale.
+        @test get(load_counts, PSY.PowerLoad, 0) > 0
+        @test get(load_counts, PSY.StandardLoad, 0) == 0
     end
 
     # ── Custom dispatch overrides ───────────────────────────────────────────
