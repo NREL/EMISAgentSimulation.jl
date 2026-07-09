@@ -627,13 +627,15 @@ function update_realized_reserve_perc!(device::PSY.Device,
         end
     end
 
-    reserve_provision_uc =
-        results_uc["ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"][
-            :,
-            Symbol(PSY.get_name(device)),
-        ]
-    reserve_perc_value_uc = reserve_provision_uc / get_device_size(device) / base_power
-    reserve_perc_uc[PSY.get_name(device)][service_name][1, :] = reserve_perc_value_uc
+    key_uc = "ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"
+    if haskey(results_uc, key_uc) &&
+       Symbol(PSY.get_name(device)) in DataFrames.propertynames(results_uc[key_uc])
+        reserve_provision_uc = results_uc[key_uc][:, Symbol(PSY.get_name(device))]
+        reserve_perc_value_uc = reserve_provision_uc / get_device_size(device) / base_power
+        reserve_perc_uc[PSY.get_name(device)][service_name][1, :] = reserve_perc_value_uc
+    else
+        @warn "No UC reserve variable found for $(PSY.get_name(device)) - $(service_name), skipping"
+    end
 
     if md_market_bool == true
         @info "Updating reserve provision for $(PSY.get_name(device)) - $(service_name) from MD results"
@@ -794,33 +796,28 @@ function update_realized_reserve_perc!(device::PSY.EnergyReservoirStorage,
         end
     end
 
-    reserve_provision_uc = (
-        results_uc["AncillaryServiceVariableDischarge__EnergyReservoirStorage__ReserveDemandCurve{ReserveUp}_$(service_name)"][
-            :,
-            Symbol(get_name(device)),
-        ] .+
-        results_uc["AncillaryServiceVariableCharge__EnergyReservoirStorage__ReserveDemandCurve{ReserveUp}_$(service_name)"][
-            :,
-            Symbol(get_name(device)),
-        ]
-    )
-    reserve_perc_value_uc = reserve_provision_uc / get_device_size(device) / base_power
-    reserve_perc_uc[get_name(device)][service_name][1, :] = reserve_perc_value_uc
+    key_uc_discharge = "AncillaryServiceVariableDischarge__EnergyReservoirStorage__ReserveDemandCurve{ReserveUp}_$(service_name)"
+    key_uc_charge = "AncillaryServiceVariableCharge__EnergyReservoirStorage__ReserveDemandCurve{ReserveUp}_$(service_name)"
+    if haskey(results_uc, key_uc_discharge) && haskey(results_uc, key_uc_charge) &&
+       Symbol(get_name(device)) in DataFrames.propertynames(results_uc[key_uc_discharge]) &&
+       Symbol(get_name(device)) in DataFrames.propertynames(results_uc[key_uc_charge])
+        reserve_provision_uc = (
+            results_uc[key_uc_discharge][:, Symbol(get_name(device))] .+
+            results_uc[key_uc_charge][:, Symbol(get_name(device))]
+        )
+        reserve_perc_value_uc = reserve_provision_uc / get_device_size(device) / base_power
+        reserve_perc_uc[get_name(device)][service_name][1, :] = reserve_perc_value_uc
+    else
+        @warn "No UC reserve variable found for $(get_name(device)) - $(service_name), skipping"
+    end
 
     if md_market_bool == true
         @info "Updating reserve provision for $(PSY.get_name(device)) - $(service_name) from MD results"
         key_md_discharge = "AncillaryServiceVariableDischarge__EnergyReservoirStorage__ReserveDemandCurve{ReserveUp}_$(service_name)"
         key_md_charge = "AncillaryServiceVariableCharge__EnergyReservoirStorage__ReserveDemandCurve{ReserveUp}_$(service_name)"
-        if haskey(results_md, key_md_discharge) && haskey(results_md, key_md_charge)
-            reserve_provision_md =
-                results_md[key_md_discharge][
-                    results_md[key_md_discharge].name .== PSY.get_name(device),
-                    :value,
-                ] +
-                results_md[key_md_charge][
-                    results_md[key_md_charge].name .== PSY.get_name(device),
-                    :value,
-                ]
+        if haskey(results_md, key_md_discharge) && haskey(results_md, key_md_charge) &&
+           Symbol(PSY.get_name(device)) in DataFrames.propertynames(results_md[key_md_discharge]) &&
+           Symbol(PSY.get_name(device)) in DataFrames.propertynames(results_md[key_md_charge])
             reserve_provision_md = (
                 results_md[key_md_discharge][:, Symbol(PSY.get_name(device))] .+
                 results_md[key_md_charge][:, Symbol(PSY.get_name(device))]
