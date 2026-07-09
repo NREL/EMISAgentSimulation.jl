@@ -25,8 +25,7 @@ function start_construction!(projects::Vector{<: Project{<: BuildPhase}},
 
     # check if project construction start year is within this iteration step
     if iteration_year <= get_decision_year(project) + queue_time <= iteration_year + step_size - 1
-        println("CONSTRUCTING:")
-        println(get_name(project))
+        @info "Constructing project $(get_name(project)) in year $(iteration_year)."
         projects[index] = convert(Project{Planned}, project)
     end
 end
