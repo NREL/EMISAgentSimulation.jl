@@ -528,24 +528,6 @@ function update_realized_reserve_perc!(device::PSY.Device,
             @warn "No ED inertia variable found for $(PSY.get_name(device)), skipping"
         end
     else
-        if service_name in rt_products
-            reserve_provision =
-                results_ed["ActivePowerReserveVariable__VariableReserve__ReserveUp__$(service_name)"][
-                    :,
-                    Symbol(get_name(device)),
-                ]
-            reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-            reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
-
-        elseif service_name in only_da_products
-            reserve_provision =
-                results_uc["ActivePowerReserveVariable__VariableReserve__ReserveUp__$(service_name)"][
-                    :,
-                    Symbol(get_name(device)),
-                ]
-            reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-            reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
-        end
         ed_key = "ActivePowerReserveVariable__VariableReserve__ReserveUp__$(service_name)"
         uc_key = "ActivePowerReserveVariable__VariableReserve__ReserveUp__$(service_name)"
         if single_stage_bool == false
@@ -652,24 +634,6 @@ function update_realized_reserve_perc!(device::PSY.Device,
         end
     end
 
-    if service_name in rt_products
-        reserve_provision =
-            results_ed["ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"][
-                :,
-                Symbol(PSY.get_name(device)),
-            ]
-        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-        reserve_perc[PSY.get_name(device)][service_name][1, :] = reserve_perc_value
-
-    elseif service_name in only_da_products
-        reserve_provision =
-            results_uc["ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"][
-                :,
-                Symbol(PSY.get_name(device)),
-            ]
-        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-        reserve_perc[PSY.get_name(device)][service_name][1, :] = reserve_perc_value
-    end
     return
 end
 
@@ -732,24 +696,6 @@ function update_realized_reserve_perc!(device::PSY.Device,
         end
     end
 
-    if service_name in rt_products
-        reserve_provision =
-            results_ed["ActivePowerReserveVariable__VariableReserve__ReserveDown__$(service_name)"][
-                :,
-                Symbol(get_name(device)),
-            ]
-        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-        reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
-
-    elseif service_name in only_da_products
-        reserve_provision =
-            results_uc["ActivePowerReserveVariable__VariableReserve__ReserveDown__$(service_name)"][
-                :,
-                Symbol(get_name(device)),
-            ]
-        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-        reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
-    end
     return
 end
 
@@ -831,24 +777,6 @@ function update_realized_reserve_perc!(device::PSY.EnergyReservoirStorage,
         end
     end
 
-    if service_name in rt_products
-        reserve_provision =
-            results_ed["ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"][
-                :,
-                Symbol(get_name(device)),
-            ]
-        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-        reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
-
-    elseif service_name in only_da_products
-        reserve_provision =
-            results_uc["ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp__$(service_name)"][
-                :,
-                Symbol(get_name(device)),
-            ]
-        reserve_perc_value = reserve_provision / get_device_size(device) / base_power
-        reserve_perc[get_name(device)][service_name][1, :] = reserve_perc_value
-    end
     return
 end
 
@@ -1904,12 +1832,6 @@ function create_simulation(sys_MD::PSY.System,
     )
 
     inertia_perc = Dict([g => zeros(1, data_length_ed) for g in tech_names])
-
-    # for g in tech_names
-    #     for product in only_da_products
-    #         reserve_perc[g][string(product)] = zeros(1, data_length_uc)
-    #     end
-    # end
 
     for tech in sys_techs
         name = get_name(tech)

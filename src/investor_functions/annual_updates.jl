@@ -28,28 +28,7 @@ function update_forward_profit!(product::Capacity,
     return
 end
 
-"""
-This function does nothing if the project is retired.
-"""
-#=
-function update_realized_profits!(project::P,
-                                  market_prices::MarketPrices,
-                                  capacity_factors::Dict{String, Array{Float64, 2}},
-                                  reserve_perc::Dict{String, Dict{String, Array{Float64, 2}}},
-                                  inertia_perc::Dict{String, Array{Float64, 2}},
-                                  capacity_accepted_bids::Dict{String, Float64},
-                                  rec_accepted_bids::Dict{String, Float64},
-                                  rep_hour_weight::Vector{Float64},
-                                  iteration_year::Int64,
-                                  capacity_forward_years::Int64,
-                                  carbon_tax::Float64,
-                                  da_resolution::Int64,
-                                  rt_resolution::Int64,
-                                  rt_products::Vector{String},
-                                  pcm_scenario::String) where P <: Project{Retired}
 
-end
-=#
 """
 This function updates the annual realized profit for active projects.
 Returns nothing.
