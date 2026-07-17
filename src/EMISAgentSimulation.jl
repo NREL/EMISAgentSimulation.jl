@@ -398,7 +398,6 @@ include("utils/read_and_write_utils.jl")   # Read and write utils.
 include("utils/parallel_utils.jl")         # Utils for parallelizing price prediction runs.
 include("utils/finance_utils.jl")          # Functions for calculating adjusted CAPEX and WACC
 include("utils/save_load_utils.jl")        # Functions for saving and loading data.
-include("utils/resource_adequacy_utils.jl") # Helper functions for PRAS and SiennaPRASInterface
 
 #Include files containing functions for creating the simulation structs from the given data.
 include("struct_creators/simulation_structs/product_creator.jl")
