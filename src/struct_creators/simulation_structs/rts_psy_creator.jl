@@ -311,89 +311,21 @@ function add_outages_to_system!(
 )
     if outages_dir === nothing
         @info "No outages CSV provided — using nominal outage values for all generators."
-        outages_data = nothing
-    else
-        outages_data = DataFrame(CSV.File(outages_dir))
-        n_csv_rows = size(outages_data, 1)
-        n_timesteps = length(dates)
-        if n_csv_rows < n_timesteps
-            @warn "Outage CSV has $(n_csv_rows) rows but system requires $(n_timesteps) timesteps. Wrapping CSV data cyclically for the additional timesteps."
-        end
     end
 
-    # Thermal generators: GeometricDistributionForcedOutage + λ/μ time series
-    λ_gen, _ = SPI.rate_to_probability(NOMINAL_GEN_FOR, DEFAULT_THERMAL_MTTR_HOURS)
-    λ_storage, _ = SPI.rate_to_probability(NOMINAL_STORAGE_FOR, DEFAULT_THERMAL_MTTR_HOURS)
-    for gen in PSY.get_components(PSY_THERMAL_GENERATORS, sys)
-        gen_name = PSY.get_name(gen)
-
-        transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
-            outage_transition_probability = λ_gen,
-        )
-        PSY.add_supplemental_attribute!(sys, gen, transition_data)
-
-        if outages_data !== nothing && gen_name in names(outages_data)
-            @info "Adding outage time series for thermal generator $(gen_name)."
-            # Wrap the CSV column cyclically to cover all timesteps:
-            # repeat full-year blocks then append the remaining partial-year slice.
-            col = outages_data[!, gen_name]
-            n_repeats, remainder = divrem(length(dates), n_csv_rows)
-            wrapped_col = vcat(repeat(col, n_repeats), col[1:remainder])
-            λ_μ = SPI.rate_to_probability.(
-                wrapped_col,
-                DEFAULT_THERMAL_MTTR_HOURS,
-            )
-            supp_attr = first(
-                PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, gen),
-            )
-            PSY.add_time_series!(
-                sys,
-                supp_attr,
-                PSY.SingleTimeSeries(
-                    "outage_probability",
-                    TS.TimeArray(collect(dates), first.(λ_μ)),
-                ),
-            )
-            PSY.add_time_series!(
-                sys,
-                supp_attr,
-                PSY.SingleTimeSeries(
-                    "recovery_probability",
-                    TS.TimeArray(collect(dates), last.(λ_μ)),
-                ),
-            )
-        else
-            @info "No outage CSV data for thermal generator $(gen_name) — using nominal scalar values only."
-        end
+    for gen in PSY.get_components(PSY.Generator, sys)
+        add_nominal_outage_to_component!(sys, gen)
+    end
+    for storage in PSY.get_components(PSY.Storage, sys)
+        add_nominal_outage_to_component!(sys, storage)
     end
 
-    # Renewable generators: fixed nominal, supplemental attribute only
-    for gen in PSY.get_components(PSY.RenewableGen, sys)
-        transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
-            outage_transition_probability = λ_gen,
-        )
-        PSY.add_supplemental_attribute!(sys, gen, transition_data)
-    end
-
-    # Hydro generators: fixed nominal, supplemental attribute only
-    for gen in PSY.get_components(PSY.HydroGen, sys)
-        transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
-            outage_transition_probability = λ_gen,
-        )
-        PSY.add_supplemental_attribute!(sys, gen, transition_data)
-    end
-
-    # Storage: fixed nominal (zero outage probability), supplemental attribute only
-    for gen in PSY.get_components(PSY.Storage, sys)
-        transition_data = PSY.GeometricDistributionForcedOutage(;
-            mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
-            outage_transition_probability = λ_storage,
-        )
-        PSY.add_supplemental_attribute!(sys, gen, transition_data)
-    end
+    attach_outage_data_from_csv!(
+        sys,
+        outages_dir;
+        mttr_hours = DEFAULT_THERMAL_MTTR_HOURS,
+        timestamps = dates,
+    )
 
     return
 end

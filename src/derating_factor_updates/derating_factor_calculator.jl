@@ -49,19 +49,8 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
             ) for sim_year in 1:simulation_years
         ]...,
     )
-    availability_data = vcat(
-        [
-            read_data(
-                joinpath(
-                    timeseries_data_dir,
-                    scenario,
-                    "sim_year_$(sim_year)",
-                    "Availability",
-                    "REAL_TIME_availability.csv",
-                ),
-            ) for sim_year in 1:simulation_years
-        ]...,
-    )
+    availability_data =
+        read_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
     num_hours = DataFrames.nrow(load_n_vg_data)
     num_top_hours = cap_mkt_params.num_top_hours[1] * simulation_years
@@ -404,6 +393,7 @@ function build_augmented_pras_system(
     rt_resolution,
     simulation_years,
     timeseries_data_dir::String,
+    availability_df_rt::DataFrame,
 )::PRAS.SystemModel
     augmented_sys = deepcopy(base_system)
     for project in projects_to_add
@@ -416,6 +406,7 @@ function build_augmented_pras_system(
             rt_resolution,
             simulation_years,
             timeseries_data_dir,
+            availability_df_rt,
         )
     end
     return SPI.generate_pras_system(augmented_sys, PSY.Area, false)
@@ -495,7 +486,9 @@ function calculate_derating_factors(
         simulation_dir,
         outage_dir,
         rt_resolution,
-        simulation)
+        simulation,
+        availability_df_rt,
+    )
 
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
     base_pras_system = SPI.generate_pras_system(adjusted_base_system,
