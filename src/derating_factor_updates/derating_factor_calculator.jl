@@ -374,7 +374,13 @@ function build_pruned_pras_system(
     for project in projects_to_remove
         remove_system_component!(pruned_sys, project)
     end
-    return SPI.generate_pras_system(pruned_sys, PSY.Area, false)
+    return make_pras_system_spi(
+        pruned_sys,
+        PSY.Area,
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 end
 
 """
@@ -409,7 +415,13 @@ function build_augmented_pras_system(
             availability_df_rt,
         )
     end
-    return SPI.generate_pras_system(augmented_sys, PSY.Area, false)
+    return make_pras_system_spi(
+        augmented_sys,
+        PSY.Area,
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 end
 
 """
@@ -491,9 +503,13 @@ function calculate_derating_factors(
     )
 
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
-    base_pras_system = SPI.generate_pras_system(adjusted_base_system,
+    base_pras_system = make_pras_system_spi(
+        adjusted_base_system,
         PSY.Area,
-        false)
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 
     # Compute regional load shares once; reused in all PRAS assess calls below.
     regional_load_shares = collect(get_regional_load_shares(base_pras_system))
@@ -550,10 +566,13 @@ function calculate_derating_factors(
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
     # No deepcopy needed here: SPI.generate_pras_system only reads the PSY system to build a
     # PRAS struct and does not mutate it. The resulting augmented_pras_system is a fresh object.
-    augmented_sys = adjusted_base_system
-    augmented_pras_system = SPI.generate_pras_system(augmented_sys,
+    augmented_pras_system = make_pras_system_spi(
+        adjusted_base_system,
         PSY.Area,
-        false)
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 
     for zone in zones
         for type in existing_types

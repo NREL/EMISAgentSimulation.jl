@@ -199,14 +199,38 @@ function set_line_capacities!(
     return sys
 end
 
+function _make_pras_system_spi(
+    sys::PSY.System,
+    aggregation::Type{<:PSY.AggregationTopology};
+    copper_plate::Bool = true,
+    copper_plate_capacity_mw::Real = 99999.0,
+    lump_region_renewable_gens::Bool = false,
+    export_location::Union{Nothing, String} = nothing,
+)
+    set_line_capacities!(
+        sys,
+        copper_plate;
+        copper_plate_capacity_mw = copper_plate_capacity_mw,
+    )
+
+    return SPI.generate_pras_system(
+        sys,
+        aggregation,
+        lump_region_renewable_gens,
+        export_location,
+    )
+end
+
 """
     make_pras_system_spi(sys, aggregation=PSY.Area; outage_csv_file=nothing, mttr_hours=24,
-                          copper_plate=true, copper_plate_capacity_mw=99999.0,
-                          lump_region_renewable_gens=false, export_location=nothing)
+                         copper_plate=true, copper_plate_capacity_mw=99999.0,
+                         lump_region_renewable_gens=false, export_location=nothing,
+                         copy_system=true)
 
 `SiennaPRASInterface`-based equivalent of `PSY2PRAS.make_pras_system`, for testing SPI as
 a drop-in replacement before rewiring the live call sites in `derating_factor_calculator.jl`.
-Operates on a deep copy of `sys`, so the caller's system is left untouched.
+By default it deepcopies `sys`, but callers that already have a fresh local system can pass
+`copy_system = false` to avoid the extra copy.
 
 - `outage_csv_file`: forwarded to `attach_outage_data_from_csv!`, run after
   `attach_outage_data_from_ext!` populates static outage data from each component's
@@ -226,20 +250,50 @@ function make_pras_system_spi(
     copper_plate_capacity_mw::Real = 99999.0,
     lump_region_renewable_gens::Bool = false,
     export_location::Union{Nothing, String} = nothing,
+    copy_system::Bool = true,
 )
-    sys = deepcopy(sys)
+    sys = copy_system ? deepcopy(sys) : sys
     attach_outage_data_from_ext!(sys)
     attach_outage_data_from_csv!(sys, outage_csv_file; mttr_hours = mttr_hours)
-    set_line_capacities!(
-        sys,
-        copper_plate;
-        copper_plate_capacity_mw = copper_plate_capacity_mw,
-    )
 
-    return SPI.generate_pras_system(
+    return _make_pras_system_spi(
         sys,
-        aggregation,
-        lump_region_renewable_gens,
-        export_location,
+        aggregation;
+        copper_plate = copper_plate,
+        copper_plate_capacity_mw = copper_plate_capacity_mw,
+        lump_region_renewable_gens = lump_region_renewable_gens,
+        export_location = export_location,
+    )
+end
+
+"""
+    make_pras_system_spi(sys, aggregation, nothing; copper_plate=true,
+                         copper_plate_capacity_mw=99999.0,
+                         lump_region_renewable_gens=false, export_location=nothing,
+                         copy_system=true)
+
+`SiennaPRASInterface`-based PRAS conversion helper for systems that already carry the
+desired outage supplemental attributes. This overload skips both ext-based and CSV-based
+outage attachment and only performs the shared SPI conversion steps.
+"""
+function make_pras_system_spi(
+    sys::PSY.System,
+    aggregation::Type{<:PSY.AggregationTopology},
+    ::Nothing;
+    copper_plate::Bool = true,
+    copper_plate_capacity_mw::Real = 99999.0,
+    lump_region_renewable_gens::Bool = false,
+    export_location::Union{Nothing, String} = nothing,
+    copy_system::Bool = true,
+)
+    sys = copy_system ? deepcopy(sys) : sys
+
+    return _make_pras_system_spi(
+        sys,
+        aggregation;
+        copper_plate = copper_plate,
+        copper_plate_capacity_mw = copper_plate_capacity_mw,
+        lump_region_renewable_gens = lump_region_renewable_gens,
+        export_location = export_location,
     )
 end
