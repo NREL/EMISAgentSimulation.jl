@@ -56,18 +56,20 @@ end
 ##############################################
 # Converting FOR and MTTR to λ and μ
 ##############################################
-function outage_to_rate(outage_data::Tuple{Float64, Int64})
-    for_gen = outage_data[1]
-    mttr = outage_data[2]
-    if (mttr != 0)
-        μ = 1 / mttr
-    else
-        μ = 1.0
-    end
-    λ = (μ * for_gen) / (1 - for_gen)
+##TODO: AA: remove duplicate function after validation
+## Duplicate function
+# function outage_to_rate(outage_data::Tuple{Float64, Int64})
+#     for_gen = outage_data[1]
+#     mttr = outage_data[2]
+#     if (mttr != 0)
+#         μ = 1 / mttr
+#     else
+#         μ = 1.0
+#     end
+#     λ = (μ * for_gen) / (1 - for_gen)
 
-    return (λ = λ, μ = μ)
-end
+#     return (λ = λ, μ = μ)
+# end
 
 #######################################################
 # Aux Functions
@@ -141,10 +143,9 @@ function outage_to_rate(outage_data::Tuple{Float64, Int64})
     if (mttr != 0)
         μ = 1 / mttr
     else
-        μ = 0.0
+        μ = 1.0
     end
     λ = (μ * for_gen) / (1 - for_gen)
-    #λ = for_gen
 
     return (λ = λ, μ = μ)
 end

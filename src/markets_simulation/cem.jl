@@ -3,8 +3,6 @@ function cem(system::MarketClearingProblem{Z, T},
     solver::JuMP.MOI.OptimizerWithAttributes,
     jump_model_dir::String,
     resultfile::String = "") where {Z, T}
-    include(joinpath(@__DIR__, "..", "representative_days", "chronological_clustering.jl"))
-
     lines = [line.name for line in system.lines] # Lines
     projects = [project.name for project in system.projects] # Projects
     invperiods = 1:length(system.inv_periods)     # Investment periods

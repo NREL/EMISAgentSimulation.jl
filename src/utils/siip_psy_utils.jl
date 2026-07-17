@@ -360,7 +360,8 @@ function update_PSY_timeseries!(
     first_ts_temp = first(PSY.get_time_series_multiple(sys))
     start_datetime = PSY.IS.get_initial_timestamp(first_ts_temp)
     sys_res = PSY.get_time_series_resolutions(sys)[1]
-    finish_datetime = start_datetime + Dates.Hour(8760 * sys_res - sys_res)
+    finish_datetime =
+        start_datetime + Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_res - sys_res)
     time_stamps = StepRange(start_datetime, sys_res, finish_datetime)
 
     # Only update ORDC product time series.

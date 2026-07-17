@@ -17,7 +17,7 @@ const SERVICES_SLACK_COST = 1e5
 const PENALTY_COST = 5000.0
 
 # PRAS constants
-const PRAS_N_SAMPLES = 100
+const PRAS_N_SAMPLES = 1000
 const PRAS_WORKER = Ref{Union{Nothing, Int}}(nothing)
 const PRAS_MONTE_CARLO_SEED = 42
 

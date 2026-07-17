@@ -79,37 +79,15 @@ function add_investor_project_availability!(test_system_dir::String,
     sim_year::Int64,
     projects::Vector{Project},
     sys_UC::Union{Nothing, PSY.System},
-    timeseries_data_dir::String)
+    timeseries_data_dir::String,
+    system_availability_data::DataFrames.DataFrame,
+    system_availability_data_rt::DataFrames.DataFrame)
 
     # pv_availability_file = CSV.read(joinpath(test_system_dir, "RTS_Data", "upv_availability.csv"), DataFrame)
     # wind_availability_file = CSV.read(joinpath(test_system_dir, "RTS_Data", "wind_availability.csv"), DataFrame)
 
-    system_availability_data = DataFrames.DataFrame(
-        CSV.File(
-            joinpath(
-                timeseries_data_dir,
-                scenario,
-                "sim_year_$(sim_year)",
-                "Availability",
-                "DAY_AHEAD_availability.csv",
-            ),
-        ),
-    )
-    system_availability_data_rt = DataFrames.DataFrame(
-        CSV.File(
-            joinpath(
-                timeseries_data_dir,
-                scenario,
-                "sim_year_$(sim_year)",
-                "Availability",
-                "REAL_TIME_availability.csv",
-            ),
-        ),
-    )
     gennames = names(system_availability_data)[5:length(names(system_availability_data))] #################
-
     psy_gens = PSY.get_name.(PSY.get_components(PSY.Generator, sys_UC))
-
     gen_diff = setdiff(gennames, psy_gens)
 
     for project in projects

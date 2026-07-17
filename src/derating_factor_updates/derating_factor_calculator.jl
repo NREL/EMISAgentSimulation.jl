@@ -49,19 +49,8 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
             ) for sim_year in 1:simulation_years
         ]...,
     )
-    availability_data = vcat(
-        [
-            read_data(
-                joinpath(
-                    timeseries_data_dir,
-                    scenario,
-                    "sim_year_$(sim_year)",
-                    "Availability",
-                    "REAL_TIME_availability.csv",
-                ),
-            ) for sim_year in 1:simulation_years
-        ]...,
-    )
+    availability_data =
+        read_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
     num_hours = DataFrames.nrow(load_n_vg_data)
     num_top_hours = cap_mkt_params.num_top_hours[1] * simulation_years
@@ -385,7 +374,13 @@ function build_pruned_pras_system(
     for project in projects_to_remove
         remove_system_component!(pruned_sys, project)
     end
-    return SPI.generate_pras_system(pruned_sys, PSY.Area, false)
+    return make_pras_system_spi(
+        pruned_sys,
+        PSY.Area,
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 end
 
 """
@@ -404,6 +399,7 @@ function build_augmented_pras_system(
     rt_resolution,
     simulation_years,
     timeseries_data_dir::String,
+    availability_df_rt::DataFrame,
 )::PRAS.SystemModel
     augmented_sys = deepcopy(base_system)
     for project in projects_to_add
@@ -416,9 +412,16 @@ function build_augmented_pras_system(
             rt_resolution,
             simulation_years,
             timeseries_data_dir,
+            availability_df_rt,
         )
     end
-    return SPI.generate_pras_system(augmented_sys, PSY.Area, false)
+    return make_pras_system_spi(
+        augmented_sys,
+        PSY.Area,
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 end
 
 """
@@ -457,6 +460,9 @@ function calculate_derating_factors(
     rt_resolution = get_rt_resolution(get_case(simulation))
     zones = get_zones(simulation)
 
+    availability_df_rt =
+        get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
+
     derating_factors = read_data(
         joinpath(
             simulation_dir,
@@ -468,10 +474,8 @@ function calculate_derating_factors(
     )
 
     active_projects = get_activeprojects(simulation)
-
     existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
     options = filter(p -> typeof(p) == RenewableGenEMIS{Option}, active_projects)
-
     existing_types = unique(get_type.(get_tech.(existing)))
     new_types = unique(get_type.(get_tech.(options)))
 
@@ -485,7 +489,7 @@ function calculate_derating_factors(
     base_sys = sys_PRAS
 
     # create adjusted base system (by iteratively adding or removing generators) such that it meets the RA targets
-    adjusted_base_system = create_base_system(base_sys,
+    adjusted_base_system = create_base_system(sys_PRAS,
         active_projects,
         capacity_forward_years,
         scenario,
@@ -494,38 +498,26 @@ function calculate_derating_factors(
         simulation_dir,
         outage_dir,
         rt_resolution,
-        simulation)
+        simulation,
+        availability_df_rt,
+    )
 
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
-    base_pras_system = SPI.generate_pras_system(adjusted_base_system,
+    base_pras_system = make_pras_system_spi(
+        adjusted_base_system,
         PSY.Area,
-        false)
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 
     # Compute regional load shares once; reused in all PRAS assess calls below.
     regional_load_shares = collect(get_regional_load_shares(base_pras_system))
 
-    ##TODO: AA remove debug code after validation
-    # temp_dir = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/HPC_Analysis_Runs/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/temp_data"
-    # @info "Debug: Saving PRAS system for scenario $(scenario) and iteration year $(iteration_year) to $(temp_dir) for debugging purposes."
-    # PSY.to_json(
-    #     base_pras_system,
-    #     joinpath(
-    #         temp_dir,
-    #         "base_pras_system_scenario_$(scenario)_year_$(iteration_year).json",
-    #     ),
-    # )
-    # PSY.to_json(
-    #     adjusted_base_system,
-    #     joinpath(
-    #         temp_dir,
-    #         "adjusted_base_system_scenario_$(scenario)_year_$(iteration_year).json",
-    #     ),
-    # )
-
     if marginal_cc
         for zone in zones
             for type in new_types
-                @info "$(type)_$(zone)"
+                @info "Adding to capacity market: $(type)_$(zone)"
                 idx = findfirst(
                     x -> (
                         (get_type(get_tech(x)) == type) && (get_zone(get_tech(x)) == zone)
@@ -550,6 +542,7 @@ function calculate_derating_factors(
                         rt_resolution,
                         simulation_years,
                         timeseries_data_dir,
+                        availability_df_rt,
                     )
 
                     # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
@@ -573,10 +566,13 @@ function calculate_derating_factors(
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
     # No deepcopy needed here: SPI.generate_pras_system only reads the PSY system to build a
     # PRAS struct and does not mutate it. The resulting augmented_pras_system is a fresh object.
-    augmented_sys = adjusted_base_system
-    augmented_pras_system = SPI.generate_pras_system(augmented_sys,
+    augmented_pras_system = make_pras_system_spi(
+        adjusted_base_system,
         PSY.Area,
-        false)
+        nothing;
+        copper_plate = false,
+        copy_system = false,
+    )
 
     for zone in zones
         for type in existing_types
@@ -685,6 +681,7 @@ function calculate_derating_factors(
                 rt_resolution,
                 simulation_years,
                 timeseries_data_dir,
+                availability_df_rt,
             )
 
             # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.

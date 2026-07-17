@@ -17,4 +17,11 @@ __pycache__/
 *.ipynb
 
 # Julia package manifest (not committed for packages)
-Manifest*.toml
+
+Manifest.toml
+
+#For debugging
+_*.jl
+TODO_thermalms_ed_dispatch.md
+unused_audit.md
+

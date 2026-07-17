@@ -568,7 +568,7 @@ function save_investor!(g::HDF5.Group, inv::Investor)
 
     proj_g = create_group(g, "projects")
     for proj in inv.projects
-        @info "      Saving project: $(proj.name) ($(typeof(proj)))"
+        # @info "      Saving project: $(proj.name) ($(typeof(proj)))"
         save_project!(create_group(proj_g, proj.name), proj)
     end
 end
