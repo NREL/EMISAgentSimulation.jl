@@ -9,6 +9,10 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
     investors = Vector{Investor}(undef, length(investor_names))
     test_system_dir = get_sys_dir(get_case(simulation_data))
 
+    # Build once and use for all investors
+    system_availability_dict = Dict{String, DataFrames.DataFrame}()
+    system_availability_rt_dict = Dict{String, DataFrames.DataFrame}()
+
     for i in 1:length(investor_names)
         investor_dir = joinpath(dir_name, "$(investor_names[i])")
         @info "Creating investor: $(investor_names[i])"
@@ -21,7 +25,6 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
 
         # Read Investor Characteristics
         characteristics = read_data(joinpath(investor_dir, "characteristics.csv"))
-
         forecast_type = get_forecast_type(get_case(simulation_data))
 
         if forecast_type == "perfect"
@@ -30,7 +33,6 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
             forecast = Perfect(scenario_data)
 
         elseif forecast_type == "imperfect"
-
             # Read belief data file
             if get_info_symmetry(get_case(simulation_data))
                 belief_filename =
@@ -41,9 +43,7 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
             end
 
             @assert isfile(belief_filename)
-
             investor_belief_data = read_data(belief_filename)
-
             param_names = investor_belief_data.parameters
 
             @assert in("initial_estimate", names(investor_belief_data))
@@ -75,9 +75,7 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
             # Populate scenario data
             scenario_data = Scenario[]
             # If user has provided parameter values for each scenario
-
             if get_uncertainty(get_case(simulation_data))
-
                 # Assert that user has provided parameter multiplier values for each scenario
                 ### NY_change
                 if get_info_symmetry(get_case(simulation_data))
@@ -156,14 +154,12 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
         end
 
         scenario_names = get_name.(scenario_data)
-
         #Empty vector of projects.
         projects = Project{<:BuildPhase}[]
 
         ### NY_change
         projectdata_existing = extract_projectdata(investor_dir, "projectexisting.csv")
         projectdata_options = extract_projectdata(investor_dir, "projectoptions.csv")
-
         sys_UC = first(get_system_UCs(simulation_data))
 
         #Append existing and option projects.
@@ -187,6 +183,30 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
         for scenario in scenario_names
             for sim_year in collect(1:horizon)
                 @info "Adding availability data for investor $(investor_names[i]) for scenario $(scenario) and simulation year $(sim_year)"
+                sys_name = "$(sim_year)_$(scenario)"
+                if !haskey(system_availability_dict, sys_name)
+                    system_availability_dict[sys_name] = DataFrames.DataFrame(
+                        CSV.File(
+                            joinpath(
+                                timeseries_data_dir,
+                                scenario,
+                                "sim_year_$(sim_year)",
+                                "Availability",
+                                "DAY_AHEAD_availability.csv",
+                            ),
+                        ))
+                    system_availability_rt_dict[sys_name] = DataFrames.DataFrame(
+                        CSV.File(
+                            joinpath(
+                                timeseries_data_dir,
+                                scenario,
+                                "sim_year_$(sim_year)",
+                                "Availability",
+                                "REAL_TIME_availability.csv",
+                            ),
+                        ))
+                end
+
                 add_investor_project_availability!(
                     test_system_dir,
                     simulation_data_dir,
@@ -195,6 +215,8 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
                     projects,
                     sys_UC,
                     timeseries_data_dir,
+                    system_availability_dict[sys_name],
+                    system_availability_rt_dict[sys_name],
                 )
             end
         end
@@ -229,7 +251,6 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
         #Carbon Tax Data
         simulation_years = get_total_horizon(get_case(simulation_data))
         start_year = get_start_year(get_case(simulation_data))
-
         carbon_tax = zeros(simulation_years)
 
         if in(:CarbonTax, markets)
@@ -245,7 +266,6 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
 
         # Empty market prices struct
         market_prices = MarketPrices()
-
         capital_cost_multiplier = characteristics.capital_cost_multiplier[1]
         max_annual_projects = characteristics.max_annual_projects[1]
 

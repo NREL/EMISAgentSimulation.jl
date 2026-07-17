@@ -16,7 +16,27 @@ function run_agent_simulation(
     results_dir = get_results_dir(simulation)
     timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
     simulation_dir = get_data_dir(get_case(simulation))
+    scenario_names = String.(get_all_scenario_names(get_data_dir(case)))
     total_sim_time = 0.0
+
+    availability_rt_by_scenario = Dict(
+        scenario => get_availability_df(
+            timeseries_data_dir,
+            scenario,
+            simulation_years,
+            "REAL_TIME",
+        )
+        for scenario in scenario_names
+    )
+    availability_by_scenario = Dict(
+        scenario => get_availability_df(
+            timeseries_data_dir,
+            scenario,
+            simulation_years,
+            "DAY_AHEAD",
+        )
+        for scenario in scenario_names
+    )
 
     # Set initial capacity market profits considering forward capacity auctions
     @info "Setting initial capacity market profits for existing projects based on forward capacity auctions"
@@ -64,7 +84,6 @@ function run_agent_simulation(
     carbon_tax = get_carbon_tax(simulation)
 
     # Update operation cost for all projects based on carbon tax in the first year
-
     for iteration_year in current_year:step_size:simulation_years
         t_start = time()
         yearly_horizon = min(total_horizon - iteration_year + 1, rolling_horizon)
@@ -77,9 +96,6 @@ function run_agent_simulation(
             active_projects,
             iteration_year,
             simulation_years)
-
-        scenario_names = String.(get_all_scenario_names(get_data_dir(case)))
-        simulation_dir = get_data_dir(get_case(simulation))
 
         # save existing net load csv file for potential checkpoint re-runs
         for scenario in scenario_names
@@ -238,6 +254,8 @@ function run_agent_simulation(
                 case,
                 scenario_names,
                 timeseries_data_dir,
+                availability_rt_by_scenario,
+                availability_by_scenario,
             )
         end
 
@@ -249,7 +267,7 @@ function run_agent_simulation(
         capacity_market_projects = Project[]
 
         for project in get_activeprojects(simulation)
-            @info "Year $(iteration_year): Updating operation costs for project $(get_name(project))"
+            # @info "Year $(iteration_year): Updating operation costs for project $(get_name(project))"
             end_life_year = get_end_life_year(project)
             construction_year = get_construction_year(project)
             if end_life_year >= capacity_market_year &&
@@ -373,7 +391,7 @@ function run_agent_simulation(
 
         for scenario in keys(sys_PRAS)
             ra_metrics, shortfall = @timeit EMIS_TIMER "ra_metrics" calculate_RA_metrics(
-                deepcopy(sys_PRAS[scenario]),
+                sys_PRAS[scenario],
                 false,
                 results_dir,
                 get_outage_dir(case),
@@ -401,7 +419,7 @@ function run_agent_simulation(
         for investor in get_investors(simulation)
             projects = get_projects(investor)
             for (i, project) in enumerate(projects)
-                @info "$(i): Updating realized profits for $(get_name(project))"
+                # @info "$(i): Updating realized profits for $(get_name(project))"
                 update_realized_profits!(project,
                     realized_market_prices,
                     realized_capacity_factors_md,

@@ -17,7 +17,7 @@ const SERVICES_SLACK_COST = 1e5
 const PENALTY_COST = 5000.0
 
 # PRAS constants
-const PRAS_N_SAMPLES = 100
+const PRAS_N_SAMPLES = 1000
 const PRAS_WORKER = Ref{Union{Nothing, Int}}(nothing)
 const PRAS_MONTE_CARLO_SEED = 42
 
@@ -32,7 +32,7 @@ const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
 # File pointers
 const TIMESERIES_DATA_DIR = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/NTP_TimeSeries_Data"
 const POINTER_FILE = Dict(
-    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"),)
+    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"))
 
 const OBJ_SCALE = 1 # Scale factor to convert objective function values from $ to millions of dollars
 

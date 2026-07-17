@@ -56,18 +56,20 @@ end
 ##############################################
 # Converting FOR and MTTR to λ and μ
 ##############################################
-function outage_to_rate(outage_data::Tuple{Float64, Int64})
-    for_gen = outage_data[1]
-    mttr = outage_data[2]
-    if (mttr != 0)
-        μ = 1 / mttr
-    else
-        μ = 1.0
-    end
-    λ = (μ * for_gen) / (1 - for_gen)
+##TODO: AA: remove duplicate function after validation
+## Duplicate function
+# function outage_to_rate(outage_data::Tuple{Float64, Int64})
+#     for_gen = outage_data[1]
+#     mttr = outage_data[2]
+#     if (mttr != 0)
+#         μ = 1 / mttr
+#     else
+#         μ = 1.0
+#     end
+#     λ = (μ * for_gen) / (1 - for_gen)
 
-    return (λ = λ, μ = μ)
-end
+#     return (λ = λ, μ = μ)
+# end
 
 #######################################################
 # Aux Functions
@@ -141,10 +143,9 @@ function outage_to_rate(outage_data::Tuple{Float64, Int64})
     if (mttr != 0)
         μ = 1 / mttr
     else
-        μ = 0.0
+        μ = 1.0
     end
     λ = (μ * for_gen) / (1 - for_gen)
-    #λ = for_gen
 
     return (λ = λ, μ = μ)
 end
@@ -1062,8 +1063,25 @@ function make_pras_system(sys::PSY.System;
         # Dictionary with topology mapping
         line = if availability_flag
             collect(
-            PSY.get_components(
-                (
+                PSY.get_components(
+                    (
+                        x ->
+                            ~in(
+                                typeof(x),
+                                [
+                                    PSY.TapTransformer,
+                                    PSY.Transformer2W,
+                                    PSY.PhaseShiftingTransformer,
+                                ],
+                            ) && PSY.get_available(x)
+                    ),
+                    PSY.Branch,
+                    sys,
+                ),
+            )
+        else
+            collect(
+                PSY.get_components(
                     x ->
                         ~in(
                             typeof(x),
@@ -1072,28 +1090,11 @@ function make_pras_system(sys::PSY.System;
                                 PSY.Transformer2W,
                                 PSY.PhaseShiftingTransformer,
                             ],
-                        ) && PSY.get_available(x)
+                        ),
+                    PSY.Branch,
+                    sys,
                 ),
-                PSY.Branch,
-                sys,
-            ),
-        )
-        else
-            collect(
-            PSY.get_components(
-                x ->
-                    ~in(
-                        typeof(x),
-                        [
-                            PSY.TapTransformer,
-                            PSY.Transformer2W,
-                            PSY.PhaseShiftingTransformer,
-                        ],
-                    ),
-                PSY.Branch,
-                sys,
-            ),
-        )
+            )
         end;
 
         mapping_dict = PSY.get_aggregation_topology_mapping(aggregation_topology, sys); # Dict with mapping from Areas to Bus_Names

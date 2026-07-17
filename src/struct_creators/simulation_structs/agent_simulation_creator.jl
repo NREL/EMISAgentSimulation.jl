@@ -2,7 +2,7 @@
 This function populates and returns the AgentSimulationData struct.
 """
 ### NY_change
-function gather_data(case::CaseDefinition)
+function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} = nothing)
     reset_timer!(EMIS_TIMER)
     data_dir = get_data_dir(case)
     test_system_dir = get_sys_dir(case)
@@ -14,9 +14,27 @@ function gather_data(case::CaseDefinition)
     simulation_years = get_total_horizon(case)
     rolling_horizon = get_rolling_horizon(case)
     pcm_scenario = get_pcm_scenario(case)
-    results_dir = make_results_dir(case)
-    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
+    results_dir = results_dir === nothing ? make_results_dir(case) : results_dir
+    da_resolution = get_da_resolution(case)
+    rt_resolution = get_rt_resolution(case)
+    md_horizon = get_md_horizon(case)
+    md_interval = get_md_interval(case)
+    uc_horizon = get_uc_horizon(case)
+    uc_interval = get_uc_interval(case)
+    ed_horizon = get_ed_horizon(case)
+    ed_interval = get_ed_interval(case)
+    outage_dir = get_outage_dir(case)
+    reserve_penalty = get_reserve_penalty(case)
+    rps_target = get_rps_target(case)
+    base_dir = get_base_dir(case)
+    siip_market_clearing = get_siip_market_clearing(case)
+    scratch_dir = get_scratch_dir(case)
+    derating_scale = get_derating_scale(case)
+    accreditation_methodology = get_accreditation_methodology(case)
+    accreditation_metric = get_accreditation_metric(case)
+    marginal_cc_switch = get_marginal_cc_switch(case)
 
+    timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
     annual_growth_df = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
     annual_growth_df_simulation = filter(row -> row.year >= start_year, annual_growth_df)
 
@@ -101,7 +119,7 @@ function gather_data(case::CaseDefinition)
             zonal_lines = @timeit EMIS_TIMER "setup/read_test_system" read_test_system(
                 data_dir,
                 test_system_dir,
-                get_base_dir(case),
+                base_dir,
                 scenario,
                 test_system_load_da,
                 test_system_load_rt,
@@ -130,21 +148,19 @@ function gather_data(case::CaseDefinition)
     sys_EDs = nothing
     sys_PRAS = Dict{String, PSY.System}()
 
-    if get_siip_market_clearing(case)
+    if siip_market_clearing
         base_power = BASE_POWER
-        scratch_dir = get_scratch_dir(case)
-
         sys_MDs, sys_UCs, sys_EDs, sys_PRAS,
         MD_horizon, MD_interval, UC_horizon,
         UC_interval, ED_horizon, ED_interval =
             @timeit EMIS_TIMER "setup/create_rts_sys" create_rts_sys(test_system_dir,
                 base_power, data_dir,
                 scratch_dir, ntp_timeseries_data_dir, scenarios,
-                pcm_scenario, simulation_years, get_da_resolution(case),
-                get_rt_resolution(case), get_md_horizon(case),
-                get_md_interval(case), get_uc_horizon(case),
-                get_uc_interval(case), get_ed_horizon(case),
-                get_ed_interval(case), get_outage_dir(case),
+                pcm_scenario, simulation_years, da_resolution,
+                rt_resolution, md_horizon,
+                md_interval, uc_horizon,
+                uc_interval, ed_horizon,
+                ed_interval, outage_dir,
             )
     end
 
@@ -163,7 +179,7 @@ function gather_data(case::CaseDefinition)
     initial_rec_requirement = 0.0
     if markets_dict[:REC]
         rec_data = read_data(
-            joinpath(data_dir, "markets_data", "REC_$(get_rps_target(case))_RPS.csv"),
+            joinpath(data_dir, "markets_data", "REC_$(rps_target)_RPS.csv"),
         )
         initial_rec_requirement = rec_data.rec_req[1]
         rec_increment = rec_data.annual_increment[1]
@@ -266,9 +282,6 @@ function gather_data(case::CaseDefinition)
             timeseries_data_dir_list,
         ),
     )
-    # for sim_year in collect(iteration_year:min(iteration_year + rolling_horizon - 1, simulation_years))
-    #     construct_ordc(deepcopy(sys_UCs[1]), data_dir, scenarios[1], sim_year, investors, 0, representative_periods[scenarios[1]][sim_year], rep_period_interval, get_ordc_curved(case), get_ordc_unavailability_method(case), get_reserve_penalty(case))
-    # end
 
     @timeit EMIS_TIMER "setup/transform_timeseries" for y in 1:simulation_years
         # convert_thermal_clean_energy!(sys_MDs[y])
@@ -286,9 +299,9 @@ function gather_data(case::CaseDefinition)
             "MD",
             pcm_scenario,
             1,
-            get_da_resolution(case),
-            get_rt_resolution(case),
-            get_reserve_penalty(case),
+            da_resolution,
+            rt_resolution,
+            reserve_penalty,
             timeseries_data_dir,
         )
         add_psy_ordc!(
@@ -298,9 +311,9 @@ function gather_data(case::CaseDefinition)
             "UC",
             pcm_scenario,
             1,
-            get_da_resolution(case),
-            get_rt_resolution(case),
-            get_reserve_penalty(case),
+            da_resolution,
+            rt_resolution,
+            reserve_penalty,
             timeseries_data_dir,
         )
         add_psy_ordc!(
@@ -310,9 +323,9 @@ function gather_data(case::CaseDefinition)
             "ED",
             pcm_scenario,
             1,
-            get_da_resolution(case),
-            get_rt_resolution(case),
-            get_reserve_penalty(case),
+            da_resolution,
+            rt_resolution,
+            reserve_penalty,
             timeseries_data_dir,
         )
 
@@ -321,21 +334,21 @@ function gather_data(case::CaseDefinition)
                 data_dir,
                 sys_MDs[y],
                 "MD",
-                get_reserve_penalty(case),
+                reserve_penalty,
                 system_peak_load,
             )
             add_psy_inertia!(
                 data_dir,
                 sys_UCs[y],
                 "UC",
-                get_reserve_penalty(case),
+                reserve_penalty,
                 system_peak_load,
             )
             add_psy_inertia!(
                 data_dir,
                 sys_EDs[y],
                 "ED",
-                get_reserve_penalty(case),
+                reserve_penalty,
                 system_peak_load,
             )
         end
@@ -348,8 +361,8 @@ function gather_data(case::CaseDefinition)
             sys_MDs[y],
             sys_UCs[y],
             sys_EDs[y],
-            get_da_resolution(case),
-            get_rt_resolution(case),
+            da_resolution,
+            rt_resolution,
             MD_horizon,
             UC_horizon,
             ED_horizon,
@@ -363,22 +376,22 @@ function gather_data(case::CaseDefinition)
         #convert_thermal_clean_energy!(sys_PRAS[scenario])
         PSY.transform_single_time_series!(
             sys_PRAS[scenario],
-            Dates.Hour(Int(ED_horizon * 60 / get_rt_resolution(case))),
+            Dates.Hour(Int(ED_horizon * 60 / rt_resolution)),
             Dates.Hour(ED_interval),
         )
 
         convert_thermal_fast_start!(sys_PRAS[scenario])
 
         add_psy_ordc!(data_dir, markets_dict, sys_PRAS[scenario],
-            "PRAS", scenario, 1, get_da_resolution(case),
-            get_rt_resolution(case), get_reserve_penalty(case), timeseries_data_dir)
+            "PRAS", scenario, 1, da_resolution,
+            rt_resolution, reserve_penalty, timeseries_data_dir)
 
         if markets_dict[:Inertia]
             add_psy_inertia!(
                 data_dir,
                 sys_PRAS[scenario],
                 "PRAS",
-                get_reserve_penalty(case),
+                reserve_penalty,
                 system_peak_load,
             )
         end
@@ -437,10 +450,10 @@ function gather_data(case::CaseDefinition)
         num_scenarios,
         simulation_data,
         iteration_year,
-        get_derating_scale(case),
-        get_accreditation_methodology(case),
-        get_accreditation_metric(case),
-        get_marginal_cc_switch(case),
+        derating_scale,
+        accreditation_methodology,
+        accreditation_metric,
+        marginal_cc_switch,
     )
 
     @timeit EMIS_TIMER "setup/update_derating" Distributed.pmap(
@@ -475,8 +488,8 @@ function gather_data(case::CaseDefinition)
                 project,
                 data_dir,
                 scenario,
-                get_derating_scale(case),
-                get_marginal_cc_switch(case),
+                derating_scale,
+                marginal_cc_switch,
             )
         end
     end
@@ -513,8 +526,11 @@ end
 """
 This function returns the AgentSimulation struct which contains all the required data for running the simulation.
 """
-function create_agent_simulation(case::CaseDefinition)
-    simulation_data = gather_data(case)
+function create_agent_simulation(
+    case::CaseDefinition;
+    results_dir::Union{String, Nothing} = nothing,
+)
+    simulation_data = gather_data(case; results_dir = results_dir)
     simulation = AgentSimulation(case,
         get_results_dir(simulation_data),
         1,
