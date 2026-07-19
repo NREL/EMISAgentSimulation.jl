@@ -29,7 +29,6 @@ function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} =
     base_dir = get_base_dir(case)
     siip_market_clearing = get_siip_market_clearing(case)
     scratch_dir = get_scratch_dir(case)
-    derating_scale = get_derating_scale(case)
     accreditation_methodology = get_accreditation_methodology(case)
     accreditation_metric = get_accreditation_metric(case)
     marginal_cc_switch = get_marginal_cc_switch(case)
@@ -449,7 +448,6 @@ function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} =
         num_scenarios,
         simulation_data,
         iteration_year,
-        derating_scale,
         accreditation_methodology,
         accreditation_metric,
         marginal_cc_switch,
@@ -472,7 +470,6 @@ function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} =
     #     simulation_data,
     #     scenarios[1],
     #     iteration_year,
-    #     get_derating_scale(case),
     #     methodology = get_accreditation_methodology(case),
     #     ra_metric = get_accreditation_metric(case),
     #     marginal_cc = get_marginal_cc_switch(case)
@@ -486,7 +483,6 @@ function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} =
                 project,
                 data_dir,
                 scenario,
-                derating_scale,
                 marginal_cc_switch,
             )
         end
