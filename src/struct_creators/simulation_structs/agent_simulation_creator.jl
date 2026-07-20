@@ -440,40 +440,47 @@ function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} =
         end
     end
 
-    simulations,
-    iteration_years,
-    methodologies,
-    ra_metric_list,
-    marginal_cc_switches = repeat_arguments(
-        num_scenarios,
-        simulation_data,
-        iteration_year,
-        accreditation_methodology,
-        accreditation_metric,
-        marginal_cc_switch,
-    )
-
-    @timeit EMIS_TIMER "setup/update_derating" Distributed.pmap(
-        parallelize_update_derating_data,
-        zip(
-            scenarios,
-            simulations,
-            iteration_years,
-            methodologies,
-            ra_metric_list,
-            marginal_cc_switches,
-            timeseries_data_dir_list,
-        ),
-    )
-
-    # update_simulation_derating_data!(
+    # Parallelize the processing of scenarios using Distributed.pmap
+    # NOTE: pmap can crash here because each worker receives serialized PSY.System
+    # objects with process-local SQLite handles inside sys_PRAS.
+    # simulations,
+    # iteration_years,
+    # methodologies,
+    # ra_metric_list,
+    # marginal_cc_switches = repeat_arguments(
+    #     num_scenarios,
     #     simulation_data,
-    #     scenarios[1],
     #     iteration_year,
-    #     methodology = get_accreditation_methodology(case),
-    #     ra_metric = get_accreditation_metric(case),
-    #     marginal_cc = get_marginal_cc_switch(case)
+    #     accreditation_methodology,
+    #     accreditation_metric,
+    #     marginal_cc_switch,
     # )
+    # @timeit EMIS_TIMER "setup/update_derating" Distributed.pmap(
+    #     parallelize_update_derating_data,
+    #     zip(
+    #         scenarios,
+    #         simulations,
+    #         iteration_years,
+    #         methodologies,
+    #         ra_metric_list,
+    #         marginal_cc_switches,
+    #         timeseries_data_dir_list,
+    #     ),
+    # )
+
+    # Run sequentially to avoid Distributed serialization of PSY.System
+    # objects that contain process-local SQLite handles.
+    @timeit EMIS_TIMER "setup/update_derating" for scenario in scenarios
+        update_simulation_derating_data!(
+            simulation_data,
+            scenario,
+            iteration_year,
+            timeseries_data_dir;
+            methodology = accreditation_methodology,
+            ra_metric = accreditation_metric,
+            marginal_cc = marginal_cc_switch,
+        )
+    end
 
     active_projects = get_activeprojects(simulation_data)
 
