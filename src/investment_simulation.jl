@@ -165,19 +165,19 @@ function run_agent_simulation(
             end
         end
 
-        num_scenarios = length(scenario_names)
-        sys_PRAS_list, active_projects_list, capacity_forward_years_list,
-        resource_adequacies, peak_loads, static_capacity_bools,
-        iteration_years, simulation_years_list, data_dirs,
-        rt_resolutions, results_dirs,
-        outage_dirs = repeat_arguments(num_scenarios, sys_PRAS, active_projects,
-            capacity_forward_years, get_resource_adequacy(simulation),
-            get_peak_load(simulation), get_static_capacity_market(case),
-            iteration_year, simulation_years, get_data_dir(case),
-            get_rt_resolution(case),
-            get_results_dir(simulation), get_outage_dir(case))
-
-        @info "Resource adequacies: $(resource_adequacies)"
+        # Kept for traceability with pg/grid-solutions (commented to avoid stale runtime setup).
+        # num_scenarios = length(scenario_names)
+        # sys_PRAS_list, active_projects_list, capacity_forward_years_list,
+        # resource_adequacies, peak_loads, static_capacity_bools,
+        # iteration_years, simulation_years_list, data_dirs,
+        # rt_resolutions, results_dirs,
+        # outage_dirs = repeat_arguments(num_scenarios, sys_PRAS, active_projects,
+        #     capacity_forward_years, get_resource_adequacy(simulation),
+        #     get_peak_load(simulation), get_static_capacity_market(case),
+        #     iteration_year, simulation_years, get_data_dir(case),
+        #     get_rt_resolution(case),
+        #     get_results_dir(simulation), get_outage_dir(case))
+        # @info "Resource adequacies: $(resource_adequacies)"
 
         # Parallelize the processing of scenarios using Distributed.pmap
         # NOTE: pmap risks OOM because each worker receives a full sys_PRAS dict copy
@@ -541,11 +541,6 @@ function run_agent_simulation(
 
             save_simulation(simulation, results_dir, iteration_year)
         end
-
-        save_shortfall_data(
-            joinpath(results_dir, "shortfall_data_year$(iteration_year).h5"),
-            shortfall,
-        )
         t_end = time()
         iteration_time_hours = round((t_end - t_start) / 3600; digits = 2)
         total_sim_time += iteration_time_hours
