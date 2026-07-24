@@ -305,6 +305,39 @@ function month_lookup(str::Union{String, SubString{String}})
     return  Int(month)
 end
 
+"""
+This function reads the canonical season definition file (`capacity_seasons.csv`,
+columns `name` and `months`, e.g. "summer","May-Sep") and returns a
+Dict{String, Vector{Int64}} mapping each season name to its constituent calendar
+months. Wrap-around ranges (e.g. "Oct-Apr") are supported using the same
+start-month/end-month logic as the ORDC season parsing in ordc_construction.jl.
+Returns Dict("annual" => collect(1:12)) when the file is absent, so cases that
+don't define seasons fall back to a single annual capacity market.
+"""
+function load_season_months(seasons_file::String)
+    if !isfile(seasons_file)
+        return Dict{String, Vector{Int64}}("annual" => collect(1:12))
+    end
+
+    seasons_data = read_data(seasons_file)
+
+    season_months = Dict{String, Vector{Int64}}()
+    for row in DataFrames.eachrow(seasons_data)
+        months = split(row["months"], "-")
+        start_month = month_lookup(strip(months[1]))
+        end_month = month_lookup(strip(months[2]))
+
+        if start_month <= end_month
+            season_months[row["name"]] = collect(start_month:end_month)
+        else
+            season_months[row["name"]] = collect(1:end_month)
+            append!(season_months[row["name"]], collect(start_month:12))
+        end
+    end
+
+    return season_months
+end
+
 function find_rt_periods(hours::Vector{Int64}, num_rt_intervals::Int64)
     rt_periods = [];
     for hour in hours
