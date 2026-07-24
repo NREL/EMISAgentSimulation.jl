@@ -323,15 +323,16 @@ function load_season_months(seasons_file::String)
 
     season_months = Dict{String, Vector{Int64}}()
     for row in DataFrames.eachrow(seasons_data)
-        months = split(row["months"], "-")
-        start_month = month_lookup(strip(months[1]))
-        end_month = month_lookup(strip(months[2]))
+        months = split(String(row["months"]), "-")
+        start_month = month_lookup(String(strip(months[1])))
+        end_month = month_lookup(String(strip(months[2])))
+        season_name = String(row["name"])
 
         if start_month <= end_month
-            season_months[row["name"]] = collect(start_month:end_month)
+            season_months[season_name] = collect(start_month:end_month)
         else
-            season_months[row["name"]] = collect(1:end_month)
-            append!(season_months[row["name"]], collect(start_month:12))
+            season_months[season_name] = collect(1:end_month)
+            append!(season_months[season_name], collect(start_month:12))
         end
     end
 
