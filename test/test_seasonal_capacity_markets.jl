@@ -157,12 +157,12 @@ end
 @testset "Phase 1a — CaseDefinition.seasonal_capacity_market" begin
     @testset "field defaults to false and is readable via getter" begin
         case = make_case()
-        @test get_seasonal_capacity_market(case) == false
+        @test EMISAgentSimulation.get_seasonal_capacity_market(case) == false
     end
 
     @testset "toggling true is respected" begin
         case = make_case(; seasonal_capacity_market = true)
-        @test get_seasonal_capacity_market(case) == true
+        @test EMISAgentSimulation.get_seasonal_capacity_market(case) == true
     end
 
     @testset "HDF5 round-trip preserves the field (both values)" begin
@@ -176,7 +176,7 @@ end
                 loaded = h5open(tmpfile, "r") do f
                     EMISAgentSimulation.load_case_definition(f["case"])
                 end
-                @test get_seasonal_capacity_market(loaded) == flag
+                @test EMISAgentSimulation.get_seasonal_capacity_market(loaded) == flag
             finally
                 isfile(tmpfile) && rm(tmpfile)
             end
