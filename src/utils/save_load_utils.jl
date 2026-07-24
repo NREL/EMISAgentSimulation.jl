@@ -83,6 +83,7 @@ function save_case_definition!(g::HDF5.Group, c::CaseDefinition)
     write(g, "ordc_unavailability_method", get_ordc_unavailability_method(c))
     write(g, "reserve_penalty", get_reserve_penalty(c))
     write(g, "static_capacity_market", get_static_capacity_market(c))
+    write(g, "seasonal_capacity_market", get_seasonal_capacity_market(c))
     write(g, "irm_scalar", get_irm_scalar(c))
     write(g, "accreditation_methodology", get_accreditation_methodology(c))
     write(g, "accreditation_metric", get_accreditation_metric(c))
@@ -139,6 +140,7 @@ function load_case_definition(g::HDF5.Group)
         read(g, "ordc_unavailability_method"),
         read(g, "reserve_penalty"),
         read(g, "static_capacity_market"),
+        read(g, "seasonal_capacity_market"),
         read(g, "irm_scalar"),
         read(g, "accreditation_methodology"),
         read(g, "accreditation_metric"),
