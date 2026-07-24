@@ -25,7 +25,7 @@ mutable struct MarketProject
     max_storage::Float64                  # maximum storage capacity
     init_storage::Float64                 # initial storage
     availability::Array{Float64, 2}      # Hourly availability factor
-    derating_factor::Float64              # Derating factor
+    derating_factor::Dict{String, Float64} # Derating factor, keyed by season ("annual" in non-seasonal mode)
     ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}}    # MW/unit/hour
     max_reserve_limits::Dict{String, Float64}
     existing_units::Float64               # existing units
@@ -66,7 +66,7 @@ mutable struct MarketProject
         max_storage::Number,
         init_storage::Number,
         availability::Array{<: Number, 2},
-        derating_factor::Number,
+        derating_factor::AbstractDict{String, <: Number},
         ramp_limits::Union{Nothing, NamedTuple{(:up, :down), Tuple{Float64, Float64}}},
         max_reserve_limits::Dict{String, Float64},
         existing_units::Number,
@@ -104,7 +104,7 @@ mutable struct MarketProject
         @assert max_storage >= 0
         @assert init_storage >= 0
         @assert all(availability .>= 0)
-        @assert derating_factor >= 0
+        @assert all(values(derating_factor) .>= 0)
         @assert existing_units >= 0
         @assert all(units_in_queue .>= 0)
         @assert build_lead_time >= 0
