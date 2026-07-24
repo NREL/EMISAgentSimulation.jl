@@ -61,7 +61,7 @@ function set_reserve_price!(prices::MarketPrices, scenario_name::String, reserve
     return
 end
 
-function set_capacity_price!(prices::MarketPrices, scenario_name::String, capacity_price::Dict{String, AxisArrays.AxisArray{Float64, 1}})
+function set_capacity_price!(prices::MarketPrices, scenario_name::String, capacity_price::Dict{String, <:AxisArrays.AxisArray{Float64, 1}})
     if !isnothing(prices.capacity_price)
         prices.capacity_price[scenario_name] = capacity_price
     else
