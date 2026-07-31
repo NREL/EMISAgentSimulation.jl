@@ -2,8 +2,7 @@
 This function populates and returns the AgentSimulationData struct.
 """
 ### NY_change
-function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=nothing)
-    
+function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} = nothing)
     reset_timer!(EMIS_TIMER)
     data_dir = get_data_dir(case)
     test_system_dir = get_sys_dir(case)
@@ -33,7 +32,7 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
     derating_scale = get_derating_scale(case)
     accreditation_methodology = get_accreditation_methodology(case)
     accreditation_metric = get_accreditation_metric(case)
-    marginal_cc_switch = get_marginal_cc_switch(case)    
+    marginal_cc_switch = get_marginal_cc_switch(case)
 
     timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
     annual_growth_df = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
@@ -154,7 +153,8 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
         sys_MDs, sys_UCs, sys_EDs, sys_PRAS,
         MD_horizon, MD_interval, UC_horizon,
         UC_interval, ED_horizon, ED_interval =
-            @timeit EMIS_TIMER "setup/create_rts_sys" create_rts_sys(test_system_dir, base_power, data_dir,
+            @timeit EMIS_TIMER "setup/create_rts_sys" create_rts_sys(test_system_dir,
+                base_power, data_dir,
                 scratch_dir, ntp_timeseries_data_dir, scenarios,
                 pcm_scenario, simulation_years, da_resolution,
                 rt_resolution, md_horizon,
@@ -211,7 +211,7 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
             [ra_metrics for i in 1:simulation_years],
         ) for s in scenarios
     )
-    
+
     simulation_data = AgentSimulationData(case,
         results_dir,
         sys_MDs,
@@ -233,7 +233,10 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
         deratingdata,
         resource_adequacy)
 
-    investors = @timeit EMIS_TIMER "setup/create_investors" create_investors(simulation_data, timeseries_data_dir)
+    investors = @timeit EMIS_TIMER "setup/create_investors" create_investors(
+        simulation_data,
+        timeseries_data_dir,
+    )
     set_investors!(simulation_data, investors)
 
     iteration_year = 1
@@ -523,7 +526,10 @@ end
 """
 This function returns the AgentSimulation struct which contains all the required data for running the simulation.
 """
-function create_agent_simulation(case::CaseDefinition; results_dir::Union{String,Nothing}=nothing)
+function create_agent_simulation(
+    case::CaseDefinition;
+    results_dir::Union{String, Nothing} = nothing,
+)
     simulation_data = gather_data(case; results_dir = results_dir)
     simulation = AgentSimulation(case,
         get_results_dir(simulation_data),

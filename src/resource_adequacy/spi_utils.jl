@@ -4,7 +4,60 @@ using Dates
 using TimeSeries
 
 """
-    attach_outage_data_from_csv!(sys, outage_csv_file; mttr_hours=24)
+    get_regional_load_shares(system::PRAS.SystemModel) -> Dict{String, Float64}
+
+Returns a dictionary mapping each region name to its share of total system load,
+computed as each region's cumulative load across all timestamps divided by the
+grand total (i.e., the time-averaged load proportion).
+"""
+function get_regional_load_shares(system::PRAS.SystemModel)
+    region_names = system.regions.names
+    regional_load = system.regions.load  # (num_regions, num_timestamps)
+    regional_load_totals = sum(regional_load; dims = 2)[:, 1]
+    total_load = sum(regional_load_totals)
+    return Dict(
+        region_names[i] => regional_load_totals[i] / total_load for
+        i in 1:length(region_names)
+    )
+end
+
+"""
+    attach_outage_data_from_csv!(sys, nothing; mttr_hours=24, timestamps=nothing)
+
+No-op overload for callers that do not provide an outage CSV. Returns `sys`
+unchanged so any existing outage supplemental attributes remain in place.
+"""
+attach_outage_data_from_csv!(
+    sys::PSY.System,
+    ::Nothing;
+    mttr_hours::Real = 24,
+    timestamps = nothing,
+) = sys
+
+"""
+    resolve_outage_timestamps(sys, timestamps, n_rows)
+
+Resolve the timestamp vector used for outage time series attachment.
+
+- If `timestamps === nothing`, infer the start timestamp and resolution from the
+  existing system time series and return `n_rows` timestamps.
+- Otherwise, return the provided timestamp collection as a concrete vector.
+"""
+function resolve_outage_timestamps(sys::PSY.System, ::Nothing, n_rows::Int)
+    all_ts = PSY.get_time_series_multiple(sys)
+    isempty(all_ts) &&
+        error(
+            "Cannot attach outage time series: system has no existing time series to infer a start time and resolution from.",
+        )
+    start_datetime = PSY.IS.get_initial_timestamp(first(all_ts))
+    resolution = PSY.get_time_series_resolutions(sys)[1]
+    return collect(range(start_datetime; step = resolution, length = n_rows))
+end
+
+resolve_outage_timestamps(::PSY.System, timestamps, ::Int) = collect(timestamps)
+
+"""
+    attach_outage_data_from_csv!(sys, outage_csv_file; mttr_hours=24, timestamps=nothing)
 
 Read a forced-outage-rate (FOR) CSV with one column per generator name and one row per
 timestep - the same format consumed by `PSY2PRAS.make_pras_system`'s
@@ -22,40 +75,46 @@ If `outage_csv_file === nothing`, this is a no-op: `sys` is returned unchanged, 
 `SiennaPRASInterface.generate_pras_system` falls back to its own nominal outage data for
 any generator that still has none.
 
+If `timestamps` is provided, outage columns are expanded or truncated to exactly match
+that timestamp vector. When the CSV has fewer rows than `timestamps`, values are wrapped
+cyclically; when it has more rows, the excess rows are ignored.
+
 Any pre-existing `GeometricDistributionForcedOutage` attribute on a matched generator is
 removed before the new one is attached, so this function can be called more than once on
 the same system without duplicating attributes.
 """
 function attach_outage_data_from_csv!(
     sys::PSY.System,
-    outage_csv_file::Union{Nothing, String};
+    outage_csv_file::String;
     mttr_hours::Real = 24,
+    timestamps = nothing,
 )
-    if outage_csv_file === nothing
-        return sys
-    end
-
     outage_df = read_data(outage_csv_file)
     gen_names = DataFrames.names(outage_df)
     n_rows = DataFrames.nrow(outage_df)
 
-    all_ts = PSY.get_time_series_multiple(sys)
-    isempty(all_ts) &&
-        error("Cannot attach outage time series: system has no existing time series to infer a start time and resolution from.")
-    start_datetime = PSY.IS.get_initial_timestamp(first(all_ts))
-    resolution = PSY.get_time_series_resolutions(sys)[1]
-    timestamps = range(start_datetime; step = resolution, length = n_rows)
+    timestamps = resolve_outage_timestamps(sys, timestamps, n_rows)
+
+    n_timestamps = length(timestamps)
+    if n_rows < n_timestamps
+        @warn "Outage CSV has $(n_rows) rows but system requires $(n_timestamps) timesteps. Wrapping CSV data cyclically for the additional timesteps."
+    end
 
     for gen in PSY.get_components(PSY.Generator, sys)
         gname = PSY.get_name(gen)
         gname in gen_names || continue
 
-        for_values = Float64.(outage_df[1:n_rows, gname])
+        for_values = Float64.(outage_df[!, gname])
+        if n_rows != n_timestamps
+            n_repeats, remainder = divrem(n_timestamps, n_rows)
+            for_values = vcat(repeat(for_values, n_repeats), for_values[1:remainder])
+        end
         rates = SPI.rate_to_probability.(for_values, Int(mttr_hours))
         λ_values = getfield.(rates, :λ)
         μ_values = getfield.(rates, :μ)
 
-        for existing_attr in PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, gen)
+        for existing_attr in
+            PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, gen)
             PSY.remove_supplemental_attribute!(sys, gen, existing_attr)
         end
 
@@ -65,8 +124,14 @@ function attach_outage_data_from_csv!(
         )
         PSY.add_supplemental_attribute!(sys, gen, transition_data)
 
-        outage_ts = PSY.SingleTimeSeries(; name = "outage_probability", data = TimeArray(timestamps, λ_values))
-        recovery_ts = PSY.SingleTimeSeries(; name = "recovery_probability", data = TimeArray(timestamps, μ_values))
+        outage_ts = PSY.SingleTimeSeries(;
+            name = "outage_probability",
+            data = TimeArray(timestamps, λ_values),
+        )
+        recovery_ts = PSY.SingleTimeSeries(;
+            name = "recovery_probability",
+            data = TimeArray(timestamps, μ_values),
+        )
         PSY.add_time_series!(sys, transition_data, outage_ts)
         PSY.add_time_series!(sys, transition_data, recovery_ts)
     end
@@ -87,15 +152,20 @@ Components without both ext keys are left untouched (no attribute attached), so
 `SiennaPRASInterface`'s own nominal/default outage data applies to them instead.
 """
 function attach_outage_data_from_ext!(sys::PSY.System)
-    for comp in Iterators.flatten((PSY.get_components(PSY.Generator, sys), PSY.get_components(PSY.Storage, sys)))
+    for comp in Iterators.flatten((
+        PSY.get_components(PSY.Generator, sys),
+        PSY.get_components(PSY.Storage, sys),
+    ))
         ext = PSY.get_ext(comp)
-        (haskey(ext, "outage_probability") && haskey(ext, "recovery_probability")) || continue
+        (haskey(ext, "outage_probability") && haskey(ext, "recovery_probability")) ||
+            continue
 
         λ = ext["outage_probability"]
         μ = ext["recovery_probability"]
         mttr_hours = iszero(μ) ? 0.0 : 1 / μ
 
-        for existing_attr in PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, comp)
+        for existing_attr in
+            PSY.get_supplemental_attributes(PSY.GeometricDistributionForcedOutage, comp)
             PSY.remove_supplemental_attribute!(sys, comp, existing_attr)
         end
 
@@ -119,11 +189,23 @@ to `copper_plate_capacity_mw` so transmission never binds in `SiennaPRASInterfac
 behavior while still going through SPI's normal zonal/regions+lines path. If `false`,
 each line is (re-)assigned its own current rating, i.e. real transmission limits are used.
 """
-function set_line_capacities!(sys::PSY.System, copper_plate::Bool; copper_plate_capacity_mw::Real = 99999.0)
+function set_line_capacities!(
+    sys::PSY.System,
+    copper_plate::Bool;
+    copper_plate_capacity_mw::Real = 99999.0,
+)
     for line in PSY.get_components(PSY.Branch, sys)
         if line isa PSY.TwoTerminalGenericHVDCLine
-            cap_from = copper_plate ? copper_plate_capacity_mw : PSY.get_active_power_limits_from(line).max
-            cap_to = copper_plate ? copper_plate_capacity_mw : PSY.get_active_power_limits_to(line).max
+            cap_from = if copper_plate
+                copper_plate_capacity_mw
+            else
+                PSY.get_active_power_limits_from(line).max
+            end
+            cap_to = if copper_plate
+                copper_plate_capacity_mw
+            else
+                PSY.get_active_power_limits_to(line).max
+            end
             PSY.set_active_power_limits_from!(line, (min = -cap_from, max = cap_from))
             PSY.set_active_power_limits_to!(line, (min = -cap_to, max = cap_to))
         elseif line isa Union{PSY.Line, PSY.MonitoredLine}
@@ -135,14 +217,38 @@ function set_line_capacities!(sys::PSY.System, copper_plate::Bool; copper_plate_
     return sys
 end
 
+function _make_pras_system_spi(
+    sys::PSY.System,
+    aggregation::Type{<:PSY.AggregationTopology};
+    copper_plate::Bool = true,
+    copper_plate_capacity_mw::Real = 99999.0,
+    lump_region_renewable_gens::Bool = false,
+    export_location::Union{Nothing, String} = nothing,
+)
+    set_line_capacities!(
+        sys,
+        copper_plate;
+        copper_plate_capacity_mw = copper_plate_capacity_mw,
+    )
+
+    return SPI.generate_pras_system(
+        sys,
+        aggregation,
+        lump_region_renewable_gens,
+        export_location,
+    )
+end
+
 """
     make_pras_system_spi(sys, aggregation=PSY.Area; outage_csv_file=nothing, mttr_hours=24,
-                          copper_plate=true, copper_plate_capacity_mw=99999.0,
-                          lump_region_renewable_gens=false, export_location=nothing)
+                         copper_plate=true, copper_plate_capacity_mw=99999.0,
+                         lump_region_renewable_gens=false, export_location=nothing,
+                         copy_system=true)
 
 `SiennaPRASInterface`-based equivalent of `PSY2PRAS.make_pras_system`, for testing SPI as
 a drop-in replacement before rewiring the live call sites in `derating_factor_calculator.jl`.
-Operates on a deep copy of `sys`, so the caller's system is left untouched.
+By default it deepcopies `sys`, but callers that already have a fresh local system can pass
+`copy_system = false` to avoid the extra copy.
 
 - `outage_csv_file`: forwarded to `attach_outage_data_from_csv!`, run after
   `attach_outage_data_from_ext!` populates static outage data from each component's
@@ -162,11 +268,50 @@ function make_pras_system_spi(
     copper_plate_capacity_mw::Real = 99999.0,
     lump_region_renewable_gens::Bool = false,
     export_location::Union{Nothing, String} = nothing,
+    copy_system::Bool = true,
 )
-    sys = deepcopy(sys)
+    sys = copy_system ? deepcopy(sys) : sys
     attach_outage_data_from_ext!(sys)
     attach_outage_data_from_csv!(sys, outage_csv_file; mttr_hours = mttr_hours)
-    set_line_capacities!(sys, copper_plate; copper_plate_capacity_mw = copper_plate_capacity_mw)
 
-    return SPI.generate_pras_system(sys, aggregation, lump_region_renewable_gens, export_location)
+    return _make_pras_system_spi(
+        sys,
+        aggregation;
+        copper_plate = copper_plate,
+        copper_plate_capacity_mw = copper_plate_capacity_mw,
+        lump_region_renewable_gens = lump_region_renewable_gens,
+        export_location = export_location,
+    )
+end
+
+"""
+    make_pras_system_spi(sys, aggregation, nothing; copper_plate=true,
+                         copper_plate_capacity_mw=99999.0,
+                         lump_region_renewable_gens=false, export_location=nothing,
+                         copy_system=true)
+
+`SiennaPRASInterface`-based PRAS conversion helper for systems that already carry the
+desired outage supplemental attributes. This overload skips both ext-based and CSV-based
+outage attachment and only performs the shared SPI conversion steps.
+"""
+function make_pras_system_spi(
+    sys::PSY.System,
+    aggregation::Type{<:PSY.AggregationTopology},
+    ::Nothing;
+    copper_plate::Bool = true,
+    copper_plate_capacity_mw::Real = 99999.0,
+    lump_region_renewable_gens::Bool = false,
+    export_location::Union{Nothing, String} = nothing,
+    copy_system::Bool = true,
+)
+    sys = copy_system ? deepcopy(sys) : sys
+
+    return _make_pras_system_spi(
+        sys,
+        aggregation;
+        copper_plate = copper_plate,
+        copper_plate_capacity_mw = copper_plate_capacity_mw,
+        lump_region_renewable_gens = lump_region_renewable_gens,
+        export_location = export_location,
+    )
 end

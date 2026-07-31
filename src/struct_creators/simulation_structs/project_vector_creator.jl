@@ -3,12 +3,12 @@ This function returns an empty vector of existing projects,
 if data for exsting projects does not exist.
 """
 function create_project_existing(projectdata::Nothing,
-                                simulation_data::AgentSimulationData,
-                                sys_UC::Union{Nothing, PSY.System},
-                                investor_name::String,
-                                investor_dir::String,
-                                scenario_names::Vector{String})
-        @info "No data for existing projects for $(investor_name). Returning empty vector."
+    simulation_data::AgentSimulationData,
+    sys_UC::Union{Nothing, PSY.System},
+    investor_name::String,
+    investor_dir::String,
+    scenario_names::Vector{String})
+    @info "No data for existing projects for $(investor_name). Returning empty vector."
     return Project{Existing}[]
 end
 
@@ -16,21 +16,20 @@ end
 This function returns a vector of existing projects for the investor.
 """
 function create_project_existing(projectdata::DataFrames.DataFrame,
-                                simulation_data::AgentSimulationData,
-                                sys_UC::Nothing,
-                                investor_name::String,
-                                investor_dir::String,
-                                scenario_names::Vector{String})
+    simulation_data::AgentSimulationData,
+    sys_UC::Nothing,
+    investor_name::String,
+    investor_dir::String,
+    scenario_names::Vector{String})
+    project_existing = Vector{Project{Existing}}(undef, size(projectdata, 1))
 
-    project_existing = Vector{Project{Existing}}(undef, size(projectdata,1))
-
-    for i in 1:size(projectdata,1)
-        project_existing[i] = create_project(projectdata[i,:],
-                                           simulation_data,
-                                           investor_name,
-                                           investor_dir,
-                                           scenario_names,
-                                           false)
+    for i in 1:size(projectdata, 1)
+        project_existing[i] = create_project(projectdata[i, :],
+            simulation_data,
+            investor_name,
+            investor_dir,
+            scenario_names,
+            false)
         println("Created project $(get_name(project_existing[i])) for $(investor_name)")
     end
 
@@ -41,12 +40,11 @@ end
 This function returns a vector of existing projects for the investor if PSY data exists.
 """
 function create_project_existing(projectdata::DataFrames.DataFrame,
-                                simulation_data::AgentSimulationData,
-                                sys_UC::PSY.System,
-                                investor_name::String,
-                                investor_dir::String,
-                                scenario_names::Vector{String})
-
+    simulation_data::AgentSimulationData,
+    sys_UC::PSY.System,
+    investor_name::String,
+    investor_dir::String,
+    scenario_names::Vector{String})
     existing_gens = PSY.get_components(PSY.Generator, sys_UC)
     existing_storage = PSY.get_components(PSY.Storage, sys_UC)
 
@@ -55,15 +53,14 @@ function create_project_existing(projectdata::DataFrames.DataFrame,
     project_existing = Vector{Project{Existing}}(undef, DataFrames.nrow(projectdata))
 
     for i in 1:DataFrames.nrow(projectdata)
-
         device = PSY.get_components_by_name(PSY.Device, sys_UC, projectdata[i, "GEN_UID"])
         project_existing[i] = create_project(projectdata[i, :],
-                                           device[1],
-                                           simulation_data,
-                                           investor_name,
-                                           investor_dir,
-                                           scenario_names,
-                                           false)
+            device[1],
+            simulation_data,
+            investor_name,
+            investor_dir,
+            scenario_names,
+            false)
 
         # @info "Created project $(get_name(project_existing[i])) for $(investor_name)"
     end
@@ -76,10 +73,10 @@ This function returns an empty vector of option projects,
 if data for option projects does not exist.
 """
 function create_project_options(projectdata::Nothing,
-                                   simulation_data::AgentSimulationData,
-                                   investor_name::String,
-                                   investor_dir::String,
-                                   scenario_names::Vector{String})
+    simulation_data::AgentSimulationData,
+    investor_name::String,
+    investor_dir::String,
+    scenario_names::Vector{String})
     return Project{Option}[]
 end
 
@@ -87,22 +84,22 @@ end
 This function returns a vector of project options for the investor.
 """
 function create_project_options(projectdata::DataFrames.DataFrame,
-                                   simulation_data::AgentSimulationData,
-                                   sys_UC::PSY.System,
-                                   investor_name::String,
-                                   investor_dir::String,
-                                   scenario_names::Vector{String})
-    project_option = Vector{Project{Option}}(undef, size(projectdata,1))
-    for i in 1:size(projectdata,1)
-        project_option[i] = create_project(projectdata[i,:],
-                                         simulation_data,
-                                         sys_UC,
-                                         investor_name,
-                                         investor_dir,
-                                         scenario_names,
-                                         true)
+    simulation_data::AgentSimulationData,
+    sys_UC::PSY.System,
+    investor_name::String,
+    investor_dir::String,
+    scenario_names::Vector{String})
+    project_option = Vector{Project{Option}}(undef, size(projectdata, 1))
+    for i in 1:size(projectdata, 1)
+        project_option[i] = create_project(projectdata[i, :],
+            simulation_data,
+            sys_UC,
+            investor_name,
+            investor_dir,
+            scenario_names,
+            true)
 
         # @info "Created project $(get_name(project_option[i])) for $(investor_name)"
     end
-        return project_option
+    return project_option
 end

@@ -90,7 +90,6 @@ struct CaseDefinition
         parallel_investors,
         parallel_scenarios,
         solver_name)
-
         forecast_type = lowercase(forecast_type)
 
         @assert total_horizon >= simulation_years
@@ -181,7 +180,6 @@ function CaseDefinition(base_dir::String,
     parallel_investors::Bool = false,
     parallel_scenarios::Bool = false,
     solver_name::String)
-
     CaseDefinition(base_dir,
         sys_dir,
         timeseries_data_dir,

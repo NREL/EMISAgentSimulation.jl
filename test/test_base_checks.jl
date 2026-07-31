@@ -1,5 +1,4 @@
 @testset "Test base years" begin
-
     start_year = get_start_year(case)
     data_dir = get_data_dir(case)
     scenarios = string.(get_all_scenario_names(data_dir))

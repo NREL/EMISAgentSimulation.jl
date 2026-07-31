@@ -16,7 +16,6 @@ function construct_ordc(sys::PSY.System,
     ordc_unavailability_method::String,
     reserve_penalty::String,
     timeseries_data_dir::String)
-
     products = split(
         read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[
             1,
@@ -41,7 +40,7 @@ function construct_ordc(sys::PSY.System,
         generators,
         zonal,
         ordc_unavailability_method,
-        timeseries_data_dir
+        timeseries_data_dir,
     )
 
     load_n_vg_df = read_data(
@@ -71,7 +70,9 @@ function construct_ordc(sys::PSY.System,
     # Previous error: ArgumentError: column name "investor1_PVe_zone_5_year_1_1" not found in the data frame; existing most similar names are: "investor1_PVe_zone_5_year_5_1", "investor1_PVe_zone_8_year_5_1", "investor3_PVe_zone_5_year_5_1" and "investor4_PVe_zone_5_year_5_1"
     # The load_n_vg_df_rt file contains sim_year data, but generators 
     renewable_generators = filter(
-        g -> typeof(g) == RenewableGenEMIS{Existing} && get_name(g) in names(load_n_vg_df_rt),
+        g ->
+            typeof(g) == RenewableGenEMIS{Existing} &&
+            get_name(g) in names(load_n_vg_df_rt),
         generators)
 
     for product in products
@@ -95,7 +96,7 @@ function construct_ordc(sys::PSY.System,
             generators,
             MRR_scale,
             zonal,
-            timeseries_data_dir
+            timeseries_data_dir,
         )
 
         #println("MRR_$(product): ", MRR)
@@ -427,7 +428,7 @@ function add_psy_ordc!(simulation_dir::String,
     da_resolution::Int64,
     rt_resolution::Int64,
     reserve_penalty::String,
-    timeseries_data_dir::String
+    timeseries_data_dir::String,
 )
     products = split(
         read_data(joinpath(simulation_dir, "markets_data", "reserve_products.csv"))[
