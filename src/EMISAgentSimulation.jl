@@ -121,6 +121,7 @@ export make_results_dir
 export read_data
 export remove_leap_day!
 export size_in_MW
+export read_cc_scalar
 export update_derating_factor!
 export update_installed_cap!
 export update_PSY_timeseries!

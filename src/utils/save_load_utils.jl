@@ -87,7 +87,6 @@ function save_case_definition!(g::HDF5.Group, c::CaseDefinition)
     write(g, "accreditation_methodology", get_accreditation_methodology(c))
     write(g, "accreditation_metric", get_accreditation_metric(c))
     write(g, "marginal_cc_switch", get_marginal_cc_switch(c))
-    write(g, "derating_scale", get_derating_scale(c))
     write(g, "mopr", get_mopr(c))
     write(g, "battery_cap_mkt", get_battery_cap_mkt(c))
     write(g, "vre_reserves", get_vre_reserves(c))
@@ -143,7 +142,6 @@ function load_case_definition(g::HDF5.Group)
         read(g, "accreditation_methodology"),
         read(g, "accreditation_metric"),
         read(g, "marginal_cc_switch"),
-        read(g, "derating_scale"),
         read(g, "mopr"),
         read(g, "battery_cap_mkt"),
         read(g, "vre_reserves"),

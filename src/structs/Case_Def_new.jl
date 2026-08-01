@@ -16,7 +16,6 @@
         rps_target: High, Mid or Low RPS Target
         markets: Dictionary of which markets are simulated
         ordc_curved: Whether to include the curved part of the ORDC
-        derating_scale: Factor for scaling derating factors
         mopr: Whether Minimum Offer Price Rule is applied
         vre_reserves: Whether VRE can provide reserves
         heterogeneity: Whether investors' heterogeneous financial characteristics and technology preferences are modeled.
@@ -48,7 +47,6 @@ struct CaseDefinition
     markets::Dict{Symbol, Bool}
     ordc_curved::Bool
     reserve_penalty::String
-    derating_scale::Float64
     mopr::Bool
     vre_reserves::Bool
     heterogeneity::Bool
@@ -78,7 +76,6 @@ struct CaseDefinition
         markets,
         ordc_curved,
         reserve_penalty,
-        derating_scale,
         mopr,
         vre_reserves,
         heterogeneity,
@@ -125,7 +122,6 @@ struct CaseDefinition
             markets,
             ordc_curved,
             reserve_penalty,
-            derating_scale,
             mopr,
             vre_reserves,
             heterogeneity,
@@ -168,7 +164,6 @@ function CaseDefinition(base_dir::String,
     ),
     ordc_curved::Bool = true,
     reserve_penalty::String = "Mid",
-    derating_scale::Float64 = 1.0,
     mopr::Bool = false,
     vre_reserves::Bool = true,
     heterogeneity::Bool = false,
@@ -197,7 +192,6 @@ function CaseDefinition(base_dir::String,
         markets,
         ordc_curved,
         reserve_penalty,
-        derating_scale,
         mopr,
         vre_reserves,
         heterogeneity,
@@ -227,7 +221,6 @@ get_rps_target(case::CaseDefinition) = case.rps_target
 get_markets(case::CaseDefinition) = case.markets
 get_ordc_curved(case::CaseDefinition) = case.ordc_curved
 get_reserve_penalty(case::CaseDefinition) = case.reserve_penalty
-get_derating_scale(case::CaseDefinition) = case.derating_scale
 get_mopr(case::CaseDefinition) = case.mopr
 get_vre_reserves(case::CaseDefinition) = case.vre_reserves
 get_heterogeneity(case::CaseDefinition) = case.heterogeneity
@@ -270,10 +263,6 @@ function get_name(case::CaseDefinition)
         mopr = "MOPR_OFF"
     end
 
-    derating_scale = replace("$(get_derating_scale(case))", "." => "_")
-
-    derating = "derating_scale_$(derating_scale)"
-
     if get_vre_reserves(case)
         vre_reserves = "VRE_reserves"
     else
@@ -288,7 +277,7 @@ function get_name(case::CaseDefinition)
 
     solver_name = get_solver_name(case)
 
-    case_name = "$(rps)_$(capacity)_$(ordc)_$(penalty)_$(carbon)_$(derating)_$(mopr)_$(vre_reserves)_$(inertia)_$(solver_name)"
+    case_name = "$(rps)_$(capacity)_$(ordc)_$(penalty)_$(carbon)_$(mopr)_$(vre_reserves)_$(inertia)_$(solver_name)"
 
     return case_name
 end

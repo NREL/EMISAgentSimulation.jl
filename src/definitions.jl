@@ -38,3 +38,6 @@ const OBJ_SCALE = 1 # Scale factor to convert objective function values from $ t
 
 # Reading and writing data
 const SCHEMA_VERSION = 1
+
+# Capacity credit scalar file name (located at markets_data/derating_data/{scenario}/)
+const CC_SCALAR_FILENAME = "cc_scalar.csv"
