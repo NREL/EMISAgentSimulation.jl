@@ -1,10 +1,15 @@
 using Test
 using Logging
 using EMISAgentSimulation
+using DataFrames
+using CSV
+using AxisArrays
 
 # Self-contained tests — run without any external setup.
 include("test_PSI.jl")
 include("test_hdf5_serialization.jl")
+include("test_read_cc_scalar.jl")
+include("test_update_derating_factor.jl")
 include("test_seasonal_capacity_markets.jl")
 
 # Context-dependent tests — require the caller to have defined:

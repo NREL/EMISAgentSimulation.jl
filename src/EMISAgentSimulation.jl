@@ -121,6 +121,7 @@ export make_results_dir
 export read_data
 export remove_leap_day!
 export size_in_MW
+export read_cc_scalar
 export update_derating_factor!
 export update_installed_cap!
 export update_PSY_timeseries!
@@ -441,28 +442,27 @@ include("markets_simulation/actual_rec_mkt_clearing.jl")
 include("markets_simulation/actual_market_simulation.jl")
 
 #Include Investor functions
-    include("investor_functions/investor_iteration.jl")            # Runs investors annual iteration.
+include("investor_functions/investor_iteration.jl")            # Runs investors annual iteration.
 
-    #### Predictions #####################
-    include("investor_functions/prediction/prediction_methodology.jl")  # Functions for running investors' price prediction methodology.
-    include("investor_functions/prediction/operating_profit.jl")        # Functions for calculating expected operating market profits.
-    include("investor_functions/prediction/capacity_profit.jl")         # Functions for calculating expected capacity market profits.
-    include("investor_functions/prediction/REC_profit.jl")              # Functions for calculating expected REC market profits.
-    include("investor_functions/prediction/total_profit.jl")            # Functions for updating the expected profits from all markets.
+#### Predictions #####################
+include("investor_functions/prediction/prediction_methodology.jl")  # Functions for running investors' price prediction methodology.
+include("investor_functions/prediction/operating_profit.jl")        # Functions for calculating expected operating market profits.
+include("investor_functions/prediction/capacity_profit.jl")         # Functions for calculating expected capacity market profits.
+include("investor_functions/prediction/REC_profit.jl")              # Functions for calculating expected REC market profits.
+include("investor_functions/prediction/total_profit.jl")            # Functions for updating the expected profits from all markets.
 
-    #### Decisions ######################
-    include("investor_functions/decisions/buildphase_conversion.jl")         # Functions for evaluating when to convert the buildphase of projects.
-    include("investor_functions/decisions/investment_decision.jl")           # Functions for making investment decisions
-    include("investor_functions/decisions/retirement_decision.jl")           # Functions for making retirement decisions
+#### Decisions ######################
+include("investor_functions/decisions/buildphase_conversion.jl")         # Functions for evaluating when to convert the buildphase of projects.
+include("investor_functions/decisions/investment_decision.jl")           # Functions for making investment decisions
+include("investor_functions/decisions/retirement_decision.jl")           # Functions for making retirement decisions
 
-    #### Decision Metrics ######
-    include("investor_functions/decision_metrics/npv_functions.jl")          # Functions for calculating NPV.
-    include("investor_functions/decision_metrics/utility_functions.jl")      # Functions for calculating expected utility.
+#### Decision Metrics ######
+include("investor_functions/decision_metrics/npv_functions.jl")          # Functions for calculating NPV.
+include("investor_functions/decision_metrics/utility_functions.jl")      # Functions for calculating expected utility.
 
-    ### Realized Profits and Updates ######
-    include("investor_functions/realized_profits_calculator.jl")   # Functions for calculating realized profits from different markets
-    include("investor_functions/annual_updates.jl")                # Functions for updating investor revenues and forecasts each year.
-
+### Realized Profits and Updates ######
+include("investor_functions/realized_profits_calculator.jl")   # Functions for calculating realized profits from different markets
+include("investor_functions/annual_updates.jl")                # Functions for updating investor revenues and forecasts each year.
 
 #Include derating factor updating methodology
 include("derating_factor_updates/derating_factor_calculator.jl")  # Derating factor calculation for renewables

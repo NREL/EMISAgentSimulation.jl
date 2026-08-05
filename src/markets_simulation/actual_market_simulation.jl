@@ -122,9 +122,13 @@ function create_realized_marketdata(simulation::AgentSimulation,
             name = PSY.get_name(gen)
             prime_mover = string(PSY.get_prime_mover_type(gen))
 
-            clean_energy_project_check = any(occursin.(["WT", "PV", "HY"], prime_mover)) || (occursin("ST", prime_mover) && occursin("NUCLEAR", string(PSY.get_fuel(gen))))
+            clean_energy_project_check =
+                any(occursin.(["WT", "PV", "HY"], prime_mover)) || (
+                    occursin("ST", prime_mover) &&
+                    occursin("NUCLEAR", string(PSY.get_fuel(gen)))
+                )
 
-            if !(occursin("BA", prime_mover)) 
+            if !(occursin("BA", prime_mover))
                 energy_production =
                     sum(
                         capacity_factors_ed[name][time:(time + Int(
@@ -418,7 +422,6 @@ end
 
 function reserve_ts_scaling(simulation::AgentSimulation,
     iteration_year::Int64, step_size::Int64)
-
     simulation_dir = get_data_dir(get_case(simulation))
     all_scenarios = String.(get_all_scenario_names(simulation_dir))
     results_dir = get_results_dir(simulation)

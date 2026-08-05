@@ -1,20 +1,19 @@
 function run_investor_iteration(investor::Investor,
-                                 active_projects::Vector{Project},
-                                 iteration_year::Int64,
-                                 yearly_horizon::Int64,
-                                 simulation_years::Int64,
-                                 capacity_forward_years::Int64,
-                                 sys_MDs::Union{Nothing, Vector{PSY.System}},
-                                 sys_UCs::Union{Nothing, Vector{PSY.System}},
-                                 sys_EDs::Union{Nothing, Vector{PSY.System}},
-                                 sys_PRAS::Dict{String, PSY.System},
-                                 case::CaseDefinition,
-                                 scenario_names::Vector{String},
-                                 timeseries_data_dir::String,
-                                 availability_rt_by_scenario::Dict{String, DataFrames.DataFrame},
-                                 availability_by_scenario::Dict{String, DataFrames.DataFrame}
-                            )
-
+    active_projects::Vector{Project},
+    iteration_year::Int64,
+    yearly_horizon::Int64,
+    simulation_years::Int64,
+    capacity_forward_years::Int64,
+    sys_MDs::Union{Nothing, Vector{PSY.System}},
+    sys_UCs::Union{Nothing, Vector{PSY.System}},
+    sys_EDs::Union{Nothing, Vector{PSY.System}},
+    sys_PRAS::Dict{String, PSY.System},
+    case::CaseDefinition,
+    scenario_names::Vector{String},
+    timeseries_data_dir::String,
+    availability_rt_by_scenario::Dict{String, DataFrames.DataFrame},
+    availability_by_scenario::Dict{String, DataFrames.DataFrame},
+)
     @info "Running investor $(get_name(investor)) iteration with queue: $(get_name.(get_queue(investor)))"
 
     sys_data_dir = get_data_dir(case)
@@ -35,12 +34,17 @@ function run_investor_iteration(investor::Investor,
 
     option_projects = get_options(investor)
     max_new_options = Dict(get_name(project) => 0 for project in option_projects)
-    max_new_options_by_type = Dict(t => 0.0 for t in unique(get_type.(get_tech.(option_projects))))
+    max_new_options_by_type =
+        Dict(t => 0.0 for t in unique(get_type.(get_tech.(option_projects))))
 
     scenarios = get_scenario_data(get_forecast(investor))
     for scenario in scenarios
         scenario_name = get_name(scenario)
-        output_file = joinpath(investor_dir, "expected_market_data", "$(scenario_name)_year_$(iteration_year).h5")
+        output_file = joinpath(
+            investor_dir,
+            "expected_market_data",
+            "$(scenario_name)_year_$(iteration_year).h5",
+        )
         expected_data = load_expected_market_data(output_file)
 
         set_energy_price!(market_prices, scenario_name, expected_data["energy_price"])
@@ -48,7 +52,11 @@ function run_investor_iteration(investor::Investor,
         set_reserve_price!(market_prices, scenario_name, expected_data["reserve_price"])
 
         if in(:Capacity, market_names)
-            set_capacity_price!(market_prices, scenario_name, expected_data["capacity_price"])
+            set_capacity_price!(
+                market_prices,
+                scenario_name,
+                expected_data["capacity_price"],
+            )
         end
 
         if in(:REC, market_names)
@@ -61,72 +69,91 @@ function run_investor_iteration(investor::Investor,
 
         for project in projects
             if in(get_name(project), active_project_names)
-                update_capacity_factors!(project, scenario_name, expected_data["capacity_factors"])
-                update_total_utilization!(project, scenario_name, expected_data["total_utilization"])
-                update_capacity_accepted_perc!(project, scenario_name, expected_data["capacity_accepted_perc"])
+                update_capacity_factors!(
+                    project,
+                    scenario_name,
+                    expected_data["capacity_factors"],
+                )
+                update_total_utilization!(
+                    project,
+                    scenario_name,
+                    expected_data["total_utilization"],
+                )
+                update_capacity_accepted_perc!(
+                    project,
+                    scenario_name,
+                    expected_data["capacity_accepted_perc"],
+                )
             end
         end
 
-         max_new_options = update_max_new_options!(max_new_options, expected_data["new_options"], option_projects)
-         max_new_options_by_type = update_max_new_options_by_type!(max_new_options_by_type, expected_data["new_options_by_type"])
+        max_new_options = update_max_new_options!(
+            max_new_options,
+            expected_data["new_options"],
+            option_projects,
+        )
+        max_new_options_by_type = update_max_new_options_by_type!(
+            max_new_options_by_type,
+            expected_data["new_options_by_type"],
+        )
     end
 
     set_market_prices!(investor, market_prices)
 
     retire_unprofitable!(investor,
-                         sys_MDs,
-                         sys_UCs,
-                         sys_EDs,
-                         sys_PRAS,
-                         sys_data_dir,
-                         iteration_year,
-                         yearly_horizon,
-                         simulation_years,
-                         scenario_names,
-                         capacity_forward_years,
-                         solver,
-                         timeseries_data_dir)
+        sys_MDs,
+        sys_UCs,
+        sys_EDs,
+        sys_PRAS,
+        sys_data_dir,
+        iteration_year,
+        yearly_horizon,
+        simulation_years,
+        scenario_names,
+        capacity_forward_years,
+        solver,
+        timeseries_data_dir)
 
     make_investments!(investor,
-                      max_new_options,
-                      max_new_options_by_type,
-                      iteration_year,
-                      yearly_horizon,
-                      simulation_years,
-                      capacity_forward_years,
-                      solver)
+        max_new_options,
+        max_new_options_by_type,
+        iteration_year,
+        yearly_horizon,
+        simulation_years,
+        capacity_forward_years,
+        solver)
 
     for (i, project) in enumerate(projects)
         # @info "current investor is $(get_name(investor)), current project is $(get_name(project))"
         start_construction!(projects,
-                            i,
-                            project,
-                            iteration_year,
-                            step_size,)
+            i,
+            project,
+            iteration_year,
+            step_size)
 
         finish_construction!(projects,
-                            i,
-                            project,
-                            sys_MDs,
-                            sys_UCs,
-                            sys_EDs,
-                            sys_PRAS,
-                            sys_data_dir,
-                            iteration_year,
-                            step_size,
-                            pcm_scenario,
-                            total_horizon,
-                            scenario_names,
-                            da_resolution,
-                            rt_resolution,
-                            timeseries_data_dir,
-                            availability_rt_by_scenario,
-                            availability_by_scenario)
+            i,
+            project,
+            sys_MDs,
+            sys_UCs,
+            sys_EDs,
+            sys_PRAS,
+            sys_data_dir,
+            iteration_year,
+            step_size,
+            pcm_scenario,
+            total_horizon,
+            scenario_names,
+            da_resolution,
+            rt_resolution,
+            timeseries_data_dir,
+            availability_rt_by_scenario,
+            availability_by_scenario)
 
         update_lifecycle!(project,
-                          iteration_year,
-                          step_size,
-                          simulation_years)
+            iteration_year,
+            step_size,
+            simulation_years)
     end
 
     return

@@ -20,11 +20,21 @@ function run_agent_simulation(
     total_sim_time = 0.0
 
     availability_rt_by_scenario = Dict(
-        scenario => get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
+        scenario => get_availability_df(
+            timeseries_data_dir,
+            scenario,
+            simulation_years,
+            "REAL_TIME",
+        )
         for scenario in scenario_names
     )
     availability_by_scenario = Dict(
-        scenario => get_availability_df(timeseries_data_dir, scenario, simulation_years, "DAY_AHEAD")
+        scenario => get_availability_df(
+            timeseries_data_dir,
+            scenario,
+            simulation_years,
+            "DAY_AHEAD",
+        )
         for scenario in scenario_names
     )
 
@@ -73,7 +83,7 @@ function run_agent_simulation(
     clean_energy_percentage_vector = zeros(simulation_years)
     carbon_tax = get_carbon_tax(simulation)
 
-     # Update operation cost for all projects based on carbon tax in the first year
+    # Update operation cost for all projects based on carbon tax in the first year
     for iteration_year in current_year:step_size:simulation_years
         t_start = time()
         yearly_horizon = min(total_horizon - iteration_year + 1, rolling_horizon)
@@ -121,7 +131,8 @@ function run_agent_simulation(
             # On a fresh run or for years beyond the restart year, always save so that
             # stale pre_update files copied from a prior run don't clobber retirements
             # and new builds applied in earlier years of this run.
-            if isfile(pre_update_da_net_load) && iteration_year == current_year && current_year > 1
+            if isfile(pre_update_da_net_load) && iteration_year == current_year &&
+               current_year > 1
                 cp(pre_update_da_net_load, post_update_da_net_load; force = true)
                 cp(pre_update_rt_net_load, post_update_rt_net_load; force = true)
             else
@@ -154,19 +165,19 @@ function run_agent_simulation(
             end
         end
 
-        num_scenarios = length(scenario_names)
-        sys_PRAS_list, active_projects_list, capacity_forward_years_list,
-        resource_adequacies, peak_loads, static_capacity_bools,
-        iteration_years, simulation_years_list, data_dirs,
-        rt_resolutions, results_dirs,
-        outage_dirs = repeat_arguments(num_scenarios, sys_PRAS, active_projects,
-            capacity_forward_years, get_resource_adequacy(simulation),
-            get_peak_load(simulation), get_static_capacity_market(case),
-            iteration_year, simulation_years, get_data_dir(case),
-            get_rt_resolution(case),
-            get_results_dir(simulation), get_outage_dir(case))
-
-        @info "Resource adequacies: $(resource_adequacies)"
+        # Kept for traceability with pg/grid-solutions (commented to avoid stale runtime setup).
+        # num_scenarios = length(scenario_names)
+        # sys_PRAS_list, active_projects_list, capacity_forward_years_list,
+        # resource_adequacies, peak_loads, static_capacity_bools,
+        # iteration_years, simulation_years_list, data_dirs,
+        # rt_resolutions, results_dirs,
+        # outage_dirs = repeat_arguments(num_scenarios, sys_PRAS, active_projects,
+        #     capacity_forward_years, get_resource_adequacy(simulation),
+        #     get_peak_load(simulation), get_static_capacity_market(case),
+        #     iteration_year, simulation_years, get_data_dir(case),
+        #     get_rt_resolution(case),
+        #     get_results_dir(simulation), get_outage_dir(case))
+        # @info "Resource adequacies: $(resource_adequacies)"
 
         # Parallelize the processing of scenarios using Distributed.pmap
         # NOTE: pmap risks OOM because each worker receives a full sys_PRAS dict copy
@@ -244,7 +255,7 @@ function run_agent_simulation(
                 scenario_names,
                 timeseries_data_dir,
                 availability_rt_by_scenario,
-                availability_by_scenario
+                availability_by_scenario,
             )
         end
 
@@ -323,23 +334,24 @@ function run_agent_simulation(
         capacity_accepted_bids,
         rec_accepted_bids,
         clean_energy_percentage_vector[iteration_year],
-        cet_achieved_ratio = @timeit EMIS_TIMER "realized_marketdata" create_realized_marketdata(simulation,
-            sys_MDs[iteration_year],
-            sys_UCs[iteration_year],
-            sys_EDs[iteration_year],
-            markets,
-            get_rps_target(case),
-            get_reserve_penalty(case),
-            get_ordc_curved(case),
-            all_existing_projects,
-            capacity_market_projects,
-            capacity_forward_years,
-            iteration_year,
-            simulation_years,
-            get_solver(case),
-            get_results_dir(simulation),
-            current_siip_sim,
-            siip_system)
+        cet_achieved_ratio =
+            @timeit EMIS_TIMER "realized_marketdata" create_realized_marketdata(simulation,
+                sys_MDs[iteration_year],
+                sys_UCs[iteration_year],
+                sys_EDs[iteration_year],
+                markets,
+                get_rps_target(case),
+                get_reserve_penalty(case),
+                get_ordc_curved(case),
+                all_existing_projects,
+                capacity_market_projects,
+                capacity_forward_years,
+                iteration_year,
+                simulation_years,
+                get_solver(case),
+                get_results_dir(simulation),
+                current_siip_sim,
+                siip_system)
 
         existing_project_types = unique(get_type.(get_tech.(all_existing_projects)))
         rt_products = String.(
@@ -449,15 +461,33 @@ function run_agent_simulation(
         end
 
         @info "Updating derating data for all scenarios in the simulation based on updated resource adequacy and market conditions"
-        simulations, iteration_years, derating_scales,
-        methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list =  repeat_arguments(num_scenarios,
-        simulation, iteration_year, get_derating_scale(case),
-        get_accreditation_methodology(case), get_accreditation_metric(case),
-        get_marginal_cc_switch(case), timeseries_data_dir)
-        
-        @time Distributed.pmap(parallelize_update_derating_data,
-         zip(scenario_names, simulations, iteration_years,
-        derating_scales, methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list))
+        # Parallelize the processing of scenarios using Distributed.pmap
+        # NOTE: pmap can crash here because each worker receives serialized PSY.System
+        # objects with process-local SQLite handles inside sys_PRAS.
+        # simulations, iteration_years,
+        # methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list =
+        #     repeat_arguments(num_scenarios,
+        #         simulation, iteration_year,
+        #         get_accreditation_methodology(case), get_accreditation_metric(case),
+        #         get_marginal_cc_switch(case), timeseries_data_dir)
+        # @timeit EMIS_TIMER "update_derating" Distributed.pmap(parallelize_update_derating_data,
+        #     zip(scenario_names, simulations, iteration_years,
+        #         methodologies, ra_metric_list, marginal_cc_switches,
+        #         timeseries_data_dir_list))
+
+        # Run sequentially to avoid Distributed serialization of PSY.System
+        # objects that contain process-local SQLite handles.
+        @timeit EMIS_TIMER "update_derating" for scenario in scenario_names
+            update_simulation_derating_data!(
+                simulation,
+                scenario,
+                iteration_year,
+                timeseries_data_dir;
+                methodology = get_accreditation_methodology(case),
+                ra_metric = get_accreditation_metric(case),
+                marginal_cc = get_marginal_cc_switch(case),
+            )
+        end
 
         for scenario in scenario_names
             derating_factors = read_data(
@@ -489,14 +519,17 @@ function run_agent_simulation(
                     project,
                     get_data_dir(case),
                     scenario,
-                    get_derating_scale(case),
                     get_marginal_cc_switch(case),
                 )
             end
         end
 
         # reserve_ts_scaling_factor = calculate_reserve_scaling_factor(simulation)
-        @timeit EMIS_TIMER "reserve_ts_scaling" reserve_ts_scaling(simulation, iteration_year, step_size)
+        @timeit EMIS_TIMER "reserve_ts_scaling" reserve_ts_scaling(
+            simulation,
+            iteration_year,
+            step_size,
+        )
 
         @timeit EMIS_TIMER "save_year_data" begin
             @info "COMPLETED ITERATION YEAR $(iteration_year)"
@@ -508,16 +541,14 @@ function run_agent_simulation(
 
             save_simulation(simulation, results_dir, iteration_year)
         end
-        
         t_end = time()
-        iteration_time_hours = round((t_end - t_start) / 3600, digits=2)
+        iteration_time_hours = round((t_end - t_start) / 3600; digits = 2)
         total_sim_time += iteration_time_hours
         ts_now = Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS")
         @info "Finished iteration year $(iteration_year) @ $(ts_now)"
         @info "Iteration year $(iteration_year) took $(iteration_time_hours) hours"
         @info "Total simulation time after completing iteration year $(iteration_year): $(round(total_sim_time, digits=2)) hours"
         print_timer(stderr, EMIS_TIMER)
-
     end
 
     final_portfolio = vcat(get_existing.(get_investors(simulation))...)

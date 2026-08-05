@@ -25,7 +25,6 @@ function create_cem_mkt_clr_problem(investor_dir::String,
     iteration_year::Int64,
     yearly_horizon::Int64,
     timeseries_data_dir::String)
-
     @info "Function create_cem_clr_problem"
     @info "Creating CEM market clearing problem for $(investor_dir) in year $(iteration_year) with solver."
 

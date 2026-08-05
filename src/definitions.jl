@@ -19,6 +19,12 @@ const PENALTY_COST = 5000.0
 # PRAS constants
 const PRAS_N_SAMPLES = 1000
 const PRAS_WORKER = Ref{Union{Nothing, Int}}(nothing)
+const PRAS_MONTE_CARLO_SEED = 42
+
+# Outage constants (FORs — converted to transition probabilities via SPI.rate_to_probability)
+const NOMINAL_GEN_FOR = 0.04
+const NOMINAL_STORAGE_FOR = 0.0
+const DEFAULT_THERMAL_MTTR_HOURS = 24
 
 const SIM_START_DATE = Dates.DateTime("2018-01-01T00:00:00")
 const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
@@ -26,12 +32,12 @@ const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
 # File pointers
 const TIMESERIES_DATA_DIR = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/NTP_TimeSeries_Data"
 const POINTER_FILE = Dict(
-    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"),
-   
-)
-
+    :NTPS_TS_DATA_DIR => joinpath(TIMESERIES_DATA_DIR, "input_processing"))
 
 const OBJ_SCALE = 1 # Scale factor to convert objective function values from $ to millions of dollars
 
 # Reading and writing data
 const SCHEMA_VERSION = 1
+
+# Capacity credit scalar file name (located at markets_data/derating_data/{scenario}/)
+const CC_SCALAR_FILENAME = "cc_scalar.csv"
