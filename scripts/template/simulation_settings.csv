@@ -1,0 +1,46 @@
+﻿SETTING,VALUE,,Comments
+name,20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS,,Name of the test case
+start_year,2020,,Starting year for the simulation. Default = 2020.
+total_horizon,15,,Total horizon (in years) accessible for input data. Default = 15
+rolling_horizon,10,,Rolling horizon (in years) for price prediction. Default = 10
+simulation_years,15,,Total simulation horizon (in years). Default = 15
+rep_period_interval,24,,"Total number of hours in representative period selection e.g., 24 for representative days, 168 for representative weeks, etc. Default =  24"
+num_rep_periods,9,,Number of representative periods to be used for price prediction. Default = 10
+avg_block_size,4,,Number of hours in CEM aggregated time blocks. Default = 4. Set to 1 if hourly granularity is needed.
+fixed_block_size,FALSE,,"Whether the block size in CEM time block aggregation is fixed, i.e., all blocks are of the same length = avg_block_size. If set to FALSE, the model will select variable size time blocks based on chronological clustering."
+rep_chronology_checkpoint,0,,"Number of hours in the checkpoint interval for chronological storage constraints in CEM. Default = 0, i.e., no chronological checkpoints"
+siip_market_clearing,TRUE,,Whether SIIP UC/ED is used for energy market clearing. Default = TRUE
+pcm_scenario,scenario_1,,"Which scenario to use for PCM timeseries runs in the actual market clearing process.Scenarios could be based on electrification, climate models, etc. Default = scenario_1"
+da_resolution,60,,Day ahead resolution (in minutes) for energy market clearing. Default = 60
+rt_resolution,60,,Real time resolution (in minutes) for energy market clearing. Default = 5
+rps_target,High,,"RPS (or clean energy requirement) scenario. Options: ""Low"", ""Mid"", ""High"""
+ordc_curved,FALSE,,Whether a curved ORDC is used. Default = FALSE
+ordc_unavailability_method,Convolution,,"Methodology for creating generator unavailability distribution for ORDC. Options: ""SMC"", ""Convolution"""
+reserve_penalty,Mid,,"Penalty price setting for reserves. Options: ""Low"", ""Mid"", ""High"""
+static_capacity_market,FALSE,,Whether the capacity market demand curve is static (as opposed to RA-informed). Default: FALSE
+irm_scalar,1,,Scalar used for IRM in the capacity market demand curve. Range > 0.0
+accreditation_methodology,TopNetLoad,,"Methodology for calculating capacity credits/derating factors. Options: TopNetLoad, ELCC, EFC."
+accreditation_metric,None,,"RA metric used for ELCC and EFC accreditation methodology. Options: LOLE or EUE. Set to ""None"" if accreditation methodology is TopNetLoad."
+marginal_cc_switch,TRUE,,Whether marginal CC is used instead of average CC for new VRE and battery resources
+derating_scale,1,,Scalar used for modifying the derating factors of VRE and batteries. Range > 0.0
+mopr,FALSE,,Whether VREs are precluded from capacity market participation. Default: FALSE
+battery_cap_mkt,TRUE,,Whether batteries can participate in the capacity market participation. Default: TRUE
+vre_reserves,TRUE,,Whether VREs can provide reserves. Default: TRUE
+heterogeneity,TRUE,,Whether investors are heterogeneous. Default: TRUE
+forecast_type,Imperfect,,"Type of forecast used by investors for price prediction. Options: ""Perfect"", ""Imperfect"""
+max_carbon_tax_increase,0,,Maximum annual increase in carbon prices due to under-achievement of Clean Energy Targets
+info_symmetry,FALSE,,Whether investors share symmetric information. Default: FALSE
+belief_update,TRUE,,Whether investors can update their beliefs about forecast parameters. Default: TRUE
+uncertainty,TRUE,,Whether investors consider uncertainty in price prediction. Default: TRUE
+risk_aversion,TRUE,,Whether investors can be risk averse. Default: TRUE
+parallel_investors,TRUE,,Whether price prediction for each investor should be parallelized. Default: TRUE
+parallel_scenarios,TRUE,,Whether price prediction for each scenario should be parallelized. Default: TRUE
+md_horizon,73,,Sienna simulation horizon for multi-day
+md_interval,72,,Sienna simulation interval for multi-day
+uc_horizon,25,,Sienna simulation horizon for day-ahead
+uc_interval,24,,Sienna simulation interval for day-ahead
+ed_horizon,2,,Sienna simulation horizon for real-time
+ed_interval,1,,Sienna simulation interval for real-time
+multi_day_market,FALSE,,Whether to enable multi-day market simulations. Default: FALSE
+time_series_data_dir,/projects/gmlcmarkets/Phase2_EMIS_Analysis/NTP_TimeSeries_Data,,Directory where time series data for the simulation is stored
+
