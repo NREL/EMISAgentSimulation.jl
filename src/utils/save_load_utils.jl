@@ -1443,13 +1443,18 @@ function save_product!(g::HDF5.Group, p::Capacity)
     write(g, "name", string(p.name))
     write(g, "capacity_bid", p.capacity_bid)
     der_g = create_group(g, "derating")
-    ks = collect(String, keys(p.derating))
-    vs = [p.derating[k] for k in ks]
-    write(der_g, "keys", ks)
-    write(der_g, "values", vs)
+    for (scen, season_dict) in p.derating
+        scen_g = create_group(der_g, scen)
+        for (season, val) in season_dict
+            write(scen_g, season, val)
+        end
+    end
     ap_g = create_group(g, "accepted_perc")
-    for (scen, v) in p.accepted_perc
-        write(ap_g, scen, v)
+    for (scen, season_dict) in p.accepted_perc
+        scen_g = create_group(ap_g, scen)
+        for (season, vec) in season_dict
+            write(scen_g, season, vec)
+        end
     end
 end
 
@@ -1500,11 +1505,15 @@ function load_product(g::HDF5.Group)
         name = Symbol(read(g, "name"))
         bid = read(g, "capacity_bid")
         der_g = g["derating"]
-        ks = read(der_g, "keys")
-        vs = read(der_g, "values")
-        der = Dict(ks[i] => vs[i] for i in eachindex(ks))
+        der = Dict(
+            scen => Dict(season => read(der_g[scen], season) for season in keys(der_g[scen]))
+            for scen in keys(der_g)
+        )
         ap_g = g["accepted_perc"]
-        ap = Dict(k => read(ap_g, k) for k in keys(ap_g))
+        ap = Dict(
+            scen => Dict(season => read(ap_g[scen], season) for season in keys(ap_g[scen]))
+            for scen in keys(ap_g)
+        )
         return Capacity(name, der, ap, bid)
 
     elseif startswith(pt, "OperatingReserve{")

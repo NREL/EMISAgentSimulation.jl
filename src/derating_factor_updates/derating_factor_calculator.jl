@@ -728,9 +728,12 @@ function update_derating_factor!(
             "derating_dict.csv",
         ),
     )
+    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
+    # eachrow(derating_data), reading row["season"] when the "season" column is present
+    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
     derating_factor = derating_data[1, get_type(get_tech(project))]
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, "annual", derating_factor)
     end
     return
 end
@@ -763,8 +766,11 @@ function update_derating_factor!(project::RenewableGenEMIS{Existing},
         error("Derating data not found")
     end
 
+    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
+    # eachrow(derating_data), reading row["season"] when the "season" column is present
+    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, "annual", derating_factor)
     end
 
     return
@@ -806,8 +812,11 @@ function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
         end
     end
 
+    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
+    # eachrow(derating_data), reading row["season"] when the "season" column is present
+    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, "annual", derating_factor)
     end
 
     return
@@ -840,8 +849,11 @@ function update_derating_factor!(project::BatteryEMIS{Existing},
     
     derating_factor = derating_data[1, project_type]
     derating_factor = min(derating_factor * derating_scale, 1.0)
+    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
+    # eachrow(derating_data), reading row["season"] when the "season" column is present
+    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, "annual", derating_factor)
     end
     return
 end
@@ -877,8 +889,11 @@ function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
     )
     derating_factor = derating_data[1, project_type]
     derating_factor = min(derating_factor * derating_scale, 1.0)
+    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
+    # eachrow(derating_data), reading row["season"] when the "season" column is present
+    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
     for product in get_products(project)
-        set_derating!(product, scenario, derating_factor)
+        set_derating!(product, scenario, "annual", derating_factor)
     end
     return
 end

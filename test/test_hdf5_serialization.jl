@@ -120,8 +120,11 @@ function make_products()
         ),
         Capacity(
             :capacity,
-            Dict(s => 0.9 for s in SCENS),           # derating
-            Dict(s => rand(N_YRS) for s in SCENS),    # accepted_perc
+            # derating and accepted_perc are nested as: scenario → season → value.
+            # Two seasons exercise the nested structure; the project round-trip test
+            # below then validates save_product!/load_product for the new layout.
+            Dict(s => Dict("summer" => 0.82, "winter" => 0.55) for s in SCENS),  # derating
+            Dict(s => Dict("summer" => rand(N_YRS), "winter" => rand(N_YRS)) for s in SCENS),  # accepted_perc
             200.0, # capacity_bid
         ),
         OperatingReserve{ReserveUpEMIS}(:reg_up,   0.1, 1.0),
