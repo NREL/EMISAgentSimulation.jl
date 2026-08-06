@@ -213,6 +213,16 @@ function repeat_arguments(num_scenarios::Int, args...)
 end
 
 """
+Returns the path to the PRAS PSY.System JSON file for a given scenario.
+"""
+function _pras_sys_path(case::CaseDefinition, scenario::String)
+    return joinpath(
+        get_sys_dir(case), "constructed_systems", scenario, "sim_year_1",
+        "PRAS_sys_EMIS_$(get_ed_horizon(case))hor_$(get_ed_interval(case))int_$(get_md_horizon(case))mdhor_$(get_md_interval(case))mdint.json",
+    )
+end
+
+"""
 This function runs the update_simulation_derating_data! function in parallel for different scenarios.
 """
 function parallelize_update_derating_data(args)
@@ -222,7 +232,15 @@ function parallelize_update_derating_data(args)
     methodology,
     ra_metric,
     marginal_cc,
-    timeseries_data_dir = args
+    timeseries_data_dir,
+    pras_sys_path = args
+    # PSY.System holds a process-local SQLite handle that becomes a stale pointer
+    # after cross-process serialization. Reload from file to get a valid handle.
+    simulation.system_PRAS[scenario] = PSY.System(
+        pras_sys_path;
+        time_series_directory = get_scratch_dir(get_case(simulation)),
+        runchecks = false,
+    )
     update_simulation_derating_data!(
         simulation,
         scenario,

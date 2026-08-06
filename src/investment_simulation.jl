@@ -461,33 +461,19 @@ function run_agent_simulation(
         end
 
         @info "Updating derating data for all scenarios in the simulation based on updated resource adequacy and market conditions"
-        # Parallelize the processing of scenarios using Distributed.pmap
-        # NOTE: pmap can crash here because each worker receives serialized PSY.System
-        # objects with process-local SQLite handles inside sys_PRAS.
-        # simulations, iteration_years,
-        # methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list =
-        #     repeat_arguments(num_scenarios,
-        #         simulation, iteration_year,
-        #         get_accreditation_methodology(case), get_accreditation_metric(case),
-        #         get_marginal_cc_switch(case), timeseries_data_dir)
-        # @timeit EMIS_TIMER "update_derating" Distributed.pmap(parallelize_update_derating_data,
-        #     zip(scenario_names, simulations, iteration_years,
-        #         methodologies, ra_metric_list, marginal_cc_switches,
-        #         timeseries_data_dir_list))
-
-        # Run sequentially to avoid Distributed serialization of PSY.System
-        # objects that contain process-local SQLite handles.
-        @timeit EMIS_TIMER "update_derating" for scenario in scenario_names
-            update_simulation_derating_data!(
-                simulation,
-                scenario,
-                iteration_year,
-                timeseries_data_dir;
-                methodology = get_accreditation_methodology(case),
-                ra_metric = get_accreditation_metric(case),
-                marginal_cc = get_marginal_cc_switch(case),
-            )
-        end
+        # sys_PRAS is reloaded from file on each worker; see parallelize_update_derating_data.
+        pras_sys_paths = [_pras_sys_path(case, s) for s in scenario_names]
+        simulations, iteration_years,
+        methodologies, ra_metric_list, marginal_cc_switches, timeseries_data_dir_list =
+            repeat_arguments(length(scenario_names),
+                simulation, iteration_year,
+                get_accreditation_methodology(case), get_accreditation_metric(case),
+                get_marginal_cc_switch(case), timeseries_data_dir)
+        @timeit EMIS_TIMER "update_derating" Distributed.pmap(
+            parallelize_update_derating_data,
+            zip(scenario_names, simulations, iteration_years,
+                methodologies, ra_metric_list, marginal_cc_switches,
+                timeseries_data_dir_list, pras_sys_paths))
 
         for scenario in scenario_names
             derating_factors = read_data(
