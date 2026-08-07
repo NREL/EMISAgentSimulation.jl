@@ -56,7 +56,8 @@ function calculate_RA_metrics(sys::PSY.System,
     iteration_year::Int64;
     samples::Int64 = PRAS_N_SAMPLES,
     seed::Int64 = 42,
-    simulation_years::Int64 = 15)
+    simulation_years::Int64 = 15,
+    overwrite_outage_with_ext::Bool = false)
     system_period_of_interest = range(1; length = DEFAULT_HOURS_PER_YEAR * simulation_years);
     # correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_scenario_1_new.csv")
 
@@ -65,7 +66,9 @@ function calculate_RA_metrics(sys::PSY.System,
     # Build PRAS.SystemModel on the main process (needs PSY.System's live SQLite connection).
     # PRAS.SystemModel is plain arrays — safe to serialize and send to a remote worker.
     # generate_pras_system is in SiennaPRASInterface (SPI), not in PRASCore (PRAS).
-    @timeit EMIS_TIMER "attach_outage_data" attach_outage_data_from_ext!(sys)
+    if overwrite_outage_with_ext
+        @timeit EMIS_TIMER "attach_outage_data" attach_outage_data_from_ext!(sys)
+    end
     pras_system =
         @timeit EMIS_TIMER "generate_pras_system" SPI.generate_pras_system(sys, PSY.Area)
 
