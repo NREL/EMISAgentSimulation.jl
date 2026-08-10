@@ -351,6 +351,63 @@ function load_season_months(seasons_file::String)
     return season_months
 end
 
+"""
+Parses a month value from numeric, date/datetime, or string inputs.
+Accepts month numbers, date-like strings, and month names/abbreviations.
+"""
+function parse_month_value(value)
+    if value isa Integer
+        return Int64(value)
+    end
+
+    if value isa Dates.Date || value isa Dates.DateTime
+        return Int64(Dates.month(value))
+    end
+
+    if value isa AbstractString
+        str = strip(String(value))
+        if isempty(str)
+            error("Encountered empty month string while parsing net-load data")
+        end
+        parsed_int = tryparse(Int64, str)
+        if !isnothing(parsed_int)
+            return parsed_int
+        end
+
+        parsed_dt = tryparse(Dates.DateTime, str)
+        if !isnothing(parsed_dt)
+            return Int64(Dates.month(parsed_dt))
+        end
+        parsed_date = tryparse(Dates.Date, str)
+        if !isnothing(parsed_date)
+            return Int64(Dates.month(parsed_date))
+        end
+
+        alpha_prefix = match(r"^[A-Za-z]+", str)
+        if !isnothing(alpha_prefix)
+            return month_lookup(alpha_prefix.match)
+        end
+        error("Unable to parse month value '$str' from net-load data")
+    end
+
+    error("Unsupported month value type $(typeof(value)) in net-load data")
+end
+
+"""
+Builds an integer month vector from net-load data.
+Uses the explicit `Month` column in the net-load CSV schema.
+"""
+function derive_month_vector(load_n_vg_data::DataFrame)
+    month_col = findfirst(x -> lowercase(String(x)) == "month", names(load_n_vg_data))
+    if !isnothing(month_col)
+        return Int64[parse_month_value(v) for v in load_n_vg_data[!, month_col]]
+    end
+
+    error(
+        "Unable to derive months from net-load data: expected a 'Month' column.",
+    )
+end
+
 function find_rt_periods(hours::Vector{Int64}, num_rt_intervals::Int64)
     rt_periods = [];
     for hour in hours
