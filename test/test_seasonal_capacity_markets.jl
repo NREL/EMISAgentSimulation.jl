@@ -75,7 +75,7 @@ function make_energy_product()
     return Energy(:Energy, Dict{String, Array{Float64, 2}}(), 3.5, 0.0)
 end
 
-function make_thermal_tech(type::String = "CCGT")
+function make_thermal_tech(type::String = "CC")
     return ThermalTech(
         type, "Gas",
         (min = 50.0, max = 400.0),
@@ -85,6 +85,53 @@ function make_thermal_tech(type::String = "CCGT")
         4.5,
         [(0.0, 8.0), (400.0, 9.5)],
         "BusA", "ZoneA", 0.05, 24,
+    )
+end
+
+function make_hydro_tech(type::String = "HY")
+    return HydroTech(
+        type,
+        (min = 50.0, max = 400.0),
+        nothing,
+        nothing,
+        nothing,
+        "BusA",
+        "ZoneA",
+        0.05,
+        24,
+    )
+end
+
+function make_renewable_tech(type::String = "WT")
+    return RenewableTech(
+        type,
+        (min = 50.0, max = 400.0),
+        nothing,
+        nothing,
+        "BusA",
+        "Z1",
+        0.0,
+        0,
+    )
+end
+
+function make_battery_tech()
+    return BatteryTech(
+        "BA",
+        (min = 0.0, max = 100.0),
+        (min = 0.0, max = 100.0),
+        nothing,
+        (min = 0.0, max = 200.0),
+        (min = 0.0, max = 1.0),
+        0.5,
+        100.0,
+        0.5,
+        (in = 0.9, out = 0.9),
+        "BusA",
+        "Z1",
+        0.05,
+        24,
+        100.0,
     )
 end
 
@@ -115,6 +162,71 @@ function make_thermal_project(products::Vector{<:Any})
     )
 end
 
+function make_hydro_project(products::Vector{<:Any})
+    return HydroGenEMIS{Existing}(
+        "Hyd1",
+        make_hydro_tech(),
+        1,
+        1,
+        30,
+        30,
+        Product[products...],
+        make_finance_stub(),
+    )
+end
+
+function make_renewable_existing_project(products::Vector{<:Any}; type::String = "WT")
+    return RenewableGenEMIS{Existing}(
+        "RenEx1",
+        make_renewable_tech(type),
+        1,
+        1,
+        30,
+        30,
+        Product[products...],
+        make_finance_stub(),
+    )
+end
+
+function make_renewable_option_project(products::Vector{<:Any}; type::String = "WT")
+    return RenewableGenEMIS{Option}(
+        "RenOpt1",
+        make_renewable_tech(type),
+        1,
+        1,
+        30,
+        30,
+        Product[products...],
+        make_finance_stub(),
+    )
+end
+
+function make_battery_existing_project(products::Vector{<:Any})
+    return BatteryEMIS{Existing}(
+        "BattEx1",
+        make_battery_tech(),
+        1,
+        1,
+        30,
+        30,
+        Product[products...],
+        make_finance_stub(),
+    )
+end
+
+function make_battery_option_project(products::Vector{<:Any})
+    return BatteryEMIS{Option}(
+        "BattOpt1",
+        make_battery_tech(),
+        1,
+        1,
+        30,
+        30,
+        Product[products...],
+        make_finance_stub(),
+    )
+end
+
 """
 Mirrors the ~40-field MarketProject inner constructor
 (src/structs/market_structs/MarketProject.jl). Only `derating_factor` varies
@@ -122,7 +234,7 @@ between tests — that's the field under test in Phase 1c.
 """
 function make_market_project(; derating_factor)
     return MarketProject(
-        "TestGen", "Generator", "CCGT",
+        "TestGen", "Generator", "CC",
         1000.0,                          # fixed_cost
         [0.0, 0.0],                      # queue_cost
         20.0,                            # marginal_energy_cost
@@ -347,36 +459,208 @@ end
 
 @testset "Phase 2b — update_derating_factor! iterates derating_dict.csv season rows" begin
     scenario = "scenario_1"
+    fixture_dir = joinpath(@__DIR__, "test_data", "derating_update_cases")
 
-    @testset "seasonal mode — one row per season, keyed by 'season' column" begin
-        mktempdir() do dir
-            derating_dir = joinpath(dir, "markets_data", "derating_data", scenario)
-            mkpath(derating_dir)
-            CSV.write(joinpath(derating_dir, "derating_dict.csv"),
-                DataFrame("season" => ["summer", "winter"], "CCGT" => [0.85, 0.92]))
+        """
+        Installs fixture CSVs into the per-test temporary simulation directory layout
+        expected by update_derating_factor!:
+            markets_data/derating_data/{scenario}/derating_dict.csv
 
-            prod = make_capacity_product()
-            project = make_thermal_project([prod])
+        Optionally installs cc_scalar.csv when scalar_file is provided, so tests can
+        exercise the scalar-multiplication path without mutating shared fixture files.
+        """
+        function install_derating_fixture!(
+        dir::String;
+        derating_file::String,
+        scalar_file::Union{Nothing, String} = nothing,
+    )
+        derating_dir = joinpath(dir, "markets_data", "derating_data", scenario)
+        mkpath(derating_dir)
+        cp(
+            joinpath(fixture_dir, derating_file),
+            joinpath(derating_dir, "derating_dict.csv");
+            force = true,
+        )
+        # Only copy cc_scalar.csv for tests that need scalar multiplication.
+        # When scalar_file is nothing, the update path should use default scalar 1.0.
+        if !isnothing(scalar_file)
+            cp(
+                joinpath(fixture_dir, scalar_file),
+                joinpath(derating_dir, "cc_scalar.csv");
+                force = true,
+            )
+        end
+        return
+    end
 
-            EMISAgentSimulation.update_derating_factor!(project, dir, scenario, 1.0, true)
+    @testset "seasonal mode — row iteration across update_derating_factor! families" begin
+        cases = [
+            (
+                name = "thermal via type column",
+                project = make_thermal_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 0.81, "winter" => 0.91),
+            ),
+            (
+                name = "hydro via type column",
+                project = make_hydro_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 0.62, "winter" => 0.66),
+            ),
+            (
+                name = "renewable existing",
+                project = make_renewable_existing_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 0.41, "winter" => 0.27),
+            ),
+            (
+                name = "renewable option marginal_cc=true",
+                project = make_renewable_option_project,
+                marginal_cc = true,
+                expected = Dict("summer" => 0.33, "winter" => 0.19),
+            ),
+            (
+                name = "renewable option marginal_cc=false",
+                project = make_renewable_option_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 0.41, "winter" => 0.27),
+            ),
+            (
+                name = "battery existing",
+                project = make_battery_existing_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 0.73, "winter" => 0.65),
+            ),
+            (
+                name = "battery option marginal_cc=true",
+                project = make_battery_option_project,
+                marginal_cc = true,
+                expected = Dict("summer" => 0.69, "winter" => 0.58),
+            ),
+            (
+                name = "battery option marginal_cc=false",
+                project = make_battery_option_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 0.73, "winter" => 0.65),
+            ),
+        ]
 
-            @test get_derating(prod, scenario, "summer") == 0.85
-            @test get_derating(prod, scenario, "winter") == 0.92
+        for tc in cases
+            @testset tc.name begin
+                mktempdir() do dir
+                    install_derating_fixture!(dir; derating_file = "derating_dict_seasonal.csv")
+
+                    prod = make_capacity_product()
+                    project = tc.project([prod])
+                    EMISAgentSimulation.update_derating_factor!(project, dir, scenario, tc.marginal_cc)
+
+                    @test get_derating(prod, scenario, "summer") == tc.expected["summer"]
+                    @test get_derating(prod, scenario, "winter") == tc.expected["winter"]
+                end
+            end
         end
     end
 
-    @testset "annual mode — single row, no 'season' column, defaults to key 'annual'" begin
-        mktempdir() do dir
-            derating_dir = joinpath(dir, "markets_data", "derating_data", scenario)
-            mkpath(derating_dir)
-            CSV.write(joinpath(derating_dir, "derating_dict.csv"), DataFrame("CCGT" => [0.88]))
+    @testset "seasonal mode — cc_scalar multiplication is applied per season" begin
+        cases = [
+            (
+                name = "thermal scalar",
+                project = make_thermal_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 1.0125, "winter" => 1.1375),
+            ),
+            (
+                name = "renewable existing scalar",
+                project = make_renewable_existing_project,
+                marginal_cc = false,
+                expected = Dict("summer" => 0.615, "winter" => 0.405),
+            ),
+            (
+                name = "battery option scalar",
+                project = make_battery_option_project,
+                marginal_cc = true,
+                expected = Dict("summer" => 0.759, "winter" => 0.638),
+            ),
+        ]
 
-            prod = make_capacity_product()
-            project = make_thermal_project([prod])
+        for tc in cases
+            @testset tc.name begin
+                mktempdir() do dir
+                    install_derating_fixture!(
+                        dir;
+                        derating_file = "derating_dict_seasonal.csv",
+                        scalar_file = "cc_scalar.csv",
+                    )
 
-            EMISAgentSimulation.update_derating_factor!(project, dir, scenario, 1.0, true)
+                    prod = make_capacity_product()
+                    project = tc.project([prod])
+                    EMISAgentSimulation.update_derating_factor!(project, dir, scenario, tc.marginal_cc)
 
-            @test get_derating(prod, scenario, "annual") == 0.88
+                    @test get_derating(prod, scenario, "summer") ≈ tc.expected["summer"]
+                    @test get_derating(prod, scenario, "winter") ≈ tc.expected["winter"]
+                end
+            end
+        end
+    end
+
+    @testset "annual mode — single-row derating assigns only the annual key" begin
+        cases = [
+            (
+                name = "thermal annual fallback",
+                project = make_thermal_project,
+                marginal_cc = false,
+                expected = 0.88,
+            ),
+            (
+                name = "renewable annual fallback",
+                project = make_renewable_existing_project,
+                marginal_cc = false,
+                expected = 0.51,
+            ),
+            (
+                name = "battery annual fallback",
+                project = make_battery_existing_project,
+                marginal_cc = false,
+                expected = 0.67,
+            ),
+        ]
+
+        for tc in cases
+            @testset tc.name begin
+                mktempdir() do dir
+                    install_derating_fixture!(dir; derating_file = "derating_dict_annual.csv")
+
+                    prod = make_capacity_product()
+                    project = tc.project([prod])
+                    EMISAgentSimulation.update_derating_factor!(project, dir, scenario, tc.marginal_cc)
+
+                    # In annual mode, only the annual season key should be assigned.
+                    @test get_derating(prod, scenario, "annual") == tc.expected
+                    @test_throws KeyError get_derating(prod, scenario, "summer")
+                end
+            end
+        end
+    end
+
+    @testset "seasonal mode — missing required derating columns throw" begin
+        @testset "renewable option with marginal_cc=true requires new_ column" begin
+            mktempdir() do dir
+                install_derating_fixture!(dir; derating_file = "derating_dict_missing_new_wind.csv")
+
+                prod = make_capacity_product()
+                project = make_renewable_option_project([prod])
+                @test_throws Exception EMISAgentSimulation.update_derating_factor!(project, dir, scenario, true)
+            end
+        end
+
+        @testset "battery option with marginal_cc=true requires new_STOR_N column" begin
+            mktempdir() do dir
+                install_derating_fixture!(dir; derating_file = "derating_dict_missing_new_stor2.csv")
+
+                prod = make_capacity_product()
+                project = make_battery_option_project([prod])
+                @test_throws Exception EMISAgentSimulation.update_derating_factor!(project, dir, scenario, true)
+            end
         end
     end
 end
