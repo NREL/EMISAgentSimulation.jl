@@ -133,7 +133,7 @@ This function returns the project's derating factor to be passed to CEM and capa
 Returns 0 if there is no capacity market participation.
 """
 function get_project_derating(project::P, scenario::String) where P <: Project{<: BuildPhase}
-    derating_factor = 0.
+    derating_factor = Dict{String, Float64}()
     for product in get_products(project)
         derating_temp = get_derating(product)
         if !isnothing(derating_temp)
