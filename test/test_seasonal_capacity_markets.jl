@@ -546,7 +546,7 @@ end
         ]
 
         for tc in cases
-            @testset tc.name begin
+            @testset "$(tc.name)" begin
                 mktempdir() do dir
                     install_derating_fixture!(dir; derating_file = "derating_dict_seasonal.csv")
 
@@ -584,7 +584,7 @@ end
         ]
 
         for tc in cases
-            @testset tc.name begin
+            @testset "$(tc.name)" begin
                 mktempdir() do dir
                     install_derating_fixture!(
                         dir;
@@ -626,7 +626,7 @@ end
         ]
 
         for tc in cases
-            @testset tc.name begin
+            @testset "$(tc.name)" begin
                 mktempdir() do dir
                     install_derating_fixture!(dir; derating_file = "derating_dict_annual.csv")
 

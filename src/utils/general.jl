@@ -397,7 +397,7 @@ end
 Builds an integer month vector from net-load data.
 Uses the explicit `Month` column in the net-load CSV schema.
 """
-function derive_month_vector(load_n_vg_data::DataFrame)
+function derive_month_vector(load_n_vg_data::DataFrames.DataFrame)
     month_col = findfirst(x -> lowercase(String(x)) == "month", names(load_n_vg_data))
     if !isnothing(month_col)
         return Int64[parse_month_value(v) for v in load_n_vg_data[!, month_col]]
