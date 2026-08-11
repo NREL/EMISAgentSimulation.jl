@@ -1089,3 +1089,86 @@ end
         end
     end
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 4e — realized-data seasonal HDF5 helpers (save/load round-trip)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Exercises the actual Phase 4e helpers wired into save_realized_market_data /
+# load_realized_market_data, rather than re-implementing the nesting in the test.
+
+@testset "Phase 4e — seasonal realized capacity persistence helpers" begin
+    @testset "save/load_capacity_price_seasonal round-trips a season->AxisArray Dict" begin
+        tmpfile = tempname() * ".h5"
+        try
+            price_summer = AxisArrays.AxisArray(reshape([12.0], 1), [1])
+            price_winter = AxisArrays.AxisArray(reshape([25.0], 1), [1])
+            capacity_price = Dict("summer" => price_summer, "winter" => price_winter)
+
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_capacity_price_seasonal!(
+                    HDF5.create_group(f, "capacity_price"), capacity_price)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_price_seasonal(f["capacity_price"])
+            end
+
+            @test Set(keys(loaded)) == Set(["summer", "winter"])
+            @test loaded["summer"][1] == 12.0
+            @test loaded["winter"][1] == 25.0
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "save/load_capacity_bids_seasonal round-trips a season->name->fraction Dict" begin
+        tmpfile = tempname() * ".h5"
+        try
+            bids = Dict(
+                "summer" => Dict("Gen1" => 1.0, "Gen2" => 0.5),
+                "winter" => Dict("Gen1" => 0.25),
+            )
+
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_capacity_bids_seasonal!(
+                    HDF5.create_group(f, "capacity_accepted_bids"), bids)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_bids_seasonal(f["capacity_accepted_bids"])
+            end
+
+            @test Set(keys(loaded)) == Set(["summer", "winter"])
+            @test loaded["summer"]["Gen1"] == 1.0
+            @test loaded["summer"]["Gen2"] == 0.5
+            @test loaded["winter"]["Gen1"] == 0.25
+            @test !haskey(loaded["winter"], "Gen2")
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "annual mode round-trips a single-season Dict" begin
+        tmpfile = tempname() * ".h5"
+        try
+            capacity_price = Dict("annual" => AxisArrays.AxisArray(reshape([30.0], 1), [1]))
+            bids = Dict("annual" => Dict("Gen1" => 0.8))
+
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_capacity_price_seasonal!(
+                    HDF5.create_group(f, "capacity_price"), capacity_price)
+                EMISAgentSimulation.save_capacity_bids_seasonal!(
+                    HDF5.create_group(f, "capacity_accepted_bids"), bids)
+            end
+            price_loaded, bids_loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_price_seasonal(f["capacity_price"]),
+                EMISAgentSimulation.load_capacity_bids_seasonal(f["capacity_accepted_bids"])
+            end
+
+            @test collect(keys(price_loaded)) == ["annual"]
+            @test price_loaded["annual"][1] == 30.0
+            @test bids_loaded["annual"]["Gen1"] == 0.8
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+end
