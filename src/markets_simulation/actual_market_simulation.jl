@@ -250,14 +250,17 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
     set_capacity_price!(market_prices, "realized", capacity_price_dict)
 
-    # Phase 4b/4d/4e boundary: downstream realized-profit (`realized_profits_calculator.jl`)
-    # and HDF5 save (`save_realized_market_data`) still consume a single un-seasoned
-    # `capacity_price::AxisArray` / `capacity_accepted_bids::Dict{String, Float64}`.
+    # Phase 4d: realized-profit (`realized_profits_calculator.jl`) now consumes the full
+    # season-keyed accepted-bids dict (season -> name -> fraction), so pass it through directly.
+    capacity_accepted_bids = capacity_accepted_bids_dict
+
+    # Phase 4e boundary: `save_realized_market_data` still writes single un-seasoned
+    # `capacity_price::AxisArray` and `capacity_accepted_bids::Dict{String,Float64}`.
     # Bridge on the representative season ("annual" when present, else the first season)
-    # so this phase stays compiling until Phase 4d/4e generalize those consumers.
+    # until Phase 4e generalizes the HDF5 writer.
     representative_season = haskey(capacity_price_dict, "annual") ? "annual" : first(seasons)
     capacity_price = capacity_price_dict[representative_season]
-    capacity_accepted_bids = capacity_accepted_bids_dict[representative_season]
+    capacity_accepted_bids_flat = capacity_accepted_bids_dict[representative_season]
 
     ######### REC market clearing ############################################################################
 
@@ -350,7 +353,7 @@ function create_realized_marketdata(simulation::AgentSimulation,
         rec_price, inertia_price,
         capacity_factors_md, capacity_factors_uc, capacity_factors_ed,
         reserve_perc_md, reserve_perc_uc, reserve_perc_ed,
-        capacity_accepted_bids, rec_accepted_bids,
+        capacity_accepted_bids_flat, rec_accepted_bids,
         inertia_perc, start_up_costs, shut_down_costs,
         energy_voll, energy_voll_uc, energy_voll_md,
         reserve_voll, reserve_voll_uc, reserve_voll_md,

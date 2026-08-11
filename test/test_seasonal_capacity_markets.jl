@@ -948,6 +948,105 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase 4d — realized_profits_calculator.jl: calculate_realized_profit sums over seasons
+# ─────────────────────────────────────────────────────────────────────────────
+
+@testset "Phase 4d — calculate_realized_profit(::Capacity) sums over seasons" begin
+    scenario = "scenario_1"
+
+    # Empty per-product/reserve inputs the Capacity method ignores but the signature requires.
+    empty_cf   = Dict{String, Array{Float64, 2}}()
+    empty_rp   = Dict{String, Dict{String, Array{Float64, 2}}}()
+    empty_ip   = Dict{String, Array{Float64, 2}}()
+    rec_bids   = Dict{String, Float64}()
+    hour_w     = Dict{String, Dict{Int64, Vector{Float64}}}()
+    rt_prods   = String[]
+
+    function build_market_prices(price_by_season::Dict{String, Float64})
+        mp = MarketPrices(nothing, nothing, nothing, nothing, nothing)
+        season_prices = Dict(
+            s => AxisArrays.AxisArray(reshape([v], 1), [1]) for (s, v) in price_by_season)
+        EMISAgentSimulation.set_capacity_price!(mp, "realized", season_prices)
+        return mp
+    end
+
+    # calculate_realized_profit(::Capacity) positional call with the Phase 4d seasonal
+    # capacity_accepted_bids type (Dict{season => Dict{name => fraction}}).
+    function realized_capacity_profit(project, product, mp, bids;
+                                      iteration_year = 1, capacity_forward_years = 1)
+        return EMISAgentSimulation.calculate_realized_profit(
+            project, product, mp,
+            empty_cf, empty_cf, empty_cf,
+            empty_rp, empty_rp, empty_rp,
+            empty_ip,
+            bids, rec_bids, hour_w,
+            iteration_year, capacity_forward_years,
+            0.0, 60, 60, rt_prods, scenario)
+    end
+
+    @testset "profit is the sum of each season's derating x price x accepted fraction" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "summer", 0.8)
+        EMISAgentSimulation.set_derating!(prod, scenario, "winter", 0.6)
+        project = make_thermal_project([prod])
+        name = get_name(project)
+        size = get_maxcap(project)
+
+        mp = build_market_prices(Dict("summer" => 10.0, "winter" => 20.0))
+        bids = Dict("summer" => Dict(name => 1.0), "winter" => Dict(name => 1.0))
+
+        profit, update_year = realized_capacity_profit(project, prod, mp, bids)
+        # summer: size*0.8*10*1 ; winter: size*0.6*20*1
+        @test profit ≈ size * (0.8 * 10.0 + 0.6 * 20.0)
+        @test update_year == 1   # iteration_year + capacity_forward_years - 1
+    end
+
+    @testset "only seasons where the project cleared contribute" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "summer", 0.8)
+        EMISAgentSimulation.set_derating!(prod, scenario, "winter", 0.6)
+        project = make_thermal_project([prod])
+        name = get_name(project)
+        size = get_maxcap(project)
+
+        mp = build_market_prices(Dict("summer" => 10.0, "winter" => 20.0))
+        # Cleared in winter only (absent from summer bids).
+        bids = Dict("summer" => Dict{String, Float64}(), "winter" => Dict(name => 1.0))
+
+        profit, _ = realized_capacity_profit(project, prod, mp, bids)
+        @test profit ≈ size * (0.6 * 20.0)
+    end
+
+    @testset "returns nothing when the project cleared in no season" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "summer", 0.8)
+        EMISAgentSimulation.set_derating!(prod, scenario, "winter", 0.6)
+        project = make_thermal_project([prod])
+
+        mp = build_market_prices(Dict("summer" => 10.0, "winter" => 20.0))
+        bids = Dict("summer" => Dict{String, Float64}(), "winter" => Dict{String, Float64}())
+
+        profit, update_year = realized_capacity_profit(project, prod, mp, bids)
+        @test isnothing(profit)
+        @test update_year == 1
+    end
+
+    @testset "annual-mode single season reproduces the pre-seasonal scalar profit" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "annual", 0.75)
+        project = make_thermal_project([prod])
+        name = get_name(project)
+        size = get_maxcap(project)
+
+        mp = build_market_prices(Dict("annual" => 40.0))
+        bids = Dict("annual" => Dict(name => 0.5))
+
+        profit, _ = realized_capacity_profit(project, prod, mp, bids)
+        @test profit ≈ size * 0.75 * 40.0 * 0.5
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Phase 3e / 4e — HDF5 season-nesting mechanism for capacity_price
 # ─────────────────────────────────────────────────────────────────────────────
 
