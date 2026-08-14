@@ -35,7 +35,11 @@ end
 
 """
 Initializes the output derating table for annual or seasonal mode.
-In seasonal mode, creates one row per season and keeps existing column schema.
+In seasonal mode, creates one row per season by replicating the template's baseline
+row so that pre-populated values (e.g. thermal/hydro default deratings or other
+constant numeric columns) are preserved. Only the columns that are actually
+recomputed per season are overwritten later; untouched columns retain their
+template baseline instead of being zeroed out.
 """
 function initialize_derating_output(
     derating_template::DataFrame,
@@ -46,19 +50,14 @@ function initialize_derating_output(
         return deepcopy(derating_template)
     end
 
-    derating_factors = DataFrame()
-    derating_factors[!, "season"] = seasons
-    for col in names(derating_template)
-        if col == "season"
-            continue
-        end
-        col_type = Base.nonmissingtype(eltype(derating_template[!, col]))
-        if col_type <: Number
-            derating_factors[!, col] = zeros(Float64, length(seasons))
-        else
-            derating_factors[!, col] = fill(missing, length(seasons))
-        end
+    # Use the template's first row as the baseline for every season, preserving any
+    # pre-populated numeric columns that are not recomputed per season.
+    baseline_row = derating_template[1:1, :]
+    derating_factors = deepcopy(baseline_row)
+    for _ in 2:length(seasons)
+        append!(derating_factors, baseline_row)
     end
+    derating_factors[!, "season"] = seasons
     return derating_factors
 end
 
@@ -135,7 +134,9 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     missing_cols =
         [get_name(g) for g in renewable_existing if !(get_name(g) in load_n_vg_cols)]
     if !isempty(missing_cols)
-        @warn "calculate_derating_data (year=$iteration_year, scenario=$scenario): columns missing from net-load CSV: $missing_cols"
+        # Missing columns mean the net-load dataframe was not written correctly; fail fast
+        # rather than silently producing derating factors from incomplete data.
+        error("calculate_derating_data (year=$iteration_year, scenario=$scenario): columns missing from net-load CSV: $missing_cols. The net-load data was not written properly.")
     end
 
     function calculate_average_storage_cc(
@@ -247,6 +248,42 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         return stor_CC
     end
 
+    # Storage grouping is season-independent (depends only on active_projects), so
+    # compute it once here rather than repeating it for every season. The season-dependent
+    # capacity credit values are still computed inside the season loop below.
+    stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
+    all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
+    all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
+
+    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
+    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
+
+    for battery in all_battery_existing
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        if haskey(existing_storage_duration_dict, stor_duration)
+            push!(existing_storage_duration_dict[stor_duration], battery)
+        else
+            existing_storage_duration_dict[stor_duration] = [battery]
+        end
+    end
+
+    for battery in all_battery_options
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        if haskey(option_storage_duration_dict, stor_duration)
+            push!(option_storage_duration_dict[stor_duration], battery)
+        else
+            option_storage_duration_dict[stor_duration] = [battery]
+        end
+    end
+
+    # Aggregate existing peak reduction per duration (project-only, season-independent).
+    peak_reductions_existing = Dict(
+        sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for
+        sd in keys(existing_storage_duration_dict)
+    )
+
     for season in seasons
         season_month_set = Set(season_months[season])
         # Filter full-year data to the subset of rows that belong to this season.
@@ -353,43 +390,7 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
                 min(sum(load_reduction) / gen_cap / top_hours, 1.0)
         end
 
-        # Storage CC script
-        stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
-        all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
-        all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
-
-        # Define a dictionary to store batteries with their corresponding storage durations
-        existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
-        option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
-
-        # Iterate over each existing battery
-        for battery in all_battery_existing
-            stor_duration =
-                Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-            # @info "Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
-            if haskey(existing_storage_duration_dict, stor_duration)
-                push!(existing_storage_duration_dict[stor_duration], battery)
-            else
-                existing_storage_duration_dict[stor_duration] = [battery]
-            end
-        end
-
-        # Iterate over each option battery
-        for battery in all_battery_options
-            stor_duration =
-                Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-            # @info "Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
-            if haskey(option_storage_duration_dict, stor_duration)
-                push!(option_storage_duration_dict[stor_duration], battery)
-            else
-                option_storage_duration_dict[stor_duration] = [battery]
-            end
-        end
-
-        peak_reductions_existing = Dict(
-            sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for
-            sd in keys(existing_storage_duration_dict)
-        )
+        # Storage CC script (grouping hoisted above; only season-dependent values here)
         init_CC = Dict(
             sd => ("STOR_$sd" in names(derating_factors) ? derating_factors[season_row_index[season], "STOR_$sd"] : 0.0) for
             sd in keys(existing_storage_duration_dict)
@@ -912,8 +913,16 @@ function update_derating_factor!(project::RenewableGenEMIS{Existing},
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
 
-    if !in("existing_$(type_zone_id)", names(derating_data))
-        error("Derating data not found")
+    derating_file = joinpath(
+        simulation_dir,
+        "markets_data",
+        "derating_data",
+        scenario,
+        "derating_dict.csv",
+    )
+    expected_col = "existing_$(type_zone_id)"
+    if !in(expected_col, names(derating_data))
+        error("Derating column '$expected_col' not found for project '$name' (type_zone_id=$type_zone_id) in $derating_file. Available columns: $(names(derating_data)).")
     end
 
     seasonal = "season" in names(derating_data)
@@ -952,9 +961,16 @@ function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
 
+    derating_file = joinpath(
+        simulation_dir,
+        "markets_data",
+        "derating_data",
+        scenario,
+        "derating_dict.csv",
+    )
     col_name = marginal_cc ? "new_$(type_zone_id)" : "existing_$(type_zone_id)"
     if !in(col_name, names(derating_data))
-        error("Derating data not found")
+        error("Derating column '$col_name' not found for project '$name' (type_zone_id=$type_zone_id, marginal_cc=$marginal_cc) in $derating_file. Available columns: $(names(derating_data)).")
     end
 
     seasonal = "season" in names(derating_data)

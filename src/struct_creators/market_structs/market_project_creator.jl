@@ -130,7 +130,11 @@ end
 
 """
 This function returns the project's derating factor to be passed to CEM and capacity market clearing module.
-Returns 0 if there is no capacity market participation.
+
+Returns a `Dict{String, Float64}` mapping season name to derating factor for the given scenario.
+In annual mode the Dict has a single `"annual"` key; in seasonal mode it has one key per season
+(e.g. `"summer"`, `"winter"`). Returns an empty `Dict{String, Float64}()` if the project has no
+capacity market participation (no `Capacity` product).
 """
 function get_project_derating(project::P, scenario::String) where P <: Project{<: BuildPhase}
     derating_factor = Dict{String, Float64}()
