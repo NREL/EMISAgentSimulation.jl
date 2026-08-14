@@ -18,18 +18,34 @@ end
 
 """
 Indexes the rows of `Capacity.csv` (already read into `capacity_mkt_params_all`) by
-season name, using the `season` column as the foreign key into `capacity_seasons.csv`.
+the requested `seasons`, using the `season` column as the foreign key into
+`capacity_seasons.csv` when present.
 
-In annual mode the file has a single row with no `season` column; every requested
-season then maps to that first row.
+The returned dict always covers exactly `seasons`. When a `season` column exists,
+each requested season maps to its matching row; any season without a matching row
+falls back to the first row and emits a warning (this covers both annual mode with
+no explicit `annual` row, and a `Capacity.csv` out of sync with `capacity_seasons.csv`).
+When no `season` column exists, every requested season maps to that first row.
 """
 function index_capacity_params_by_season(capacity_mkt_params_all,
                                          seasons::Vector{String})
+   first_row = capacity_mkt_params_all[1, :]
    if "season" in DataFrames.names(capacity_mkt_params_all)
-      return Dict(String(row["season"]) => row
-                  for row in DataFrames.eachrow(capacity_mkt_params_all))
+      rows_by_season = Dict(String(row["season"]) => row
+                            for row in DataFrames.eachrow(capacity_mkt_params_all))
+      # A requested season with no matching row is expected only for the annual-mode
+      # fallback (toggle off -> seasons == ["annual"] while Capacity.csv still carries
+      # seasonal rows). Any other unmatched season means Capacity.csv is out of sync
+      # with capacity_seasons.csv, so warn before falling back to the first row.
+      for season in seasons
+         haskey(rows_by_season, season) && continue
+         @warn "Season '$season' has no matching row in Capacity.csv's 'season' " *
+               "column; falling back to the first row (season " *
+               "'$(String(first_row["season"]))'). Available Capacity.csv seasons: " *
+               "$(sort(collect(keys(rows_by_season))))."
+      end
+      return Dict(season => get(rows_by_season, season, first_row) for season in seasons)
    else
-      first_row = capacity_mkt_params_all[1, :]
       return Dict(season => first_row for season in seasons)
    end
 end

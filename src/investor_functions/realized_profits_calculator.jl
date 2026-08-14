@@ -325,7 +325,12 @@ function calculate_realized_profit(project::Project,
     profit = 0.0
     cleared_any = false
     for (season, season_price) in capacity_prices
-        season_bids = capacity_accepted_bids[season]
+        if !haskey(capacity_accepted_bids, season)
+            @warn "Season '$season' present in capacity_prices but missing from " *
+                  "capacity_accepted_bids; treating as no accepted bids. This usually " *
+                  "indicates a partially-migrated or hand-edited realized-market file."
+        end
+        season_bids = get(capacity_accepted_bids, season, Dict{String, Float64}())
         if in(project_name, keys(season_bids))
             cleared_any = true
             profit += size *
