@@ -39,5 +39,9 @@ const OBJ_SCALE = 1 # Scale factor to convert objective function values from $ t
 # Reading and writing data
 const SCHEMA_VERSION = 1
 
+# Common input path/file constants
+const MARKETS_DATA_DIRNAME = "markets_data"
+const CAPACITY_SEASONS_FILENAME = "capacity_seasons.csv"
+
 # Capacity credit scalar file name (located at markets_data/derating_data/{scenario}/)
 const CC_SCALAR_FILENAME = "cc_scalar.csv"

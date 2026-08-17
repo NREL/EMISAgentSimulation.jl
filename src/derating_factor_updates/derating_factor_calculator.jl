@@ -11,6 +11,57 @@ function elementwise_ifelse(x, y)
 end
 
 """
+Returns the case-specific capacity season definition file path.
+"""
+function get_capacity_seasons_file(simulation_dir::String)
+    primary = joinpath(simulation_dir, MARKETS_DATA_DIRNAME, CAPACITY_SEASONS_FILENAME)
+    return primary
+end
+
+"""
+Determines whether this run should execute in annual-only mode.
+If `seasonal_capacity_market` is disabled in CaseDefinition, annual mode is forced
+regardless of any season file content.
+"""
+function is_annual_only_seasons(
+    season_months::Dict{String, Vector{Int64}},
+    seasonal_capacity_market::Bool,
+)
+    if !seasonal_capacity_market
+        return true
+    end
+    return length(season_months) == 1 && haskey(season_months, "annual")
+end
+
+"""
+Initializes the output derating table for annual or seasonal mode.
+In seasonal mode, creates one row per season by replicating the template's baseline
+row so that pre-populated values (e.g. thermal/hydro default deratings or other
+constant numeric columns) are preserved. Only the columns that are actually
+recomputed per season are overwritten later; untouched columns retain their
+template baseline instead of being zeroed out.
+"""
+function initialize_derating_output(
+    derating_template::DataFrame,
+    seasons::Vector{String},
+    seasonal_mode::Bool,
+)
+    if !seasonal_mode
+        return deepcopy(derating_template)
+    end
+
+    # Use the template's first row as the baseline for every season, preserving any
+    # pre-populated numeric columns that are not recomputed per season.
+    baseline_row = derating_template[1:1, :]
+    derating_factors = deepcopy(baseline_row)
+    for _ in 2:length(seasons)
+        append!(derating_factors, baseline_row)
+    end
+    derating_factors[!, "season"] = seasons
+    return derating_factors
+end
+
+"""
 Calculates raw (unscaled) capacity credit values for existing and new renewable generation
 and storage using the top-N net-load-hour methodology, then writes them to
 `derating_dict.csv`. Per-type scalars are applied later in `update_derating_factor!`.
@@ -24,6 +75,16 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     timeseries_data_dir::String)
     @info "Calculating derating data using top net load hour methodology - iteration year: $(iteration_year), scenario: $(scenario)"
     cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
+
+    seasons_file = get_capacity_seasons_file(simulation_dir)
+    seasonal_capacity_market = get_seasonal_capacity_market(get_case(simulation))
+    season_months = load_season_months(seasons_file)
+    seasonal_mode = !is_annual_only_seasons(season_months, seasonal_capacity_market)
+    if !seasonal_mode
+        # Keep downstream loops uniform by using a single synthetic annual season.
+        season_months = Dict{String, Vector{Int64}}("annual" => collect(1:12))
+    end
+    seasons = collect(keys(season_months))
 
     renewable_existing =
         filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
@@ -53,28 +114,11 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         read_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
     num_hours = DataFrames.nrow(load_n_vg_data)
-    num_top_hours = cap_mkt_params.num_top_hours[1] * simulation_years
+    base_num_top_hours = cap_mkt_params.num_top_hours[1]
 
-    existing_vg_power = zeros(num_hours)
+    month_vector = derive_month_vector(load_n_vg_data)
 
-    load = vec(sum(Matrix(load_n_vg_data[:, r"load"]); dims = 2))
-
-    load_n_vg_cols = Set(names(load_n_vg_data))
-    missing_cols =
-        [get_name(g) for g in renewable_existing if !(get_name(g) in load_n_vg_cols)]
-    if !isempty(missing_cols)
-        @warn "calculate_derating_data (year=$iteration_year, scenario=$scenario): columns missing from net-load CSV: $missing_cols"
-    end
-    for g in renewable_existing
-        existing_vg_power += load_n_vg_data[!, get_name(g)]
-    end
-
-    net_load_df = load_n_vg_data[:, 1:4]
-    net_load_df[:, "net_load"] = load - existing_vg_power
-
-    net_load_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load"; rev = true))
-
-    derating_factors = read_data(
+    derating_template = read_data(
         joinpath(
             simulation_dir,
             "markets_data",
@@ -83,111 +127,17 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
             "derating_dict.csv",
         ),
     )
+    derating_factors = initialize_derating_output(derating_template, seasons, seasonal_mode)
+    season_row_index = Dict(season => idx for (idx, season) in enumerate(seasons))
 
-    type_zone_max_cap = Dict{String, Float64}()
-    for zone in zones
-        for type in types
-            type_zone_id = "$(type)_$(zone)"
-            type_zone_max_cap[type_zone_id] = 0.0
-            net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] =
-                deepcopy(net_load_df[:, "net_load"])
-            for g in renewable_existing
-                gen_name = get_name(g)
-                tech = get_tech(g)
-                if "$(get_type(tech))_$(get_zone(tech))" == type_zone_id
-                    net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] +=
-                        load_n_vg_data[:, gen_name]
-                    type_zone_max_cap[type_zone_id] += get_maxcap(g)
-                end
-            end
-        end
+    load_n_vg_cols = Set(names(load_n_vg_data))
+    missing_cols =
+        [get_name(g) for g in renewable_existing if !(get_name(g) in load_n_vg_cols)]
+    if !isempty(missing_cols)
+        # Missing columns mean the net-load dataframe was not written correctly; fail fast
+        # rather than silently producing derating factors from incomplete data.
+        error("calculate_derating_data (year=$iteration_year, scenario=$scenario): columns missing from net-load CSV: $missing_cols. The net-load data was not written properly.")
     end
-
-    for zone in zones
-        for type in types
-            type_zone_id = "$(type)_$(zone)"
-            gen_sorted_df = deepcopy(
-                DataFrames.sort(
-                    net_load_df,
-                    "net_load_w/o_existing_$(type_zone_id)";
-                    rev = true,
-                ),
-            )
-
-            load_reduction =
-                gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] -
-                gen_sorted_df[1:num_top_hours, "net_load"]
-            derating_factors[:, "existing_$(type_zone_id)"] .= min(
-                sum(load_reduction) / type_zone_max_cap[type_zone_id] /
-                num_top_hours,
-                1.0,
-            )
-        end
-    end
-
-    for g in renewable_options
-        gen_name = get_name(g)
-        tech = get_tech(g)
-        type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
-        gen_cap = get_maxcap(g)
-
-        net_load_df[:, "net_load_with_$(gen_name)"] = deepcopy(
-            net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * gen_cap,
-        )
-        gen_sorted_df =
-            deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)"; rev = true))
-
-        load_reduction =
-            net_load_sorted_df[1:num_top_hours, "net_load"] -
-            gen_sorted_df[1:num_top_hours, "net_load_with_$(gen_name)"]
-
-        derating_factors[:, "new_$(type_zone_id)"] .=
-            min(sum(load_reduction) / gen_cap / num_top_hours, 1.0)
-    end
-
-    # Storage CC script
-    stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
-    all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
-    all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
-
-    # Define a dictionary to store batteries with their corresponding storage durations
-    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
-    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
-
-    # Iterate over each existing battery
-    for battery in all_battery_existing
-        stor_duration =
-            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-        # @info "Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
-        if haskey(existing_storage_duration_dict, stor_duration)
-            push!(existing_storage_duration_dict[stor_duration], battery)
-        else
-            existing_storage_duration_dict[stor_duration] = [battery]
-        end
-    end
-
-    # Iterate over each option battery
-    for battery in all_battery_options
-        stor_duration =
-            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-        # @info "Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
-        if haskey(option_storage_duration_dict, stor_duration)
-            push!(option_storage_duration_dict[stor_duration], battery)
-        else
-            option_storage_duration_dict[stor_duration] = [battery]
-        end
-    end
-
-    peak_reductions_existing = Dict(
-        sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for
-        sd in keys(existing_storage_duration_dict)
-    )
-    init_CC = Dict(
-        sd => derating_factors[1, "STOR_$sd"] for
-        sd in keys(existing_storage_duration_dict)
-    )
-    # @info "initial CC is $(init_CC)"
-    # @info "peak reductions is $(peak_reductions_existing)"
 
     function calculate_average_storage_cc(
         stor_duration::Int64,
@@ -298,56 +248,209 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         return stor_CC
     end
 
-    for (stor_duration, battery_existing) in existing_storage_duration_dict
-        efficiencies = get_efficiency.(get_tech.(battery_existing))
-        average_efficiency =
-            (
-                mean([eff.in for eff in efficiencies]) +
-                mean([eff.out for eff in efficiencies])
-            ) / 2
+    # Storage grouping is season-independent (depends only on active_projects), so
+    # compute it once here rather than repeating it for every season. The season-dependent
+    # capacity credit values are still computed inside the season loop below.
+    stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
+    all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
+    all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
 
-        stor_CC = calculate_average_storage_cc(
-            stor_duration,
-            peak_reductions_existing,
-            init_CC,
-            average_efficiency,
-            net_load_df,
-            num_hours,
-            stor_buffer_minutes,
-        )
+    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
+    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
 
-        derating_factors[:, "existing_STOR_$(stor_duration)"] .= stor_CC
+    for battery in all_battery_existing
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        if haskey(existing_storage_duration_dict, stor_duration)
+            push!(existing_storage_duration_dict[stor_duration], battery)
+        else
+            existing_storage_duration_dict[stor_duration] = [battery]
+        end
     end
 
-    if marginal_cc
-        for (stor_duration, battery_option) in option_storage_duration_dict
-            efficiencies = get_efficiency.(get_tech.(battery_option))
+    for battery in all_battery_options
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        if haskey(option_storage_duration_dict, stor_duration)
+            push!(option_storage_duration_dict[stor_duration], battery)
+        else
+            option_storage_duration_dict[stor_duration] = [battery]
+        end
+    end
+
+    # Aggregate existing peak reduction per duration (project-only, season-independent).
+    peak_reductions_existing = Dict(
+        sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for
+        sd in keys(existing_storage_duration_dict)
+    )
+
+    for season in seasons
+        season_month_set = Set(season_months[season])
+        # Filter full-year data to the subset of rows that belong to this season.
+        season_mask = map(m -> m in season_month_set, month_vector)
+        season_hours = count(season_mask)
+        if season_hours == 0
+            @warn "No rows found for season '$season' while calculating derating factors."
+            continue
+        end
+
+        season_num_top_hours =
+            seasonal_mode ? max(1, Int(round(base_num_top_hours * simulation_years * length(season_months[season]) / 12))) :
+            Int(base_num_top_hours * simulation_years)
+
+        season_load_n_vg_data = load_n_vg_data[season_mask, :]
+        season_availability_data = availability_data[season_mask, :]
+
+        existing_vg_power = zeros(season_hours)
+        load = vec(sum(Matrix(season_load_n_vg_data[:, r"load"]); dims = 2))
+        for g in renewable_existing
+            existing_vg_power += season_load_n_vg_data[!, get_name(g)]
+        end
+
+        net_load_df = season_load_n_vg_data[:, 1:4]
+        net_load_df[:, "net_load"] = load - existing_vg_power
+        net_load_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load"; rev = true))
+
+        type_zone_max_cap = Dict{String, Float64}()
+        for zone in zones
+            for type in types
+                type_zone_id = "$(type)_$(zone)"
+                type_zone_max_cap[type_zone_id] = 0.0
+                net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] =
+                    deepcopy(net_load_df[:, "net_load"])
+                for g in renewable_existing
+                    gen_name = get_name(g)
+                    tech = get_tech(g)
+                    if "$(get_type(tech))_$(get_zone(tech))" == type_zone_id
+                        net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] +=
+                            season_load_n_vg_data[:, gen_name]
+                        type_zone_max_cap[type_zone_id] += get_maxcap(g)
+                    end
+                end
+            end
+        end
+
+        for zone in zones
+            for type in types
+                type_zone_id = "$(type)_$(zone)"
+                if type_zone_max_cap[type_zone_id] <= 0
+                    continue
+                end
+
+                gen_sorted_df = deepcopy(
+                    DataFrames.sort(
+                        net_load_df,
+                        "net_load_w/o_existing_$(type_zone_id)";
+                        rev = true,
+                    ),
+                )
+
+                top_hours = min(season_num_top_hours, DataFrames.nrow(gen_sorted_df))
+                if top_hours == 0
+                    continue
+                end
+
+                load_reduction =
+                    gen_sorted_df[1:top_hours, "net_load_w/o_existing_$(type_zone_id)"] -
+                    gen_sorted_df[1:top_hours, "net_load"]
+                derating_factors[season_row_index[season], "existing_$(type_zone_id)"] = min(
+                    sum(load_reduction) / type_zone_max_cap[type_zone_id] /
+                    top_hours,
+                    1.0,
+                )
+            end
+        end
+
+        for g in renewable_options
+            gen_name = get_name(g)
+            tech = get_tech(g)
+            type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
+            gen_cap = get_maxcap(g)
+            if !(type_zone_id in names(season_availability_data))
+                @warn "Availability data missing column $(type_zone_id) for new renewable option derating."
+                continue
+            end
+
+            net_load_df[:, "net_load_with_$(gen_name)"] = deepcopy(
+                net_load_df[:, "net_load"] -
+                season_availability_data[:, "$(type_zone_id)"] * gen_cap,
+            )
+            gen_sorted_df =
+                deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)"; rev = true))
+            top_hours = min(season_num_top_hours, DataFrames.nrow(gen_sorted_df))
+            if top_hours == 0
+                continue
+            end
+
+            load_reduction =
+                net_load_sorted_df[1:top_hours, "net_load"] -
+                gen_sorted_df[1:top_hours, "net_load_with_$(gen_name)"]
+
+            derating_factors[season_row_index[season], "new_$(type_zone_id)"] =
+                min(sum(load_reduction) / gen_cap / top_hours, 1.0)
+        end
+
+        # Storage CC script (grouping hoisted above; only season-dependent values here)
+        init_CC = Dict(
+            sd => ("STOR_$sd" in names(derating_factors) ? derating_factors[season_row_index[season], "STOR_$sd"] : 0.0) for
+            sd in keys(existing_storage_duration_dict)
+        )
+        season_num_hours = DataFrames.nrow(net_load_df)
+
+        for (stor_duration, battery_existing) in existing_storage_duration_dict
+            efficiencies = get_efficiency.(get_tech.(battery_existing))
             average_efficiency =
                 (
                     mean([eff.in for eff in efficiencies]) +
                     mean([eff.out for eff in efficiencies])
                 ) / 2
-            peak_reduction_new = sum(get_maxcap.(battery_option))
-            stor_CC = calculate_marginal_storage_cc(
+
+            stor_CC = calculate_average_storage_cc(
                 stor_duration,
                 peak_reductions_existing,
-                peak_reduction_new,
                 init_CC,
                 average_efficiency,
                 net_load_df,
-                num_hours,
+                season_num_hours,
                 stor_buffer_minutes,
             )
-            derating_factors[:, "new_STOR_$(stor_duration)"] .= stor_CC
+
+            derating_factors[season_row_index[season], "existing_STOR_$(stor_duration)"] =
+                stor_CC
         end
-    else
-        for (stor_duration, battery_option) in option_storage_duration_dict
-            if "existing_STOR_$(stor_duration)" in names(derating_factors)
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=
-                    derating_factors[:, "existing_STOR_$(stor_duration)"]
-            else
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=
-                    derating_factors[:, "STOR_$(stor_duration)"]
+
+        if marginal_cc
+            for (stor_duration, battery_option) in option_storage_duration_dict
+                efficiencies = get_efficiency.(get_tech.(battery_option))
+                average_efficiency =
+                    (
+                        mean([eff.in for eff in efficiencies]) +
+                        mean([eff.out for eff in efficiencies])
+                    ) / 2
+                peak_reduction_new = sum(get_maxcap.(battery_option))
+                stor_CC = calculate_marginal_storage_cc(
+                    stor_duration,
+                    peak_reductions_existing,
+                    peak_reduction_new,
+                    init_CC,
+                    average_efficiency,
+                    net_load_df,
+                    season_num_hours,
+                    stor_buffer_minutes,
+                )
+                derating_factors[season_row_index[season], "new_STOR_$(stor_duration)"] =
+                    stor_CC
+            end
+
+        else
+            for (stor_duration, battery_option) in option_storage_duration_dict
+                if "existing_STOR_$(stor_duration)" in names(derating_factors)
+                    derating_factors[season_row_index[season], "new_STOR_$(stor_duration)"] =
+                        derating_factors[season_row_index[season], "existing_STOR_$(stor_duration)"]
+                else
+                    derating_factors[season_row_index[season], "new_STOR_$(stor_duration)"] =
+                        derating_factors[season_row_index[season], "STOR_$(stor_duration)"]
+                end
             end
         end
     end
@@ -774,13 +877,15 @@ function update_derating_factor!(
             "derating_dict.csv",
         ),
     )
-    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
-    # eachrow(derating_data), reading row["season"] when the "season" column is present
-    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
-    derating_factor = derating_data[1, get_type(get_tech(project))]
+    seasonal = "season" in names(derating_data)
+    type_key = get_type(get_tech(project))
     scalar = read_cc_scalar(simulation_dir, scenario, get_type(get_tech(project)))
-    for product in get_products(project)
-        set_derating!(product, scenario, "annual", derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[type_key]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
     return
 end
@@ -808,18 +913,26 @@ function update_derating_factor!(project::RenewableGenEMIS{Existing},
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
 
-    if in("existing_$(type_zone_id)", names(derating_data))
-        derating_factor = derating_data[1, "existing_$(type_zone_id)"]
-    else
-        error("Derating data not found")
+    derating_file = joinpath(
+        simulation_dir,
+        "markets_data",
+        "derating_data",
+        scenario,
+        "derating_dict.csv",
+    )
+    expected_col = "existing_$(type_zone_id)"
+    if !in(expected_col, names(derating_data))
+        error("Derating column '$expected_col' not found for project '$name' (type_zone_id=$type_zone_id) in $derating_file. Available columns: $(names(derating_data)).")
     end
 
-    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
-    # eachrow(derating_data), reading row["season"] when the "season" column is present
-    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
+    seasonal = "season" in names(derating_data)
     scalar = read_cc_scalar(simulation_dir, scenario, get_type(tech))
-    for product in get_products(project)
-        set_derating!(product, scenario, "annual", derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row["existing_$(type_zone_id)"]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
 
     return
@@ -848,25 +961,26 @@ function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
 
-    if marginal_cc
-        if in("new_$(type_zone_id)", names(derating_data))
-            derating_factor = derating_data[1, "new_$(type_zone_id)"]
-        else
-            error("Derating data not found")
-        end
-    else
-        if in("existing_$(type_zone_id)", names(derating_data))
-            derating_factor = derating_data[1, "existing_$(type_zone_id)"]
-        else
-            error("Derating data not found")
-        end
+    derating_file = joinpath(
+        simulation_dir,
+        "markets_data",
+        "derating_data",
+        scenario,
+        "derating_dict.csv",
+    )
+    col_name = marginal_cc ? "new_$(type_zone_id)" : "existing_$(type_zone_id)"
+    if !in(col_name, names(derating_data))
+        error("Derating column '$col_name' not found for project '$name' (type_zone_id=$type_zone_id, marginal_cc=$marginal_cc) in $derating_file. Available columns: $(names(derating_data)).")
     end
 
-    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
-    # eachrow(derating_data), reading row["season"] when the "season" column is present
-    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
-    for product in get_products(project)
-        set_derating!(product, scenario, "annual", derating_factor * scalar)
+    seasonal = "season" in names(derating_data)
+    scalar = read_cc_scalar(simulation_dir, scenario, get_type(tech))
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[col_name]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
 
     return
@@ -899,13 +1013,14 @@ function update_derating_factor!(project::BatteryEMIS{Existing},
         ),
     )
 
-    derating_factor = derating_data[1, project_type]
+    seasonal = "season" in names(derating_data)
     scalar = read_cc_scalar(simulation_dir, scenario, "STOR_$(duration)")
-    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
-    # eachrow(derating_data), reading row["season"] when the "season" column is present
-    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
-    for product in get_products(project)
-        set_derating!(product, scenario, "annual", derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[project_type]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
     return
 end
@@ -941,13 +1056,14 @@ function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
             "derating_dict.csv",
         ),
     )
-    derating_factor = derating_data[1, project_type]
+    seasonal = "season" in names(derating_data)
     scalar = read_cc_scalar(simulation_dir, scenario, "STOR_$(duration)")
-    # TODO Phase 2: replace single-row read and hardcoded "annual" with a loop over
-    # eachrow(derating_data), reading row["season"] when the "season" column is present
-    # (seasonal mode) and falling back to "annual" when it is absent (annual mode).
-    for product in get_products(project)
-        set_derating!(product, scenario, "annual", derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[project_type]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
     return
 end
