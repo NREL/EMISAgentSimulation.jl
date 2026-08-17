@@ -41,6 +41,7 @@ using CSV
 using HDF5
 import JuMP
 import GLPK
+import HiGHS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Shared fixtures
@@ -823,6 +824,229 @@ end
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Phase 4b — actual_market_simulation.jl seasonal capacity clearing
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The full create_realized_marketdata entry point needs an AgentSimulation + PSY
+# system fixture (deferred to an integration test, per this file's header). These
+# testsets instead exercise the *units we changed* in the capacity section, with
+# simple in-memory mocking:
+#   - create_capacity_demand_curve(::DataFrameRow) — seasonal per-row variant
+#   - the caller's season-row indexing pattern (cap_params_by_season + annual fallback)
+#   - is_annual_only_seasons gating (the toggle that collapses to "annual")
+#   - the per-season supply-build -> clear pipeline that produces one price per season
+
+@testset "Phase 4b — seasonal capacity clearing units" begin
+    scenario = "scenario_1"
+    # capacity_market_clearing builds a quadratic (welfare) objective, so it needs a
+    # QP-capable solver. GLPK (used elsewhere in this file) is LP-only; use HiGHS here.
+    solver = JuMP.optimizer_with_attributes(HiGHS.Optimizer, "output_flag" => false)
+
+    # Two-season market params, distinct demand-curve shapes per season.
+    cap_params_df = DataFrame(
+        "season"               => ["summer", "winter"],
+        "introduction_year"    => [2020, 2020],
+        "discontinuation_year" => [2050, 2050],
+        "IRM"                  => [0.15, 0.17],
+        "EFORd"                => [0.08, 0.10],
+        "IRM perc points"      => ["0.02;0.04", "0.02;0.04"],
+        "Net CONE per day"     => [40.0, 45.0],
+        "Net CONE perc points" => ["1.0;0.75", "1.0;0.75"],
+        "Gross CONE per day"   => [55.0, 60.0],
+        "Max Clear"            => [1.2, 1.2],
+    )
+
+    @testset "create_capacity_demand_curve(::DataFrameRow) yields season-specific curves" begin
+        summer_curve = EMISAgentSimulation.create_capacity_demand_curve(
+            cap_params_df[1, :], 1000.0, 1.0, 0.0, true)
+        winter_curve = EMISAgentSimulation.create_capacity_demand_curve(
+            cap_params_df[2, :], 1000.0, 1.0, 0.0, true)
+
+        @test summer_curve isa CapacityMarket
+        @test winter_curve isa CapacityMarket
+        # Winter has higher IRM + Net CONE -> a distinct demand curve from summer.
+        @test summer_curve.price_points != winter_curve.price_points
+    end
+
+    @testset "index_capacity_params_by_season keys rows by the season column" begin
+        cap_params_by_season =
+            EMISAgentSimulation.index_capacity_params_by_season(cap_params_df, ["summer", "winter"])
+        @test Set(keys(cap_params_by_season)) == Set(["summer", "winter"])
+        @test cap_params_by_season["winter"]["Net CONE per day"] == 45.0
+        @test cap_params_by_season["summer"]["Net CONE per day"] == 40.0
+    end
+
+    @testset "index_capacity_params_by_season falls back to row 1 when no season column" begin
+        annual_df = DataFrame(
+            "introduction_year"    => [2020],
+            "discontinuation_year" => [2050],
+            "IRM"                  => [0.15],
+            "EFORd"                => [0.08],
+            "IRM perc points"      => ["0.02;0.04"],
+            "Net CONE per day"     => [40.0],
+            "Net CONE perc points" => ["1.0;0.75"],
+            "Gross CONE per day"   => [55.0],
+            "Max Clear"            => [1.2],
+        )
+        cap_params_by_season =
+            EMISAgentSimulation.index_capacity_params_by_season(annual_df, ["annual"])
+        @test collect(keys(cap_params_by_season)) == ["annual"]
+        @test cap_params_by_season["annual"]["Net CONE per day"] == 40.0
+    end
+
+    @testset "resolve_capacity_seasons collapses to annual per the toggle / definition" begin
+        seasonal_months = Dict("summer" => collect(5:9),
+                               "winter" => vcat(collect(1:4), collect(10:12)))
+        annual_months = Dict("annual" => collect(1:12))
+
+        # Toggle OFF -> always annual, regardless of file content.
+        @test EMISAgentSimulation.resolve_capacity_seasons(seasonal_months, false) == ["annual"]
+        # Toggle ON with a real 2-season definition -> both seasons.
+        @test Set(EMISAgentSimulation.resolve_capacity_seasons(seasonal_months, true)) ==
+              Set(["summer", "winter"])
+        # Toggle ON but only an annual row -> still annual.
+        @test EMISAgentSimulation.resolve_capacity_seasons(annual_months, true) == ["annual"]
+    end
+
+    @testset "per-season pipeline: supply build (Phase 4a) -> clear yields one price per season" begin
+        # Same project, different seasonal derating -> the season loop must clear
+        # each season independently and produce a season-keyed price dict. Uses the
+        # real caller helper to index params, so this exercises the production path.
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "summer", 0.9)
+        EMISAgentSimulation.set_derating!(prod, scenario, "winter", 0.5)
+        project = make_thermal_project([prod])
+
+        seasons = EMISAgentSimulation.resolve_capacity_seasons(
+            Dict("summer" => collect(5:9), "winter" => vcat(collect(1:4), collect(10:12))), true)
+        cap_params_by_season =
+            EMISAgentSimulation.index_capacity_params_by_season(cap_params_df, seasons)
+
+        capacity_price_dict = Dict{String, AxisArrays.AxisArray{Float64, 1}}()
+        capacity_accepted_bids_dict = Dict{String, Dict{String, Float64}}()
+
+        for season in seasons
+            supply_curve = Vector{Union{String, Float64}}[]
+            for p in get_products(project)
+                supply_curve = EMISAgentSimulation.update_capacity_supply_curve!(
+                    supply_curve, p, project, scenario, season)
+            end
+            sort!(supply_curve; by = x -> x[3])
+
+            demand_curve = EMISAgentSimulation.create_capacity_demand_curve(
+                cap_params_by_season[season], 1000.0, 1.0, 0.0, true)
+
+            capacity_price_dict[season], capacity_accepted_bids_dict[season] =
+                EMISAgentSimulation.capacity_market_clearing(demand_curve, supply_curve, solver)
+        end
+
+        # One price per season, and the Phase 4a seasonal derating flowed into supply [4].
+        @test Set(keys(capacity_price_dict)) == Set(["summer", "winter"])
+        @test length(capacity_price_dict["summer"]) == 1
+        @test haskey(capacity_accepted_bids_dict["summer"], get_name(project))
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 4d — realized_profits_calculator.jl: calculate_realized_profit sums over seasons
+# ─────────────────────────────────────────────────────────────────────────────
+
+@testset "Phase 4d — calculate_realized_profit(::Capacity) sums over seasons" begin
+    scenario = "scenario_1"
+
+    # Empty per-product/reserve inputs the Capacity method ignores but the signature requires.
+    empty_cf   = Dict{String, Array{Float64, 2}}()
+    empty_rp   = Dict{String, Dict{String, Array{Float64, 2}}}()
+    empty_ip   = Dict{String, Array{Float64, 2}}()
+    rec_bids   = Dict{String, Float64}()
+    hour_w     = Dict{String, Dict{Int64, Vector{Float64}}}()
+    rt_prods   = String[]
+
+    function build_market_prices(price_by_season::Dict{String, Float64})
+        mp = MarketPrices(nothing, nothing, nothing, nothing, nothing)
+        season_prices = Dict(
+            s => AxisArrays.AxisArray(reshape([v], 1), [1]) for (s, v) in price_by_season)
+        EMISAgentSimulation.set_capacity_price!(mp, "realized", season_prices)
+        return mp
+    end
+
+    # calculate_realized_profit(::Capacity) positional call with the Phase 4d seasonal
+    # capacity_accepted_bids type (Dict{season => Dict{name => fraction}}).
+    function realized_capacity_profit(project, product, mp, bids;
+                                      iteration_year = 1, capacity_forward_years = 1)
+        return EMISAgentSimulation.calculate_realized_profit(
+            project, product, mp,
+            empty_cf, empty_cf, empty_cf,
+            empty_rp, empty_rp, empty_rp,
+            empty_ip,
+            bids, rec_bids, hour_w,
+            iteration_year, capacity_forward_years,
+            0.0, 60, 60, rt_prods, scenario)
+    end
+
+    @testset "profit is the sum of each season's derating x price x accepted fraction" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "summer", 0.8)
+        EMISAgentSimulation.set_derating!(prod, scenario, "winter", 0.6)
+        project = make_thermal_project([prod])
+        name = get_name(project)
+        size = get_maxcap(project)
+
+        mp = build_market_prices(Dict("summer" => 10.0, "winter" => 20.0))
+        bids = Dict("summer" => Dict(name => 1.0), "winter" => Dict(name => 1.0))
+
+        profit, update_year = realized_capacity_profit(project, prod, mp, bids)
+        # summer: size*0.8*10*1 ; winter: size*0.6*20*1
+        @test profit ≈ size * (0.8 * 10.0 + 0.6 * 20.0)
+        @test update_year == 1   # iteration_year + capacity_forward_years - 1
+    end
+
+    @testset "only seasons where the project cleared contribute" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "summer", 0.8)
+        EMISAgentSimulation.set_derating!(prod, scenario, "winter", 0.6)
+        project = make_thermal_project([prod])
+        name = get_name(project)
+        size = get_maxcap(project)
+
+        mp = build_market_prices(Dict("summer" => 10.0, "winter" => 20.0))
+        # Cleared in winter only (absent from summer bids).
+        bids = Dict("summer" => Dict{String, Float64}(), "winter" => Dict(name => 1.0))
+
+        profit, _ = realized_capacity_profit(project, prod, mp, bids)
+        @test profit ≈ size * (0.6 * 20.0)
+    end
+
+    @testset "returns nothing when the project cleared in no season" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "summer", 0.8)
+        EMISAgentSimulation.set_derating!(prod, scenario, "winter", 0.6)
+        project = make_thermal_project([prod])
+
+        mp = build_market_prices(Dict("summer" => 10.0, "winter" => 20.0))
+        bids = Dict("summer" => Dict{String, Float64}(), "winter" => Dict{String, Float64}())
+
+        profit, update_year = realized_capacity_profit(project, prod, mp, bids)
+        @test isnothing(profit)
+        @test update_year == 1
+    end
+
+    @testset "annual-mode single season reproduces the pre-seasonal scalar profit" begin
+        prod = make_capacity_product()
+        EMISAgentSimulation.set_derating!(prod, scenario, "annual", 0.75)
+        project = make_thermal_project([prod])
+        name = get_name(project)
+        size = get_maxcap(project)
+
+        mp = build_market_prices(Dict("annual" => 40.0))
+        bids = Dict("annual" => Dict(name => 0.5))
+
+        profit, _ = realized_capacity_profit(project, prod, mp, bids)
+        @test profit ≈ size * 0.75 * 40.0 * 0.5
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Phase 3e / 4e — HDF5 season-nesting mechanism for capacity_price
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -860,6 +1084,89 @@ end
 
             @test collect(loaded["summer"]) == collect(price_summer)
             @test collect(loaded["winter"]) == collect(price_winter)
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 4e — realized-data seasonal HDF5 helpers (save/load round-trip)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Exercises the actual Phase 4e helpers wired into save_realized_market_data /
+# load_realized_market_data, rather than re-implementing the nesting in the test.
+
+@testset "Phase 4e — seasonal realized capacity persistence helpers" begin
+    @testset "save/load_capacity_price_seasonal round-trips a season->AxisArray Dict" begin
+        tmpfile = tempname() * ".h5"
+        try
+            price_summer = AxisArrays.AxisArray(reshape([12.0], 1), [1])
+            price_winter = AxisArrays.AxisArray(reshape([25.0], 1), [1])
+            capacity_price = Dict("summer" => price_summer, "winter" => price_winter)
+
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_capacity_price_seasonal!(
+                    HDF5.create_group(f, "capacity_price"), capacity_price)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_price_seasonal(f["capacity_price"])
+            end
+
+            @test Set(keys(loaded)) == Set(["summer", "winter"])
+            @test loaded["summer"][1] == 12.0
+            @test loaded["winter"][1] == 25.0
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "save/load_capacity_bids_seasonal round-trips a season->name->fraction Dict" begin
+        tmpfile = tempname() * ".h5"
+        try
+            bids = Dict(
+                "summer" => Dict("Gen1" => 1.0, "Gen2" => 0.5),
+                "winter" => Dict("Gen1" => 0.25),
+            )
+
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_capacity_bids_seasonal!(
+                    HDF5.create_group(f, "capacity_accepted_bids"), bids)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_bids_seasonal(f["capacity_accepted_bids"])
+            end
+
+            @test Set(keys(loaded)) == Set(["summer", "winter"])
+            @test loaded["summer"]["Gen1"] == 1.0
+            @test loaded["summer"]["Gen2"] == 0.5
+            @test loaded["winter"]["Gen1"] == 0.25
+            @test !haskey(loaded["winter"], "Gen2")
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "annual mode round-trips a single-season Dict" begin
+        tmpfile = tempname() * ".h5"
+        try
+            capacity_price = Dict("annual" => AxisArrays.AxisArray(reshape([30.0], 1), [1]))
+            bids = Dict("annual" => Dict("Gen1" => 0.8))
+
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_capacity_price_seasonal!(
+                    HDF5.create_group(f, "capacity_price"), capacity_price)
+                EMISAgentSimulation.save_capacity_bids_seasonal!(
+                    HDF5.create_group(f, "capacity_accepted_bids"), bids)
+            end
+            price_loaded, bids_loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_price_seasonal(f["capacity_price"]),
+                EMISAgentSimulation.load_capacity_bids_seasonal(f["capacity_accepted_bids"])
+            end
+
+            @test collect(keys(price_loaded)) == ["annual"]
+            @test price_loaded["annual"][1] == 30.0
+            @test bids_loaded["annual"]["Gen1"] == 0.8
         finally
             isfile(tmpfile) && rm(tmpfile)
         end

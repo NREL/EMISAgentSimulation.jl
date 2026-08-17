@@ -182,7 +182,18 @@ function create_realized_marketdata(simulation::AgentSimulation,
     peak_load = get_peak_load(simulation)[pcm_scenario]
     #capacity_annual_increment = load_growth
 
-    capacity_mkt_params = read_data(capacity_mkt_param_file)[1, :]
+    capacity_mkt_params_all = read_data(capacity_mkt_param_file)
+    capacity_mkt_params = capacity_mkt_params_all[1, :]
+
+    # Load canonical season definitions (primary key: name -> months).
+    # Absent file / disabled toggle both degrade to Dict("annual" => 1:12).
+    seasons_file = get_capacity_seasons_file(simulation_dir)
+    season_months = load_season_months(seasons_file)
+    seasonal_capacity_market = get_seasonal_capacity_market(get_case(simulation))
+    seasons = resolve_capacity_seasons(season_months, seasonal_capacity_market)
+
+    # Index Capacity.csv rows by season (foreign key into capacity_seasons.csv).
+    cap_params_by_season = index_capacity_params_by_season(capacity_mkt_params_all, seasons)
 
     introduction_year = capacity_mkt_params["introduction_year"]
     discontinuation_year = capacity_mkt_params["discontinuation_year"]
@@ -192,46 +203,59 @@ function create_realized_marketdata(simulation::AgentSimulation,
 
     #average_load_growth = Statistics.mean(load_growth)
 
-    capacity_supply_curve = Vector{Union{String, Float64}}[]
-
     delta_irm =
         get_delta_irm(get_resource_adequacy(simulation)[pcm_scenario], iteration_year)
     irm_scalar = get_irm_scalar(get_case(simulation))
 
-    for project in capacity_market_projects
-        for product in get_products(project)
-            capacity_supply_curve = update_capacity_supply_curve!(
-                capacity_supply_curve,
-                product,
-                project,
-                pcm_scenario,
-            )
-        end
-    end
-
-    capacity_price = AxisArrays.AxisArray(reshape([0.0], 1), [1])
-    capacity_accepted_bids = Dict("no_accepted_bids" => 0.0)
+    capacity_price_dict = Dict{String, AxisArrays.AxisArray{Float64, 1}}(
+        season => AxisArrays.AxisArray(reshape([0.0], 1), [1]) for season in seasons
+    )
+    capacity_accepted_bids_dict =
+        Dict{String, Dict{String, Float64}}(season => Dict("no_accepted_bids" => 0.0) for season in seasons)
 
     if in(:Capacity, market_names) &&
        iteration_year + capacity_forward_years - 1 <= simulation_years
         #system_peak_load = (1 + average_load_growth) ^ (capacity_forward_years) * peak_load
         system_peak_load = peak_load[iteration_year + capacity_forward_years - 1]
         capacity_active_bool = Bool(capacity_active * capacity_market_bool)
-        capacity_demand_curve = create_capacity_demand_curve(
-            capacity_mkt_param_file,
-            system_peak_load,
-            irm_scalar,
-            delta_irm,
-            capacity_active_bool,
-        )
 
-        sort!(capacity_supply_curve; by = x -> x[3])      # Sort capacity supply curve by capacity bid
+        for season in seasons
+            # Build the season-specific supply curve.
+            seasonal_supply_curve = Vector{Union{String, Float64}}[]
+            for project in capacity_market_projects
+                for product in get_products(project)
+                    seasonal_supply_curve = update_capacity_supply_curve!(
+                        seasonal_supply_curve,
+                        product,
+                        project,
+                        pcm_scenario,
+                        season,
+                    )
+                end
+            end
+            sort!(seasonal_supply_curve; by = x -> x[3])   # Sort by capacity bid
 
-        capacity_price, capacity_accepted_bids =
-            capacity_market_clearing(capacity_demand_curve, capacity_supply_curve, solver)
+            seasonal_demand_curve = create_capacity_demand_curve(
+                cap_params_by_season[season],
+                system_peak_load,
+                irm_scalar,
+                delta_irm,
+                capacity_active_bool,
+            )
+
+            capacity_price_dict[season], capacity_accepted_bids_dict[season] =
+                capacity_market_clearing(seasonal_demand_curve, seasonal_supply_curve, solver)
+        end
     end
 
-    set_capacity_price!(market_prices, "realized", capacity_price)
+    set_capacity_price!(market_prices, "realized", capacity_price_dict)
+
+    # Phase 4d/4e: both the realized-profit consumer and `save_realized_market_data`
+    # now handle the full season-keyed dicts directly.
+    #   capacity_price          :: Dict{season => AxisArray{Float64,1}}
+    #   capacity_accepted_bids  :: Dict{season => Dict{name => fraction}}
+    capacity_price = capacity_price_dict
+    capacity_accepted_bids = capacity_accepted_bids_dict
 
     ######### REC market clearing ############################################################################
 
