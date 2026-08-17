@@ -107,7 +107,7 @@
 #         dir_dict::Dict{String, String},
 #         markets::Dict{Symbol, Bool},
 #         )
-        
+
 #         name = simulation_settings["name"]
 #         siip_market_clearing = EAS.parsebool(simulation_settings["siip_market_clearing"])
 #         pcm_scenario = simulation_settings["pcm_scenario"]
@@ -239,7 +239,6 @@
 #     end
 # end
 
-
 mutable struct CaseDefinition
     name::String
     base_dir::String
@@ -272,7 +271,6 @@ mutable struct CaseDefinition
     accreditation_methodology::String
     accreditation_metric::String
     marginal_cc_switch::Bool
-    derating_scale::Float64
     mopr::Bool
     battery_cap_mkt::Bool
     vre_reserves::Bool
@@ -326,7 +324,6 @@ mutable struct CaseDefinition
         accreditation_methodology,
         accreditation_metric,
         marginal_cc_switch,
-        derating_scale,
         mopr,
         battery_cap_mkt,
         vre_reserves,
@@ -404,7 +401,6 @@ mutable struct CaseDefinition
             accreditation_methodology,
             accreditation_metric,
             marginal_cc_switch,
-            derating_scale,
             mopr,
             battery_cap_mkt,
             vre_reserves,
@@ -440,16 +436,15 @@ function CaseDefinition(name::String,
     timeseries_data_dir::String,
     markets_included::Dict{Symbol, Bool},
     solver::JuMP.MOI.OptimizerWithAttributes;
-    simulation_settings::Dict{String, Any}
-    )
-
+    simulation_settings::Dict{String, Any},
+)
     CaseDefinition(name,
         base_dir,
         sys_dir,
         scratch_dir,
         outage_dir,
         timeseries_data_dir,
-        solver,
+        solver;
         siip_market_clearing = parsebool(simulation_settings["siip_market_clearing"]),
         pcm_scenario = simulation_settings["pcm_scenario"],
         start_year = parseint(simulation_settings["start_year"]),
@@ -460,7 +455,9 @@ function CaseDefinition(name::String,
         num_rep_periods = parseint(simulation_settings["num_rep_periods"]),
         avg_block_size = parseint(simulation_settings["avg_block_size"]),
         fixed_block_size = parsebool(simulation_settings["fixed_block_size"]),
-        rep_chronology_checkpoint = parseint(simulation_settings["rep_chronology_checkpoint"]),
+        rep_chronology_checkpoint = parseint(
+            simulation_settings["rep_chronology_checkpoint"],
+        ),
         da_resolution = parseint(simulation_settings["da_resolution"]),
         rt_resolution = parseint(simulation_settings["rt_resolution"]),
         rps_target = simulation_settings["rps_target"],
@@ -476,13 +473,14 @@ function CaseDefinition(name::String,
         accreditation_methodology = simulation_settings["accreditation_methodology"],
         accreditation_metric = simulation_settings["accreditation_metric"],
         marginal_cc_switch = parsebool(simulation_settings["marginal_cc_switch"]),
-        derating_scale = parsefloat(simulation_settings["derating_scale"]),
         mopr = parsebool(simulation_settings["mopr"]),
         battery_cap_mkt = parsebool(simulation_settings["battery_cap_mkt"]),
         vre_reserves = parsebool(simulation_settings["vre_reserves"]),
         heterogeneity = parsebool(simulation_settings["heterogeneity"]),
         forecast_type = simulation_settings["forecast_type"],
-        max_carbon_tax_increase = parsefloat(simulation_settings["max_carbon_tax_increase"]),
+        max_carbon_tax_increase = parsefloat(
+            simulation_settings["max_carbon_tax_increase"],
+        ),
         info_symmetry = parsebool(simulation_settings["info_symmetry"]),
         belief_update = parsebool(simulation_settings["belief_update"]),
         uncertainty = parsebool(simulation_settings["uncertainty"]),
@@ -541,7 +539,6 @@ function CaseDefinition(name::String,
     accreditation_methodology::String = "TopNetLoad",
     accreditation_metric::String = "None",
     marginal_cc_switch::Bool = true,
-    derating_scale::Float64 = 1.0,
     mopr::Bool = false,
     battery_cap_mkt::Bool = true,
     vre_reserves::Bool = true,
@@ -594,7 +591,6 @@ function CaseDefinition(name::String,
         accreditation_methodology,
         accreditation_metric,
         marginal_cc_switch,
-        derating_scale,
         mopr,
         battery_cap_mkt,
         vre_reserves,
@@ -648,7 +644,6 @@ get_ordc_unavailability_method(case::CaseDefinition) = case.ordc_unavailability_
 get_accreditation_methodology(case::CaseDefinition) = case.accreditation_methodology
 get_accreditation_metric(case::CaseDefinition) = case.accreditation_metric
 get_marginal_cc_switch(case::CaseDefinition) = case.marginal_cc_switch
-get_derating_scale(case::CaseDefinition) = case.derating_scale
 get_mopr(case::CaseDefinition) = case.mopr
 get_battery_cap_mkt(case::CaseDefinition) = case.battery_cap_mkt
 get_vre_reserves(case::CaseDefinition) = case.vre_reserves

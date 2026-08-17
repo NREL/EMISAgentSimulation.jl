@@ -2,7 +2,6 @@ function add_outage_info!(
     PSY_gen::T,
     tech::Union{ThermalTech, RenewableTech, HydroTech, BatteryTech},
 ) where {T <: Union{PSY.Generator, PSY.Storage}}
-
     (λ, μ) = outage_to_rate((get_FOR(tech), get_MTTR(tech)))
     ext = PSY.get_ext(PSY_gen)
     ext["outage_probability"] = λ
@@ -21,7 +20,12 @@ function get_generators(generator_type::String, projects)
     )
 end
 
-function get_availability_df(timeseries_data_dir::String, scenario::String, simulation_years::Int64, availability_type::String)
+function get_availability_df(
+    timeseries_data_dir::String,
+    scenario::String,
+    simulation_years::Int64,
+    availability_type::String,
+)
     availability_df = DataFrames.DataFrame()
     for sim_year in 1:simulation_years
         availability_df = vcat(
@@ -53,9 +57,8 @@ function calculate_RA_metrics(sys::PSY.System,
     samples::Int64 = PRAS_N_SAMPLES,
     seed::Int64 = 42,
     simulation_years::Int64 = 15)
-
     system_period_of_interest = range(1; length = DEFAULT_HOURS_PER_YEAR * simulation_years);
-    correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_scenario_1_new.csv")
+    # correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_scenario_1_new.csv")
 
     @info "Calculating RA metrics for iteration year: $(iteration_year) with system_period_of_interest: $(system_period_of_interest)"
 
@@ -63,9 +66,10 @@ function calculate_RA_metrics(sys::PSY.System,
     # PRAS.SystemModel is plain arrays — safe to serialize and send to a remote worker.
     # generate_pras_system is in SiennaPRASInterface (SPI), not in PRASCore (PRAS).
     @timeit EMIS_TIMER "attach_outage_data" attach_outage_data_from_ext!(sys)
-    pras_system = @timeit EMIS_TIMER "generate_pras_system" SPI.generate_pras_system(sys, PSY.Area)
+    pras_system =
+        @timeit EMIS_TIMER "generate_pras_system" SPI.generate_pras_system(sys, PSY.Area)
 
-    resultspec = Dict{String,Any}("shortfall" => PRAS.Shortfall())
+    resultspec = Dict{String, Any}("shortfall" => PRAS.Shortfall())
     if exportoutage == true
         resultspec["gens_avail"] = PRAS.GeneratorAvailability()
     end
@@ -75,7 +79,7 @@ function calculate_RA_metrics(sys::PSY.System,
     if !isnothing(PRAS_WORKER[])
         t_pras = @elapsed @timeit EMIS_TIMER "PRAS.assess (remote)" results_tuple =
             Distributed.remotecall_fetch(
-                PRAS_WORKER[], pras_system, samples, seed
+                PRAS_WORKER[], pras_system, samples, seed,
             ) do pras_system, samples, seed
                 PRAS.assess(pras_system,
                     PRAS.SequentialMonteCarlo(samples = samples, seed = seed),
@@ -88,7 +92,7 @@ function calculate_RA_metrics(sys::PSY.System,
                 values(resultspec)...)
     end
 
-    results = Dict{String,Any}(zip(keys(resultspec), results_tuple))
+    results = Dict{String, Any}(zip(keys(resultspec), results_tuple))
     shortfall = results["shortfall"]
     eue_overall = PRAS.EUE(shortfall)
     lole_overall = PRAS.LOLE(shortfall)
@@ -99,8 +103,8 @@ function calculate_RA_metrics(sys::PSY.System,
     @info "Finished PRAS simulation (elapsed: $(round(t_pras; digits=2))s)"
     @info "LOLE: $(ra_metrics["LOLE"])"
     @info "NEUE: $(ra_metrics["NEUE"])"
-    
-    if exportoutage 
+
+    if exportoutage
         gens_avail = results["gens_avail"]
         @info "Export outage profile from PRAS simulation... "
         scenarionum = 1
@@ -108,7 +112,7 @@ function calculate_RA_metrics(sys::PSY.System,
         for (j, asset_name) in enumerate(gens_avail.generators)
             df_outage[!, asset_name] = Int.(gens_avail.available[j, :, scenarionum])
         end
-        outage_csv_location=joinpath(base_dir, "GeneratorOutage") 
+        outage_csv_location=joinpath(base_dir, "GeneratorOutage")
         CSV.write(
             joinpath(outage_csv_location, "1/Generator_year$(iteration_year+1).csv"),
             df_outage;
@@ -178,13 +182,14 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     target_year::Int64,
     rt_resolution::Int64,
     simulation_years::Int64,
-    timeseries_data_dir::String, 
+    timeseries_data_dir::String,
     availability_df_rt::DataFrame)
 
     # @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
 
     PSY_project = create_PSY_generator(project, capacity_market_system)
     PSY.add_component!(capacity_market_system, PSY_project)
+    add_nominal_outage_to_component!(capacity_market_system, PSY_project)
 
     for product in get_products(project)
         add_device_services!(capacity_market_system, PSY_project, product)
@@ -223,7 +228,6 @@ function create_capacity_mkt_system(initial_system::PSY.System,
     simulation_years::Int64,
     timeseries_data_dir::String,
     availability_df_rt::DataFrame)
-
     @info "Creating Forward Capacity Market System"
     capacity_market_system = deepcopy(initial_system)
 
@@ -240,14 +244,12 @@ function create_capacity_mkt_system(initial_system::PSY.System,
 
         if end_life_year >= capacity_market_year &&
            construction_year <= capacity_market_year
-
             push!(capacity_market_projects, project)
             if !(get_name(project) in PSY.get_name.(get_all_techs(capacity_market_system)))
-
                 add_capacity_market_project!(capacity_market_system, project,
                     simulation_dir, scenario,
-                    capacity_market_year, rt_resolution, simulation_years, timeseries_data_dir, availability_df_rt)
-                    
+                    capacity_market_year, rt_resolution, simulation_years,
+                    timeseries_data_dir, availability_df_rt)
             end
         end
     end
@@ -308,9 +310,9 @@ function update_delta_irm!(initial_system::PSY.System,
     results_dir::String,
     outage_dir::String,
     simulation_years::Int64)
-
     timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
-    availability_df_rt = get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
+    availability_df_rt =
+        get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
     if !(static_capacity_market)
         capacity_market_year = iteration_year + capacity_forward_years - 1
@@ -344,10 +346,10 @@ function update_delta_irm!(initial_system::PSY.System,
                     iteration_year;
                     samples = PRAS_N_SAMPLES,
                     simulation_years = simulation_years,
-                    )
+                )
 
                 @info "RA metrics: $(ra_metrics)"
-                
+
                 adequacy_conditions_met, scarcity_conditions_met =
                     check_ra_conditions(ra_targets, ra_metrics)
                 @info "Adequacy conditions met: $(adequacy_conditions_met), Scarcity conditions met: $(scarcity_conditions_met)"
@@ -355,7 +357,8 @@ function update_delta_irm!(initial_system::PSY.System,
                 total_added_capacity = 0.0
                 total_removed_capacity = 0.0
                 removed_capacity = 0.0
-                ct_project_template = first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
+                ct_project_template =
+                    first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
                 if !(adequacy_conditions_met)
                     while !(adequacy_conditions_met)
@@ -386,7 +389,7 @@ function update_delta_irm!(initial_system::PSY.System,
                                 rt_resolution,
                                 simulation_years,
                                 timeseries_data_dir,
-                                availability_df_rt
+                                availability_df_rt,
                             )
                             count += 1
                         end
@@ -455,10 +458,12 @@ function create_base_system(initial_system::PSY.System,
     rt_resolution::Int64,
     simulation::Union{AgentSimulation, AgentSimulationData},
     availability_df_rt::DataFrame)
-
     timeseries_data_dir = joinpath(get_results_dir(simulation), "timeseries_data_files")
     simulation_years = get_simulation_years(get_case(simulation))
     capacity_market_year = iteration_year + capacity_forward_years - 1
+
+    case = get_case(simulation)
+    simulation_years = get_simulation_years(case)
 
     capacity_market_system = create_capacity_mkt_system(initial_system,
         active_projects,
@@ -469,7 +474,7 @@ function create_base_system(initial_system::PSY.System,
         rt_resolution,
         get_total_horizon(get_case(simulation)),
         timeseries_data_dir,
-        availability_df_rt
+        availability_df_rt,
     )
 
     ra_targets = get_targets(resource_adequacy)
@@ -504,7 +509,8 @@ function create_base_system(initial_system::PSY.System,
             total_added_capacity = 0.0
             total_removed_capacity = 0.0
             removed_capacity = 0.0
-            ct_project_template = first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
+            ct_project_template =
+                first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
             if !(adequacy_conditions_met)
                 while !(adequacy_conditions_met)
@@ -515,7 +521,7 @@ function create_base_system(initial_system::PSY.System,
                             (ra_metrics[metric] - ra_targets[metric]) / ra_targets[metric]
                     end
                     ratio = max(1, scalar * ratio / length(keys(ra_targets)))
-
+                    @info "adding $ratio new CTs to system to meet adequacy targets"
                     for i in 1:ceil(ratio)
                         incremental_project = deepcopy(ct_project_template)
                         set_name!(incremental_project, "addition_CT_project_$(count)")
@@ -529,7 +535,7 @@ function create_base_system(initial_system::PSY.System,
                             rt_resolution,
                             get_total_horizon(get_case(simulation)),
                             timeseries_data_dir,
-                            availability_df_rt
+                            availability_df_rt,
                         )
                         count += 1
                     end
@@ -558,6 +564,7 @@ function create_base_system(initial_system::PSY.System,
                             get_device_size(removed_project) *
                             PSY.get_base_power(removed_project)
                         total_removed_capacity += removed_capacity
+                        @info "Removing $(get_name(removed_project)) with capacity $(removed_capacity) MW to meet scarcity targets"
                         PSY.remove_component!(capacity_market_system, removed_project)
                         ra_metrics, shortfall = calculate_RA_metrics(
                             capacity_market_system,

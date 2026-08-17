@@ -1,5 +1,4 @@
 @testset "Test output point fields and heat rate fields" begin
-    
     unit_type = String(projectdata["Unit Type"])
     size_raw = projectdata["Size"]
     if typeof(size_raw) !== Float64

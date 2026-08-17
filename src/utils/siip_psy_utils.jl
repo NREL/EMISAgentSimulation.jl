@@ -74,12 +74,14 @@ end
 
 function add_clean_energy_contribution!(sys::PSY.System,
     device::T,
-) where {T <: Union{
-    PSY.ThermalStandard,
-    PSY.RenewableDispatch,
-    PSY.HydroTurbine,
-    PSY.HydroDispatch,
-}}
+) where {
+    T <: Union{
+        PSY.ThermalStandard,
+        PSY.RenewableDispatch,
+        PSY.HydroTurbine,
+        PSY.HydroDispatch,
+    },
+}
     services = get_system_services(sys)
     for service in services
         if PSY.get_name(service) == "Clean_Energy"
@@ -119,16 +121,17 @@ function add_device_forecast!(sys_MD::PSY.System,
     availability_raw_rt::Vector{Float64},
     da_resolution::Int64,
     rt_resolution::Int64) where {D <: PSY.RenewableGen}
-
     for (sys, device, avail_data, resolution_minutes) in [
-        (sys_MD, device_MD, availability_raw,    da_resolution),
-        (sys_UC, device_UC, availability_raw,    da_resolution),
+        (sys_MD, device_MD, availability_raw, da_resolution),
+        (sys_UC, device_UC, availability_raw, da_resolution),
         (sys_ED, device_ED, availability_raw_rt, rt_resolution),
     ]
         # Read forecast parameters from an existing component in this system
-        any_load = first(PSY.get_components(
-            x -> PSY.has_time_series(x, PSY.Deterministic, "max_active_power"),
-            PSY.PowerLoad, sys))
+        any_load = first(
+            PSY.get_components(
+                x -> PSY.has_time_series(x, PSY.Deterministic, "max_active_power"),
+                PSY.PowerLoad, sys),
+        )
         existing_ts = PSY.get_time_series(PSY.Deterministic, any_load, "max_active_power")
         forecast_count = PSY.get_count(existing_ts)
         sys_horizon = PSY.get_horizon(existing_ts)
@@ -139,17 +142,19 @@ function add_device_forecast!(sys_MD::PSY.System,
 
         # Build timestamps to match existing system length exactly
         finish_datetime =
-        start_datetime + Dates.Hour((
-            forecast_count * sys_interval/sys_resolution +
-            (sys_horizon - sys_interval/sys_resolution) - 1
-        ))
+            start_datetime + Dates.Hour((
+                forecast_count * sys_interval/sys_resolution +
+                (sys_horizon - sys_interval/sys_resolution) - 1
+            ))
         time_stamps = StepRange(start_datetime, Dates.Hour(1), finish_datetime)
 
         # Pad availability data by wrapping from the start of the year
         additional_timestep = length(time_stamps) - DEFAULT_HOURS_PER_YEAR
-        avail_padded = additional_timestep > 0 ?
-            [avail_data; avail_data[1:additional_timestep]] :
+        avail_padded = if additional_timestep > 0
+            [avail_data; avail_data[1:additional_timestep]]
+        else
             avail_data[1:length(time_stamps)]
+        end
 
         sys_interval_steps = Int(sys_interval / sys_resolution)
         data = Dict(
@@ -181,7 +186,6 @@ function add_device_forecast!(sys_MD::PSY.System,
     # single_time_series = PSY.SingleTimeSeries("max_active_power", data, scaling_factor_multiplier=get_max_active_power)
     # PSY.add_time_series!(sys_ED, device_ED, single_time_series)
 
-
     return
 end
 
@@ -203,10 +207,14 @@ function add_device_forecast_PRAS!(sys::PSY.System,
     device::D,
     availability_raw_rt::Vector{Float64},
     rt_resolution::Int64,
-    simulation_years::Int64
+    simulation_years::Int64,
 ) where {D <: Union{PSY.RenewableGen, PSY.RenewableDispatch}}
     start_datetime = SIM_START_DATE
-    timestamp = range(start_datetime; step = Hour(1), length = DEFAULT_HOURS_PER_YEAR * simulation_years)
+    timestamp = range(
+        start_datetime;
+        step = Hour(1),
+        length = DEFAULT_HOURS_PER_YEAR * simulation_years,
+    )
     value_ts = availability_raw_rt
     data = TS.TimeArray(timestamp, value_ts)
     single_time_series = PSY.SingleTimeSeries(
@@ -344,7 +352,6 @@ function update_PSY_timeseries!(
     iteration_year::Int64,
     da_resolution::Int64,
     rt_resolution::Int64)
-
     total_active_power = 0.0
 
     results_dir = get_results_dir(simulation)
@@ -353,7 +360,8 @@ function update_PSY_timeseries!(
     first_ts_temp = first(PSY.get_time_series_multiple(sys))
     start_datetime = PSY.IS.get_initial_timestamp(first_ts_temp)
     sys_res = PSY.get_time_series_resolutions(sys)[1]
-    finish_datetime = start_datetime + Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_res - sys_res)
+    finish_datetime =
+        start_datetime + Dates.Hour(DEFAULT_HOURS_PER_YEAR * sys_res - sys_res)
     time_stamps = StepRange(start_datetime, sys_res, finish_datetime)
 
     # Only update ORDC product time series.
@@ -619,9 +627,8 @@ function transform_psy_timeseries!(sys_MD::PSY.System,
     md_interval::Int64,
     da_interval::Int64,
     rt_interval::Int64)
-
     @info "Updating timeseries in transform_psy_timeseries!"
-    
+
     # TODO: may want to add md_resolution
     @info "Updating MD timeseries with horizon $(md_horizon) and interval $(md_interval) and da_resolution $(da_resolution)..."
     PSY.transform_single_time_series!(
@@ -641,6 +648,35 @@ function transform_psy_timeseries!(sys_MD::PSY.System,
         Dates.Hour(Int(rt_horizon * 60 / rt_resolution)),
         Dates.Hour(rt_interval),
     )
+    return
+end
+
+"""
+Add a nominal `GeometricDistributionForcedOutage` supplemental attribute to a single
+PSY component. Uses `NOMINAL_STORAGE_FOR` for storage, otherwise `NOMINAL_GEN_FOR`.
+Converts the FOR to a transition probability via `SPI.rate_to_probability`.
+No time series attached — for runtime additions of new/option projects that are not
+present in the outage CSV.
+Skips silently if the component already has the attribute.
+"""
+function add_nominal_outage_to_component!(sys::PSY.System, component::PSY.Component)
+    if !isempty(
+        collect(
+            PSY.get_supplemental_attributes(
+                PSY.GeometricDistributionForcedOutage,
+                component,
+            ),
+        ),
+    )
+        return
+    end
+    for_val = component isa PSY.Storage ? NOMINAL_STORAGE_FOR : NOMINAL_GEN_FOR
+    λ, _ = SPI.rate_to_probability(for_val, DEFAULT_THERMAL_MTTR_HOURS)
+    attr = PSY.GeometricDistributionForcedOutage(;
+        mean_time_to_recovery = DEFAULT_THERMAL_MTTR_HOURS,
+        outage_transition_probability = λ,
+    )
+    PSY.add_supplemental_attribute!(sys, component, attr)
     return
 end
 

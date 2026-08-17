@@ -117,7 +117,10 @@ const HSI = HydroPowerSimulations
 
     # ── Simulation results API ──────────────────────────────────────────────
     @testset "PSI simulation results API exists" begin
-        @test hasmethod(PSI.get_decision_problem_results, Tuple{PSI.SimulationResults, String})
+        @test hasmethod(
+            PSI.get_decision_problem_results,
+            Tuple{PSI.SimulationResults, String},
+        )
         @test isdefined(PSI, :read_realized_duals)
         @test isdefined(PSI, :read_realized_variables)
     end
@@ -163,5 +166,4 @@ const HSI = HydroPowerSimulations
             },
         )
     end
-
 end

@@ -2,8 +2,7 @@
 This function populates and returns the AgentSimulationData struct.
 """
 ### NY_change
-function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=nothing)
-    
+function gather_data(case::CaseDefinition; results_dir::Union{String, Nothing} = nothing)
     reset_timer!(EMIS_TIMER)
     data_dir = get_data_dir(case)
     test_system_dir = get_sys_dir(case)
@@ -30,10 +29,9 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
     base_dir = get_base_dir(case)
     siip_market_clearing = get_siip_market_clearing(case)
     scratch_dir = get_scratch_dir(case)
-    derating_scale = get_derating_scale(case)
     accreditation_methodology = get_accreditation_methodology(case)
     accreditation_metric = get_accreditation_metric(case)
-    marginal_cc_switch = get_marginal_cc_switch(case)    
+    marginal_cc_switch = get_marginal_cc_switch(case)
 
     timeseries_data_dir = joinpath(results_dir, "timeseries_data_files")
     annual_growth_df = read_data(joinpath(data_dir, "markets_data", "annual_growth.csv"))
@@ -154,7 +152,8 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
         sys_MDs, sys_UCs, sys_EDs, sys_PRAS,
         MD_horizon, MD_interval, UC_horizon,
         UC_interval, ED_horizon, ED_interval =
-            @timeit EMIS_TIMER "setup/create_rts_sys" create_rts_sys(test_system_dir, base_power, data_dir,
+            @timeit EMIS_TIMER "setup/create_rts_sys" create_rts_sys(test_system_dir,
+                base_power, data_dir,
                 scratch_dir, ntp_timeseries_data_dir, scenarios,
                 pcm_scenario, simulation_years, da_resolution,
                 rt_resolution, md_horizon,
@@ -211,7 +210,7 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
             [ra_metrics for i in 1:simulation_years],
         ) for s in scenarios
     )
-    
+
     simulation_data = AgentSimulationData(case,
         results_dir,
         sys_MDs,
@@ -233,7 +232,10 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
         deratingdata,
         resource_adequacy)
 
-    investors = @timeit EMIS_TIMER "setup/create_investors" create_investors(simulation_data, timeseries_data_dir)
+    investors = @timeit EMIS_TIMER "setup/create_investors" create_investors(
+        simulation_data,
+        timeseries_data_dir,
+    )
     set_investors!(simulation_data, investors)
 
     iteration_year = 1
@@ -438,44 +440,47 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
         end
     end
 
-    simulations,
-    iteration_years,
-    derating_scales,
-    methodologies,
-    ra_metric_list,
-    marginal_cc_switches = repeat_arguments(
-        num_scenarios,
-        simulation_data,
-        iteration_year,
-        derating_scale,
-        accreditation_methodology,
-        accreditation_metric,
-        marginal_cc_switch,
-    )
-
-    @timeit EMIS_TIMER "setup/update_derating" Distributed.pmap(
-        parallelize_update_derating_data,
-        zip(
-            scenarios,
-            simulations,
-            iteration_years,
-            derating_scales,
-            methodologies,
-            ra_metric_list,
-            marginal_cc_switches,
-            timeseries_data_dir_list,
-        ),
-    )
-
-    # update_simulation_derating_data!(
+    # Parallelize the processing of scenarios using Distributed.pmap
+    # NOTE: pmap can crash here because each worker receives serialized PSY.System
+    # objects with process-local SQLite handles inside sys_PRAS.
+    # simulations,
+    # iteration_years,
+    # methodologies,
+    # ra_metric_list,
+    # marginal_cc_switches = repeat_arguments(
+    #     num_scenarios,
     #     simulation_data,
-    #     scenarios[1],
     #     iteration_year,
-    #     get_derating_scale(case),
-    #     methodology = get_accreditation_methodology(case),
-    #     ra_metric = get_accreditation_metric(case),
-    #     marginal_cc = get_marginal_cc_switch(case)
+    #     accreditation_methodology,
+    #     accreditation_metric,
+    #     marginal_cc_switch,
     # )
+    # @timeit EMIS_TIMER "setup/update_derating" Distributed.pmap(
+    #     parallelize_update_derating_data,
+    #     zip(
+    #         scenarios,
+    #         simulations,
+    #         iteration_years,
+    #         methodologies,
+    #         ra_metric_list,
+    #         marginal_cc_switches,
+    #         timeseries_data_dir_list,
+    #     ),
+    # )
+
+    # Run sequentially to avoid Distributed serialization of PSY.System
+    # objects that contain process-local SQLite handles.
+    @timeit EMIS_TIMER "setup/update_derating" for scenario in scenarios
+        update_simulation_derating_data!(
+            simulation_data,
+            scenario,
+            iteration_year,
+            timeseries_data_dir;
+            methodology = accreditation_methodology,
+            ra_metric = accreditation_metric,
+            marginal_cc = marginal_cc_switch,
+        )
+    end
 
     active_projects = get_activeprojects(simulation_data)
 
@@ -485,7 +490,6 @@ function gather_data(case::CaseDefinition; results_dir::Union{String,Nothing}=no
                 project,
                 data_dir,
                 scenario,
-                derating_scale,
                 marginal_cc_switch,
             )
         end
@@ -523,7 +527,10 @@ end
 """
 This function returns the AgentSimulation struct which contains all the required data for running the simulation.
 """
-function create_agent_simulation(case::CaseDefinition; results_dir::Union{String,Nothing}=nothing)
+function create_agent_simulation(
+    case::CaseDefinition;
+    results_dir::Union{String, Nothing} = nothing,
+)
     simulation_data = gather_data(case; results_dir = results_dir)
     simulation = AgentSimulation(case,
         get_results_dir(simulation_data),
