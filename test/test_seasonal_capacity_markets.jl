@@ -1172,3 +1172,102 @@ end
         end
     end
 end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2a PRAS — seasonal divide (season_hour_columns / subset_pras_system)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# calculate_derating_factors itself (the full PRAS.assess pipeline) needs a real
+# AgentSimulation + fully-built PRAS.SystemModel fixture and is out of scope for
+# this file (see the header note on calculate_derating_data/calculate_derating_factors
+# above). These tests instead cover the two new, cheap, pure units it is built
+# from: `season_hour_columns` (hour-column selection per season) and
+# `subset_pras_system` (the divide-approach column-subset SystemModel rebuild).
+
+import PRAS
+import TimeZones
+import Dates
+
+@testset "Phase 2a PRAS — seasonal divide" begin
+    @testset "season_hour_columns selects only the requested months, ascending, across years" begin
+        simulation_years = 2
+        months = [6, 7, 8]
+        cols = EMISAgentSimulation.season_hour_columns(months, simulation_years)
+
+        @test issorted(cols)
+        @test allunique(cols)
+
+        # 2018 and 2019 (the two years spanned by an 8760 hr/yr, non-leap simulation
+        # horizon starting 2018-01-01) are both non-leap, so this count applies to
+        # each simulation year.
+        expected_hours_per_year = sum(Dates.daysinmonth(2018, m) * 24 for m in months)
+        @test length(cols) == expected_hours_per_year * simulation_years
+
+        # Every selected hour really does fall in Jun/Jul/Aug.
+        sim_start = Dates.DateTime("2018-01-01T00:00:00")
+        @test all(Dates.month(sim_start + Dates.Hour(h - 1)) in months for h in cols)
+
+        # Spans both simulation years (a genuine month-year stitch, not just year 1).
+        @test maximum(cols) > 8760
+    end
+
+    @testset "season_hour_columns(1:12, 1) reproduces the full annual hour range" begin
+        cols = EMISAgentSimulation.season_hour_columns(collect(1:12), 1)
+        @test cols == collect(1:8760)
+    end
+
+    @testset "subset_pras_system rebuilds a SystemModel over a column subset" begin
+        N = 24
+        P = PRAS.MW
+        E = PRAS.MWh
+        Tp = Dates.Hour
+
+        capacity = reshape(Int.(50 .+ (1:N)), 1, N)
+        gen_lambda = reshape(fill(0.05, N), 1, N)
+        gen_mu = reshape(fill(0.95, N), 1, N)
+        load = reshape(Int.(10 .+ (1:N)), 1, N)
+
+        regions = PRAS.Regions{N, P}(["Z1"], load)
+        interfaces = PRAS.Interfaces{N, P}()
+        generators =
+            PRAS.Generators{N, 1, Tp, P}(["Gen1"], ["Thermal"], capacity, gen_lambda, gen_mu)
+        storages = PRAS.Storages{N, 1, Tp, P, E}()
+        generatorstorages = PRAS.GeneratorStorages{N, 1, Tp, P, E}()
+        demandresponses = PRAS.DemandResponses{N, 1, Tp, P, E}()
+        lines = PRAS.Lines{N, 1, Tp, P}()
+
+        ts0 = TimeZones.ZonedDateTime(2018, 1, 1, 0, 0, 0, TimeZones.tz"UTC")
+        timestamps = ts0:Dates.Hour(1):(ts0 + Dates.Hour(N - 1))
+
+        sys = PRAS.SystemModel(
+            regions, interfaces,
+            generators, [1:1],
+            storages, [1:0],
+            generatorstorages, [1:0],
+            demandresponses, [1:0],
+            lines, UnitRange{Int}[],
+            timestamps,
+        )
+
+        @testset "arbitrary column subset" begin
+            cols = [3, 4, 5, 10, 11]
+            sub = EMISAgentSimulation.subset_pras_system(sys, cols)
+
+            @test length(sub.timestamps) == length(cols)
+            @test step(sub.timestamps) == step(sys.timestamps)
+            @test sub.timestamps ==
+                  first(sys.timestamps):step(sys.timestamps):(first(sys.timestamps) + Dates.Hour(length(cols) - 1))
+            @test sub.generators.capacity == capacity[:, cols]
+            @test sub.regions.load == load[:, cols]
+            @test sub.generators.names == sys.generators.names
+        end
+
+        @testset "annual-equivalence: subsetting by all columns reproduces the original" begin
+            full = EMISAgentSimulation.subset_pras_system(sys, collect(1:N))
+            @test full.generators.capacity == sys.generators.capacity
+            @test full.regions.load == sys.regions.load
+            @test length(full.timestamps) == length(sys.timestamps)
+            @test collect(full.timestamps) == collect(sys.timestamps)
+        end
+    end
+end

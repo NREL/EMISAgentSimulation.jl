@@ -528,6 +528,37 @@ function build_augmented_pras_system(
 end
 
 """
+Runs a single PRAS.assess call for one season with the fixed Monte Carlo seed/sample
+count (`PRAS_N_SAMPLES`, `PRAS_MONTE_CARLO_SEED`), and reduces the result to the
+scalar capacity-credit fraction used by `calculate_derating_factors`. This is the
+only piece of the per-season derating calculation dispatched via
+`Distributed.pmap`; the (expensive) full-horizon system builds and
+`subset_pras_system` calls stay on the main process. Since the seed/sample count
+are fixed and identical for every season regardless of execution order, dispatching
+this call across workers (or running it all on the single main process, when no
+extra workers exist) is deterministic and produces byte-identical results to the
+serial version.
+"""
+function pras_assess_cc(
+    season_base_system::PRAS.SystemModel,
+    season_augmented_system::PRAS.SystemModel,
+    accreditation,
+    cap::Float64,
+)
+    cc_result = PRAS.assess(
+        season_base_system,
+        season_augmented_system,
+        accreditation,
+        PRAS.SequentialMonteCarlo(;
+            samples = PRAS_N_SAMPLES,
+            seed = PRAS_MONTE_CARLO_SEED,
+        ),
+    )
+    cc_lower, cc_upper = extrema(cc_result)
+    return (cc_lower + cc_upper) / (2 * cap)
+end
+
+"""
 Calculates raw (unscaled) capacity credit values for existing and new renewable generation
 and storage using PRAS (ELCC or EFC methodology), then writes them to `derating_dict.csv`.
 Per-type scalars are applied later in `update_derating_factor!`.
@@ -559,6 +590,32 @@ function calculate_derating_factors(
 
     simulation_dir = get_data_dir(get_case(simulation))
     simulation_years = get_total_horizon(get_case(simulation))
+
+    # Seasonal setup, mirroring the exact pattern used by calculate_derating_data.
+    seasons_file = get_capacity_seasons_file(simulation_dir)
+    seasonal_capacity_market = get_seasonal_capacity_market(get_case(simulation))
+    season_months = load_season_months(seasons_file)
+    seasonal_mode = !is_annual_only_seasons(season_months, seasonal_capacity_market)
+    if !seasonal_mode
+        # Keep downstream loops uniform by using a single synthetic annual season.
+        season_months = Dict{String, Vector{Int64}}("annual" => collect(1:12))
+    end
+    seasons = collect(keys(season_months))
+
+    # Precompute the hour-columns selected by each season (divide approach). In
+    # annual mode this is always 1:(DEFAULT_HOURS_PER_YEAR*simulation_years), i.e.
+    # every column, so subset_pras_system(sys, season_cols["annual"]) reproduces the
+    # full-horizon system exactly (annual-mode byte-equivalence).
+    season_cols = Dict{String, Vector{Int}}()
+    for season in seasons
+        cols = season_hour_columns(season_months[season], simulation_years)
+        if isempty(cols)
+            @warn "No hours found for season '$season' while calculating PRAS derating factors."
+            continue
+        end
+        season_cols[season] = cols
+    end
+
     outage_dir = get_outage_dir(get_case(simulation))
     rt_resolution = get_rt_resolution(get_case(simulation))
     zones = get_zones(simulation)
@@ -566,7 +623,7 @@ function calculate_derating_factors(
     availability_df_rt =
         get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
-    derating_factors = read_data(
+    derating_template = read_data(
         joinpath(
             simulation_dir,
             "markets_data",
@@ -575,6 +632,8 @@ function calculate_derating_factors(
             "derating_dict.csv",
         ),
     )
+    derating_factors = initialize_derating_output(derating_template, seasons, seasonal_mode)
+    season_row_index = Dict(season => idx for (idx, season) in enumerate(seasons))
 
     active_projects = get_activeprojects(simulation)
     existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
@@ -614,8 +673,17 @@ function calculate_derating_factors(
         copy_system = false,
     )
 
-    # Compute regional load shares once; reused in all PRAS assess calls below.
-    regional_load_shares = collect(get_regional_load_shares(base_pras_system))
+    # Subset the full-horizon base system once per season (divide approach). Full
+    # PSY/PRAS system builds are expensive and season-independent, so they are built
+    # once above; only the cheap column-subset + regional-load-share recompute is
+    # repeated per season. See subset_pras_system's docstring for the SoC/outage-seam
+    # caveat inherent to this divide approach.
+    base_pras_season_systems =
+        Dict(season => subset_pras_system(base_pras_system, cols) for (season, cols) in season_cols)
+    regional_load_shares_by_season = Dict(
+        season => collect(get_regional_load_shares(sys)) for
+        (season, sys) in base_pras_season_systems
+    )
 
     if marginal_cc
         for zone in zones
@@ -636,7 +704,8 @@ function calculate_derating_factors(
                         set_name!(p, "$(get_name(p))_$i")
                         push!(new_projects, p)
                     end
-                    augmented_pras_system = build_augmented_pras_system(
+                    # Full-horizon build (expensive) once per zone/type; subset per season below.
+                    augmented_pras_system_full = build_augmented_pras_system(
                         adjusted_base_system,
                         new_projects,
                         simulation_dir,
@@ -648,19 +717,38 @@ function calculate_derating_factors(
                         availability_df_rt,
                     )
 
-                    # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                    cc_result = PRAS.assess(
-                        base_pras_system,
-                        augmented_pras_system,
-                        methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
-                        PRAS.SequentialMonteCarlo(;
-                            samples = PRAS_N_SAMPLES,
-                            seed = PRAS_MONTE_CARLO_SEED,
-                        ),
+                    # Per-season subset systems + accreditation objects (built once, on
+                    # the main process, as today). Only the pure PRAS.assess reduction
+                    # for each season is dispatched via pmap below; this is deterministic
+                    # because every season uses the SAME fixed seed/samples and its
+                    # inputs are independent of execution order (see pras_assess_cc docs).
+                    valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+                    season_assess_args = Dict(
+                        s => (
+                            base_pras_season_systems[s],
+                            subset_pras_system(augmented_pras_system_full, season_cols[s]),
+                            methodology{ra_metric}(
+                                Int(ceil(max_cap)),
+                                regional_load_shares_by_season[s],
+                            ),
+                            max_cap,
+                        ) for s in valid_seasons
                     )
-                    cc_lower, cc_upper = extrema(cc_result)
-                    cc_final = (cc_lower + cc_upper) / (2 * max_cap)
-                    derating_factors[!, "new_$(type)_$(zone)"] .= cc_final
+                    cc_results = Distributed.pmap(valid_seasons) do s
+                        season_base_system, season_augmented_system, accreditation, cap =
+                            season_assess_args[s]
+                        cc_final = pras_assess_cc(
+                            season_base_system,
+                            season_augmented_system,
+                            accreditation,
+                            cap,
+                        )
+                        s => cc_final
+                    end
+                    for (s, cc_final) in cc_results
+                        derating_factors[season_row_index[s], "new_$(type)_$(zone)"] =
+                            cc_final
+                    end
                 end
             end
         end
@@ -669,12 +757,18 @@ function calculate_derating_factors(
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
     # No deepcopy needed here: SPI.generate_pras_system only reads the PSY system to build a
     # PRAS struct and does not mutate it. The resulting augmented_pras_system is a fresh object.
-    augmented_pras_system = make_pras_system_spi(
+    # Full-horizon build (expensive, season-independent) once; subset per season below and
+    # reuse across both the existing-renewables loop and the existing-storage loop.
+    augmented_pras_system_full = make_pras_system_spi(
         adjusted_base_system,
         PSY.Area,
         nothing;
         copper_plate = false,
         copy_system = false,
+    )
+    augmented_pras_season_systems = Dict(
+        season => subset_pras_system(augmented_pras_system_full, cols) for
+        (season, cols) in season_cols
     )
 
     for zone in zones
@@ -686,22 +780,37 @@ function calculate_derating_factors(
             if !isempty(zone_tech_units)
                 total_capacity = sum(get_maxcap.(zone_tech_units))
                 @assert total_capacity > 0
-                pruned_base_pras_system =
+                # Full-horizon build (expensive) once per zone/type; subset per season below.
+                pruned_base_pras_system_full =
                     build_pruned_pras_system(adjusted_base_system, zone_tech_units)
-                #  Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                cc_result = PRAS.assess(
-                    pruned_base_pras_system,
-                    augmented_pras_system,
-                    PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
-                    PRAS.SequentialMonteCarlo(;
-                        samples = PRAS_N_SAMPLES,
-                        seed = PRAS_MONTE_CARLO_SEED,
-                    ),
-                )
-                cc_lower, cc_upper = extrema(cc_result)
-                cc_final = (cc_lower + cc_upper) / (2 * total_capacity)
 
-                derating_factors[!, "existing_$(type)_$(zone)"] .= cc_final
+                valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+                season_assess_args = Dict(
+                    s => (
+                        subset_pras_system(pruned_base_pras_system_full, season_cols[s]),
+                        augmented_pras_season_systems[s],
+                        PRAS.ELCC{ra_metric}(
+                            Int(ceil(total_capacity)),
+                            regional_load_shares_by_season[s],
+                        ),
+                        total_capacity,
+                    ) for s in valid_seasons
+                )
+                cc_results = Distributed.pmap(valid_seasons) do s
+                    season_pruned_system, season_augmented_system, accreditation, cap =
+                        season_assess_args[s]
+                    cc_final = pras_assess_cc(
+                        season_pruned_system,
+                        season_augmented_system,
+                        accreditation,
+                        cap,
+                    )
+                    s => cc_final
+                end
+                for (s, cc_final) in cc_results
+                    derating_factors[season_row_index[s], "existing_$(type)_$(zone)"] =
+                        cc_final
+                end
             end
         end
     end
@@ -739,27 +848,43 @@ function calculate_derating_factors(
 
     for (stor_duration, battery_existing) in existing_storage_duration_dict
         total_capacity = sum(get_maxcap.(battery_existing))
-        pruned_base_pras_system =
+        # Full-horizon build (expensive) once per duration; subset per season below.
+        pruned_base_pras_system_full =
             build_pruned_pras_system(adjusted_base_system, battery_existing)
 
-        # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-        cc_result = PRAS.assess(
-            pruned_base_pras_system,
-            augmented_pras_system,
-            PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
-            PRAS.SequentialMonteCarlo(;
-                samples = PRAS_N_SAMPLES,
-                seed = PRAS_MONTE_CARLO_SEED,
-            ),
+        valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+        season_assess_args = Dict(
+            s => (
+                subset_pras_system(pruned_base_pras_system_full, season_cols[s]),
+                augmented_pras_season_systems[s],
+                PRAS.ELCC{ra_metric}(
+                    Int(ceil(total_capacity)),
+                    regional_load_shares_by_season[s],
+                ),
+                total_capacity,
+            ) for s in valid_seasons
         )
-        cc_lower, cc_upper = extrema(cc_result)
-        cc_final = (cc_lower + cc_upper) / (2 * total_capacity)
-        derating_factors[!, "existing_STOR_$(stor_duration)"] .= cc_final
+        cc_results = Distributed.pmap(valid_seasons) do s
+            season_pruned_system, season_augmented_system, accreditation, cap =
+                season_assess_args[s]
+            cc_final = pras_assess_cc(
+                season_pruned_system,
+                season_augmented_system,
+                accreditation,
+                cap,
+            )
+            s => cc_final
+        end
+        for (s, cc_final) in cc_results
+            derating_factors[season_row_index[s], "existing_STOR_$(stor_duration)"] =
+                cc_final
+        end
     end
 
-    # augmented_pras_system is no longer needed after the existing storage loop above.
-    # Release it before the battery marginal CC block to reduce peak memory.
-    augmented_pras_system = nothing
+    # augmented_pras_system(s) are no longer needed after the existing storage loop above.
+    # Release them before the battery marginal CC block to reduce peak memory.
+    augmented_pras_system_full = nothing
+    augmented_pras_season_systems = nothing
 
     if marginal_cc
         new_project_names = []
@@ -775,7 +900,8 @@ function calculate_derating_factors(
                     push!(new_projects, new_project)
                 end
             end
-            augmented_pras_system = build_augmented_pras_system(
+            # Full-horizon build (expensive) once per duration; subset per season below.
+            augmented_pras_system_full = build_augmented_pras_system(
                 adjusted_base_system,
                 new_projects,
                 simulation_dir,
@@ -787,19 +913,33 @@ function calculate_derating_factors(
                 availability_df_rt,
             )
 
-            # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-            cc_result = PRAS.assess(
-                base_pras_system,
-                augmented_pras_system,
-                methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
-                PRAS.SequentialMonteCarlo(;
-                    samples = PRAS_N_SAMPLES,
-                    seed = PRAS_MONTE_CARLO_SEED,
-                ),
+            valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+            season_assess_args = Dict(
+                s => (
+                    base_pras_season_systems[s],
+                    subset_pras_system(augmented_pras_system_full, season_cols[s]),
+                    methodology{ra_metric}(
+                        Int(ceil(max_cap)),
+                        regional_load_shares_by_season[s],
+                    ),
+                    max_cap,
+                ) for s in valid_seasons
             )
-            cc_lower, cc_upper = extrema(cc_result)
-            cc_final = (cc_lower + cc_upper) / (2 * max_cap)
-            derating_factors[!, "new_STOR_$(stor_duration)"] .= cc_final
+            cc_results = Distributed.pmap(valid_seasons) do s
+                season_base_system, season_augmented_system, accreditation, cap =
+                    season_assess_args[s]
+                cc_final = pras_assess_cc(
+                    season_base_system,
+                    season_augmented_system,
+                    accreditation,
+                    cap,
+                )
+                s => cc_final
+            end
+            for (s, cc_final) in cc_results
+                derating_factors[season_row_index[s], "new_STOR_$(stor_duration)"] =
+                    cc_final
+            end
         end
 
     else
