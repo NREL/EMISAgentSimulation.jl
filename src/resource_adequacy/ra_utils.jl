@@ -272,6 +272,139 @@ function create_capacity_mkt_system(initial_system::PSY.System,
     return capacity_market_system
 end
 
+"""
+    subset_pras_system(sys::PRAS.SystemModel{N,L,T,P,E}, cols::AbstractVector{Int}) where {N,L,T,P,E}
+
+Rebuilds a `PRAS.SystemModel` restricted to a subset of timestep columns, implementing
+the "divide" approach to seasonal PRAS accreditation.
+
+A built `PRAS.SystemModel{N,...}` bakes its timestep count `N` into its type, so it
+cannot be resliced in place. Instead, every time-indexed asset array (time is always
+the 2nd dimension) is copied and column-subset by `cols`, non-time-indexed fields
+(names/categories/region indices/interface-line indices) are passed through unchanged,
+and a new synthetic contiguous timestamp range is constructed:
+
+    N2 = length(cols)
+    ts0 = first(sys.timestamps); dt = step(sys.timestamps)
+    timestamps = ts0:dt:(ts0 + (N2 - 1) * dt)
+
+The returned system's timestamps are therefore NOT the true calendar timestamps of
+the selected hours; they are a synthetic contiguous stand-in of the same length,
+purely so that `PRAS.SystemModel`'s internal `StepRange{ZonedDateTime,T}` invariant
+(contiguous, uniform step) is satisfied. `PRAS.assess`/`SequentialMonteCarlo` only
+uses `1:N2` integer timestep indexing internally and does not read calendar semantics
+from `timestamps`, so this is safe for accreditation purposes.
+
+SoC / outage-seam caveat (divide-approach limitation, accepted as-is): PRAS's
+SequentialMonteCarlo simulation loops over integer timesteps `1:N2` with no
+awareness of the calendar gaps between the (possibly non-contiguous) hours selected
+by `cols`. This means:
+  - Storage/generator-storage state of charge is only initialized to empty at
+    timestep 1 of the subset, and then carries across every seam between the
+    stitched-together blocks of hours in `cols` (e.g. the boundary between one
+    simulation-year's last summer hour and the next simulation-year's first
+    summer hour).
+  - Generator/line/storage forced-outage Markov states persist across those same
+    seams in the same way.
+A multi-year seasonal subset therefore reads as one continuous stitched block
+("all summers back-to-back"), not as independent blocks that each reset at the
+start of the season. This is inherent to the divide approach and is accepted here,
+not corrected.
+"""
+function subset_pras_system(
+    sys::PRAS.SystemModel{N,L,T,P,E},
+    cols::AbstractVector{Int},
+) where {N,L,T,P,E}
+    N2 = length(cols)
+
+    ts0 = first(sys.timestamps)
+    dt = step(sys.timestamps)
+    timestamps = ts0:dt:(ts0 + (N2 - 1) * dt)
+
+    regions = PRAS.Regions{N2,P}(
+        sys.regions.names,
+        copy(sys.regions.load[:, cols]),
+    )
+
+    interfaces = PRAS.Interfaces{N2,P}(
+        sys.interfaces.regions_from,
+        sys.interfaces.regions_to,
+        copy(sys.interfaces.limit_forward[:, cols]),
+        copy(sys.interfaces.limit_backward[:, cols]),
+    )
+
+    generators = PRAS.Generators{N2,L,T,P}(
+        sys.generators.names,
+        sys.generators.categories,
+        copy(sys.generators.capacity[:, cols]),
+        copy(sys.generators.λ[:, cols]),
+        copy(sys.generators.μ[:, cols]),
+    )
+
+    storages = PRAS.Storages{N2,L,T,P,E}(
+        sys.storages.names,
+        sys.storages.categories,
+        copy(sys.storages.charge_capacity[:, cols]),
+        copy(sys.storages.discharge_capacity[:, cols]),
+        copy(sys.storages.energy_capacity[:, cols]),
+        copy(sys.storages.charge_efficiency[:, cols]),
+        copy(sys.storages.discharge_efficiency[:, cols]),
+        copy(sys.storages.carryover_efficiency[:, cols]),
+        copy(sys.storages.λ[:, cols]),
+        copy(sys.storages.μ[:, cols]),
+    )
+
+    generatorstorages = PRAS.GeneratorStorages{N2,L,T,P,E}(
+        sys.generatorstorages.names,
+        sys.generatorstorages.categories,
+        copy(sys.generatorstorages.charge_capacity[:, cols]),
+        copy(sys.generatorstorages.discharge_capacity[:, cols]),
+        copy(sys.generatorstorages.energy_capacity[:, cols]),
+        copy(sys.generatorstorages.charge_efficiency[:, cols]),
+        copy(sys.generatorstorages.discharge_efficiency[:, cols]),
+        copy(sys.generatorstorages.carryover_efficiency[:, cols]),
+        copy(sys.generatorstorages.inflow[:, cols]),
+        copy(sys.generatorstorages.gridwithdrawal_capacity[:, cols]),
+        copy(sys.generatorstorages.gridinjection_capacity[:, cols]),
+        copy(sys.generatorstorages.λ[:, cols]),
+        copy(sys.generatorstorages.μ[:, cols]),
+    )
+
+    demandresponses = PRAS.DemandResponses{N2,L,T,P,E}(
+        sys.demandresponses.names,
+        sys.demandresponses.categories,
+        copy(sys.demandresponses.borrow_capacity[:, cols]),
+        copy(sys.demandresponses.payback_capacity[:, cols]),
+        copy(sys.demandresponses.energy_capacity[:, cols]),
+        copy(sys.demandresponses.borrowed_energy_interest[:, cols]),
+        copy(sys.demandresponses.allowable_payback_period[:, cols]),
+        copy(sys.demandresponses.λ[:, cols]),
+        copy(sys.demandresponses.μ[:, cols]),
+        copy(sys.demandresponses.borrow_efficiency[:, cols]),
+        copy(sys.demandresponses.payback_efficiency[:, cols]),
+    )
+
+    lines = PRAS.Lines{N2,L,T,P}(
+        sys.lines.names,
+        sys.lines.categories,
+        copy(sys.lines.forward_capacity[:, cols]),
+        copy(sys.lines.backward_capacity[:, cols]),
+        copy(sys.lines.λ[:, cols]),
+        copy(sys.lines.μ[:, cols]),
+    )
+
+    return PRAS.SystemModel(
+        regions, interfaces,
+        generators, sys.region_gen_idxs,
+        storages, sys.region_stor_idxs,
+        generatorstorages, sys.region_genstor_idxs,
+        demandresponses, sys.region_dr_idxs,
+        lines, sys.interface_line_idxs,
+        timestamps,
+        copy(sys.attrs),
+    )
+end
+
 function check_ra_conditions(
     ra_targets::Dict{String, Float64},
     ra_metrics::Dict{String, Float64},

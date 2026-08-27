@@ -120,8 +120,11 @@ function make_products()
         ),
         Capacity(
             :capacity,
-            Dict(s => 0.9 for s in SCENS),           # derating
-            Dict(s => rand(N_YRS) for s in SCENS),    # accepted_perc
+            # derating and accepted_perc are nested as: scenario → season → value.
+            # Two seasons exercise the nested structure; the project round-trip test
+            # below then validates save_product!/load_product for the new layout.
+            Dict(s => Dict("summer" => 0.82, "winter" => 0.55) for s in SCENS),  # derating
+            Dict(s => Dict("summer" => rand(N_YRS), "winter" => rand(N_YRS)) for s in SCENS),  # accepted_perc
             200.0, # capacity_bid
         ),
         OperatingReserve{ReserveUpEMIS}(:reg_up, 0.1, 1.0),
@@ -511,5 +514,151 @@ end
         end
     finally
         isfile(tmpfile) && rm(tmpfile)
+    end
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backward compatibility — legacy (pre-seasonal) .h5 files load as annual mode
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Old saved files predate the seasonal capacity-markets feature: they stored
+# capacity data in the FLAT layout. These tests write the legacy layouts by hand
+# and assert the current loaders map them into the "annual" season shape, while
+# new seasonal layouts still load — so old result files remain openable for
+# post-processing.
+
+@testset "Backward compatibility — legacy flat .h5 loads as annual" begin
+    @testset "load_capacity_price_seasonal: legacy flat AxisArray -> annual" begin
+        tmpfile = tempname() * ".h5"
+        try
+            legacy = AxisArrays.AxisArray(reshape([42.0], 1), [1])
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_axisarray!(HDF5.create_group(f, "capacity_price"), legacy)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_price_seasonal(f["capacity_price"])
+            end
+            @test collect(keys(loaded)) == ["annual"]
+            @test loaded["annual"][1] == 42.0
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "load_capacity_price_seasonal: new seasonal layout still loads" begin
+        tmpfile = tempname() * ".h5"
+        try
+            price = Dict("summer" => AxisArrays.AxisArray(reshape([1.0], 1), [1]),
+                        "winter" => AxisArrays.AxisArray(reshape([2.0], 1), [1]))
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation.save_capacity_price_seasonal!(
+                    HDF5.create_group(f, "capacity_price"), price)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_price_seasonal(f["capacity_price"])
+            end
+            @test Set(keys(loaded)) == Set(["summer", "winter"])
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "load_capacity_bids_seasonal: legacy flat Dict{name=>frac} -> annual" begin
+        tmpfile = tempname() * ".h5"
+        try
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation._save_dict_str_float!(
+                    HDF5.create_group(f, "capacity_accepted_bids"),
+                    Dict("Gen1" => 1.0, "Gen2" => 0.5))
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_capacity_bids_seasonal(f["capacity_accepted_bids"])
+            end
+            @test collect(keys(loaded)) == ["annual"]
+            @test loaded["annual"]["Gen1"] == 1.0
+            @test loaded["annual"]["Gen2"] == 0.5
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "load_product(Capacity): legacy flat scenario->value derating -> annual" begin
+        tmpfile = tempname() * ".h5"
+        try
+            h5open(tmpfile, "w") do f
+                g = HDF5.create_group(f, "product")
+                HDF5.attributes(g)["product_type"] = "Capacity"
+                write(g, "name", "Capacity")
+                write(g, "capacity_bid", 100.0)
+                der = HDF5.create_group(g, "derating")
+                write(der, "scenario_1", 0.85)
+                ap = HDF5.create_group(g, "accepted_perc")
+                write(ap, "scenario_1", [0.7, 0.8])
+            end
+            prod = h5open(tmpfile, "r") do f
+                EMISAgentSimulation.load_product(f["product"])
+            end
+            @test prod isa Capacity
+            @test get_derating(prod, "scenario_1", "annual") == 0.85
+            @test get_accepted_perc(prod, "scenario_1", "annual") == [0.7, 0.8]
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "load_market_prices capacity_price: legacy flat scenario->AxisArray -> annual" begin
+        tmpfile = tempname() * ".h5"
+        try
+            legacy_price = AxisArrays.AxisArray(reshape([15.0], 1), [1])
+            h5open(tmpfile, "w") do f
+                cp = HDF5.create_group(f, "capacity_price")
+                HDF5.attributes(cp)["is_nothing"] = false
+                EMISAgentSimulation.save_axisarray!(HDF5.create_group(cp, "scenario_1"), legacy_price)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation._load_optional_capacity_price(f["capacity_price"])
+            end
+            @test collect(keys(loaded)) == ["scenario_1"]
+            @test collect(keys(loaded["scenario_1"])) == ["annual"]
+            @test loaded["scenario_1"]["annual"][1] == 15.0
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "MarketPrices capacity_price: new 2-level layout round-trips" begin
+        tmpfile = tempname() * ".h5"
+        try
+            price = Dict("scenario_1" => Dict(
+                "summer" => AxisArrays.AxisArray(reshape([10.0], 1), [1]),
+                "winter" => AxisArrays.AxisArray(reshape([20.0], 1), [1])))
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation._save_optional_capacity_price!(
+                    HDF5.create_group(f, "capacity_price"), price)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation._load_optional_capacity_price(f["capacity_price"])
+            end
+            @test Set(keys(loaded["scenario_1"])) == Set(["summer", "winter"])
+            @test loaded["scenario_1"]["winter"][1] == 20.0
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
+    end
+
+    @testset "MarketPrices capacity_price: nothing round-trips" begin
+        tmpfile = tempname() * ".h5"
+        try
+            h5open(tmpfile, "w") do f
+                EMISAgentSimulation._save_optional_capacity_price!(
+                    HDF5.create_group(f, "capacity_price"), nothing)
+            end
+            loaded = h5open(tmpfile, "r") do f
+                EMISAgentSimulation._load_optional_capacity_price(f["capacity_price"])
+            end
+            @test isnothing(loaded)
+        finally
+            isfile(tmpfile) && rm(tmpfile)
+        end
     end
 end

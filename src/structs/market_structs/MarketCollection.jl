@@ -5,7 +5,7 @@ for price forcasts using CEM and endogeneous Economic Dispatch.
 
 struct MarketCollection{Z, T}
 
-    capacity::CapacityMarket
+    capacity::Dict{String, CapacityMarket}
     energy::EnergyMarket
     reserveup::Union{Nothing, Dict{String, ReserveUpMarket{T}}}
     reservedown::Union{Nothing, Dict{String, ReserveDownMarket{T}}}
@@ -14,7 +14,7 @@ struct MarketCollection{Z, T}
     inertia::InertiaMarket
 
     function MarketCollection(
-                              c::CapacityMarket,
+                              c::Dict{String, CapacityMarket},
                               e::EnergyMarket{Z, T},
                               ru::Union{Nothing, Dict{String, ReserveUpMarket{T}}},
                               rd::Union{Nothing, Dict{String, ReserveDownMarket{T}}},

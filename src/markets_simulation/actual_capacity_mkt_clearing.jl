@@ -2,12 +2,62 @@
 #Capacity Market Clearing Module
 
 """
+Resolves the list of capacity-market seasons for realized clearing.
+
+Returns `["annual"]` whenever the seasonal toggle is off or the season definition
+collapses to annual-only (`is_annual_only_seasons`); otherwise returns the season
+names from `season_months`.
+"""
+function resolve_capacity_seasons(season_months::Dict{String, Vector{Int64}},
+                                  seasonal_capacity_market::Bool)
+   if is_annual_only_seasons(season_months, seasonal_capacity_market)
+      return ["annual"]
+   end
+   return collect(keys(season_months))
+end
+
+"""
+Indexes the rows of `Capacity.csv` (already read into `capacity_mkt_params_all`) by
+the requested `seasons`, using the `season` column as the foreign key into
+`capacity_seasons.csv` when present.
+
+The returned dict always covers exactly `seasons`. When a `season` column exists,
+each requested season maps to its matching row; any season without a matching row
+falls back to the first row and emits a warning (this covers both annual mode with
+no explicit `annual` row, and a `Capacity.csv` out of sync with `capacity_seasons.csv`).
+When no `season` column exists, every requested season maps to that first row.
+"""
+function index_capacity_params_by_season(capacity_mkt_params_all,
+                                         seasons::Vector{String})
+   first_row = capacity_mkt_params_all[1, :]
+   if "season" in DataFrames.names(capacity_mkt_params_all)
+      rows_by_season = Dict(String(row["season"]) => row
+                            for row in DataFrames.eachrow(capacity_mkt_params_all))
+      # A requested season with no matching row is expected only for the annual-mode
+      # fallback (toggle off -> seasons == ["annual"] while Capacity.csv still carries
+      # seasonal rows). Any other unmatched season means Capacity.csv is out of sync
+      # with capacity_seasons.csv, so warn before falling back to the first row.
+      for season in seasons
+         haskey(rows_by_season, season) && continue
+         @warn "Season '$season' has no matching row in Capacity.csv's 'season' " *
+               "column; falling back to the first row (season " *
+               "'$(String(first_row["season"]))'). Available Capacity.csv seasons: " *
+               "$(sort(collect(keys(rows_by_season))))."
+      end
+      return Dict(season => get(rows_by_season, season, first_row) for season in seasons)
+   else
+      return Dict(season => first_row for season in seasons)
+   end
+end
+
+"""
 This function does nothing if the product is not Capacity
 """
 function update_capacity_supply_curve!(capacity_supply_curve::Vector{Vector{Union{String, Float64}}},
                                        product::T,
                                        project::P,
-                                       scenario::String) where {T <: Product, P <: Project{<: BuildPhase}}
+                                       scenario::String,
+                                       season::String) where {T <: Product, P <: Project{<: BuildPhase}}
 
    return capacity_supply_curve
 end
@@ -18,19 +68,31 @@ This function pushes project bids in the capacity supply curve
 function update_capacity_supply_curve!(capacity_supply_curve::Vector{Vector{Union{String, Float64}}},
                                        product::Capacity,
                                        project::P,
-                                       scenario::String) where P <: Project{<: BuildPhase}
+                                       scenario::String,
+                                       season::String) where P <: Project{<: BuildPhase}
 
    # Each Element of the Supply Curve:
    #   [1] - Project Name
    #   [2] - Project Size
    #   [3] - Project Capacity Bid
-   #   [4] - Project Derating Factor
+   #   [4] - Project Derating Factor (season-specific)
 
    push!(capacity_supply_curve, [get_name(project),
                                  get_maxcap(project),
                                  get_project_capacity_market_bid(project),
-                                 get_project_derating(project, scenario)])
+                                 get(get_project_derating(project, scenario), season, 0.0)])
    return capacity_supply_curve
+end
+
+"""
+Transitional annual wrapper — keeps the existing 4-arg caller compiling until the
+Phase 4b seasonal clearing loop passes an explicit `season`. Remove once 4b lands.
+"""
+function update_capacity_supply_curve!(capacity_supply_curve::Vector{Vector{Union{String, Float64}}},
+                                       product::T,
+                                       project::P,
+                                       scenario::String) where {T <: Product, P <: Project{<: BuildPhase}}
+   return update_capacity_supply_curve!(capacity_supply_curve, product, project, scenario, "annual")
 end
 
 """
@@ -42,8 +104,24 @@ function create_capacity_demand_curve(input_file::String,
                                       delta_irm::Float64,
                                       capacity_mkt_bool::Bool)
 
-   # Gather parameter data
-   capacity_demand_params = read_data(input_file)[1, :]
+   return create_capacity_demand_curve(read_data(input_file)[1, :],
+                                       system_peak_load,
+                                       irm_scalar,
+                                       delta_irm,
+                                       capacity_mkt_bool)
+end
+
+"""
+Seasonal variant: builds the demand curve from an already-selected parameter row
+(one row of `Capacity.csv`, keyed by season). Used by the per-season realized
+clearing loop in `actual_market_simulation.jl`.
+"""
+function create_capacity_demand_curve(capacity_demand_params::DataFrames.DataFrameRow,
+                                      system_peak_load::Float64,
+                                      irm_scalar::Float64,
+                                      delta_irm::Float64,
+                                      capacity_mkt_bool::Bool)
+
    eford = capacity_demand_params["EFORd"] # Equivalent demand forced outage rate
    base_irm = capacity_demand_params["IRM"] # Installed Reserve Margin
    adjusted_irm = (base_irm + delta_irm) * irm_scalar

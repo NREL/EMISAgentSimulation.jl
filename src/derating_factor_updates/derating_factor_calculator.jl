@@ -11,6 +11,61 @@ function elementwise_ifelse(x, y)
 end
 
 """
+Returns the case-specific capacity season definition file path.
+"""
+function get_capacity_seasons_file(simulation_dir::String)
+    primary = joinpath(simulation_dir, MARKETS_DATA_DIRNAME, CAPACITY_SEASONS_FILENAME)
+    return primary
+end
+
+"""
+Determines whether this run should execute in annual-only mode.
+If `seasonal_capacity_market` is disabled in CaseDefinition, annual mode is forced
+regardless of any season file content.
+"""
+function is_annual_only_seasons(
+    season_months::Dict{String, Vector{Int64}},
+    seasonal_capacity_market::Bool,
+)
+    if !seasonal_capacity_market
+        return true
+    end
+    return length(season_months) == 1 && haskey(season_months, "annual")
+end
+
+"""
+Initializes the output derating table for annual or seasonal mode.
+In seasonal mode, creates one row per season by replicating the template's baseline
+row so that pre-populated values (e.g. thermal/hydro default deratings or other
+constant numeric columns) are preserved. Only the columns that are actually
+recomputed per season are overwritten later; untouched columns retain their
+template baseline instead of being zeroed out.
+"""
+function initialize_derating_output(
+    derating_template::DataFrame,
+    seasons::Vector{String},
+    seasonal_mode::Bool,
+)
+    if !seasonal_mode
+        annual_output = deepcopy(derating_template[1:1, :])
+        if "season" in names(annual_output)
+            select!(annual_output, Not("season"))
+        end
+        return annual_output
+    end
+
+    # Use the template's first row as the baseline for every season, preserving any
+    # pre-populated numeric columns that are not recomputed per season.
+    baseline_row = derating_template[1:1, :]
+    derating_factors = deepcopy(baseline_row)
+    for _ in 2:length(seasons)
+        append!(derating_factors, baseline_row)
+    end
+    derating_factors[!, "season"] = seasons
+    return derating_factors
+end
+
+"""
 Calculates raw (unscaled) capacity credit values for existing and new renewable generation
 and storage using the top-N net-load-hour methodology, then writes them to
 `derating_dict.csv`. Per-type scalars are applied later in `update_derating_factor!`.
@@ -24,6 +79,16 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
     timeseries_data_dir::String)
     @info "Calculating derating data using top net load hour methodology - iteration year: $(iteration_year), scenario: $(scenario)"
     cap_mkt_params = read_data(joinpath(simulation_dir, "markets_data", "Capacity.csv"))
+
+    seasons_file = get_capacity_seasons_file(simulation_dir)
+    seasonal_capacity_market = get_seasonal_capacity_market(get_case(simulation))
+    season_months = load_season_months(seasons_file)
+    seasonal_mode = !is_annual_only_seasons(season_months, seasonal_capacity_market)
+    if !seasonal_mode
+        # Keep downstream loops uniform by using a single synthetic annual season.
+        season_months = Dict{String, Vector{Int64}}("annual" => collect(1:12))
+    end
+    seasons = collect(keys(season_months))
 
     renewable_existing =
         filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
@@ -53,28 +118,11 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         read_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
     num_hours = DataFrames.nrow(load_n_vg_data)
-    num_top_hours = cap_mkt_params.num_top_hours[1] * simulation_years
+    base_num_top_hours = cap_mkt_params.num_top_hours[1]
 
-    existing_vg_power = zeros(num_hours)
+    month_vector = derive_month_vector(load_n_vg_data)
 
-    load = vec(sum(Matrix(load_n_vg_data[:, r"load"]); dims = 2))
-
-    load_n_vg_cols = Set(names(load_n_vg_data))
-    missing_cols =
-        [get_name(g) for g in renewable_existing if !(get_name(g) in load_n_vg_cols)]
-    if !isempty(missing_cols)
-        @warn "calculate_derating_data (year=$iteration_year, scenario=$scenario): columns missing from net-load CSV: $missing_cols"
-    end
-    for g in renewable_existing
-        existing_vg_power += load_n_vg_data[!, get_name(g)]
-    end
-
-    net_load_df = load_n_vg_data[:, 1:4]
-    net_load_df[:, "net_load"] = load - existing_vg_power
-
-    net_load_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load"; rev = true))
-
-    derating_factors = read_data(
+    derating_template = read_data(
         joinpath(
             simulation_dir,
             "markets_data",
@@ -83,111 +131,17 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
             "derating_dict.csv",
         ),
     )
+    derating_factors = initialize_derating_output(derating_template, seasons, seasonal_mode)
+    season_row_index = Dict(season => idx for (idx, season) in enumerate(seasons))
 
-    type_zone_max_cap = Dict{String, Float64}()
-    for zone in zones
-        for type in types
-            type_zone_id = "$(type)_$(zone)"
-            type_zone_max_cap[type_zone_id] = 0.0
-            net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] =
-                deepcopy(net_load_df[:, "net_load"])
-            for g in renewable_existing
-                gen_name = get_name(g)
-                tech = get_tech(g)
-                if "$(get_type(tech))_$(get_zone(tech))" == type_zone_id
-                    net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] +=
-                        load_n_vg_data[:, gen_name]
-                    type_zone_max_cap[type_zone_id] += get_maxcap(g)
-                end
-            end
-        end
+    load_n_vg_cols = Set(names(load_n_vg_data))
+    missing_cols =
+        [get_name(g) for g in renewable_existing if !(get_name(g) in load_n_vg_cols)]
+    if !isempty(missing_cols)
+        # Missing columns mean the net-load dataframe was not written correctly; fail fast
+        # rather than silently producing derating factors from incomplete data.
+        error("calculate_derating_data (year=$iteration_year, scenario=$scenario): columns missing from net-load CSV: $missing_cols. The net-load data was not written properly.")
     end
-
-    for zone in zones
-        for type in types
-            type_zone_id = "$(type)_$(zone)"
-            gen_sorted_df = deepcopy(
-                DataFrames.sort(
-                    net_load_df,
-                    "net_load_w/o_existing_$(type_zone_id)";
-                    rev = true,
-                ),
-            )
-
-            load_reduction =
-                gen_sorted_df[1:num_top_hours, "net_load_w/o_existing_$(type_zone_id)"] -
-                gen_sorted_df[1:num_top_hours, "net_load"]
-            derating_factors[:, "existing_$(type_zone_id)"] .= min(
-                sum(load_reduction) / type_zone_max_cap[type_zone_id] /
-                num_top_hours,
-                1.0,
-            )
-        end
-    end
-
-    for g in renewable_options
-        gen_name = get_name(g)
-        tech = get_tech(g)
-        type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
-        gen_cap = get_maxcap(g)
-
-        net_load_df[:, "net_load_with_$(gen_name)"] = deepcopy(
-            net_load_df[:, "net_load"] - availability_data[:, "$(type_zone_id)"] * gen_cap,
-        )
-        gen_sorted_df =
-            deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)"; rev = true))
-
-        load_reduction =
-            net_load_sorted_df[1:num_top_hours, "net_load"] -
-            gen_sorted_df[1:num_top_hours, "net_load_with_$(gen_name)"]
-
-        derating_factors[:, "new_$(type_zone_id)"] .=
-            min(sum(load_reduction) / gen_cap / num_top_hours, 1.0)
-    end
-
-    # Storage CC script
-    stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
-    all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
-    all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
-
-    # Define a dictionary to store batteries with their corresponding storage durations
-    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
-    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
-
-    # Iterate over each existing battery
-    for battery in all_battery_existing
-        stor_duration =
-            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-        # @info "Existing Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
-        if haskey(existing_storage_duration_dict, stor_duration)
-            push!(existing_storage_duration_dict[stor_duration], battery)
-        else
-            existing_storage_duration_dict[stor_duration] = [battery]
-        end
-    end
-
-    # Iterate over each option battery
-    for battery in all_battery_options
-        stor_duration =
-            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
-        # @info "Option Battery $(get_name(battery)) has storage duration of $(stor_duration) hours: storage capacity $(get_storage_capacity(get_tech(battery))[:max]) MWh, max cap $(get_maxcap(battery)) MW"
-        if haskey(option_storage_duration_dict, stor_duration)
-            push!(option_storage_duration_dict[stor_duration], battery)
-        else
-            option_storage_duration_dict[stor_duration] = [battery]
-        end
-    end
-
-    peak_reductions_existing = Dict(
-        sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for
-        sd in keys(existing_storage_duration_dict)
-    )
-    init_CC = Dict(
-        sd => derating_factors[1, "STOR_$sd"] for
-        sd in keys(existing_storage_duration_dict)
-    )
-    # @info "initial CC is $(init_CC)"
-    # @info "peak reductions is $(peak_reductions_existing)"
 
     function calculate_average_storage_cc(
         stor_duration::Int64,
@@ -298,56 +252,209 @@ function calculate_derating_data(simulation::Union{AgentSimulation, AgentSimulat
         return stor_CC
     end
 
-    for (stor_duration, battery_existing) in existing_storage_duration_dict
-        efficiencies = get_efficiency.(get_tech.(battery_existing))
-        average_efficiency =
-            (
-                mean([eff.in for eff in efficiencies]) +
-                mean([eff.out for eff in efficiencies])
-            ) / 2
+    # Storage grouping is season-independent (depends only on active_projects), so
+    # compute it once here rather than repeating it for every season. The season-dependent
+    # capacity credit values are still computed inside the season loop below.
+    stor_buffer_minutes = cap_mkt_params.stor_buffer_minutes[1]
+    all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
+    all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
 
-        stor_CC = calculate_average_storage_cc(
-            stor_duration,
-            peak_reductions_existing,
-            init_CC,
-            average_efficiency,
-            net_load_df,
-            num_hours,
-            stor_buffer_minutes,
-        )
+    existing_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Existing}}}()
+    option_storage_duration_dict = Dict{Int, Vector{BatteryEMIS{Option}}}()
 
-        derating_factors[:, "existing_STOR_$(stor_duration)"] .= stor_CC
+    for battery in all_battery_existing
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        if haskey(existing_storage_duration_dict, stor_duration)
+            push!(existing_storage_duration_dict[stor_duration], battery)
+        else
+            existing_storage_duration_dict[stor_duration] = [battery]
+        end
     end
 
-    if marginal_cc
-        for (stor_duration, battery_option) in option_storage_duration_dict
-            efficiencies = get_efficiency.(get_tech.(battery_option))
+    for battery in all_battery_options
+        stor_duration =
+            Int(round(get_storage_capacity(get_tech(battery))[:max] / get_maxcap(battery)))
+        if haskey(option_storage_duration_dict, stor_duration)
+            push!(option_storage_duration_dict[stor_duration], battery)
+        else
+            option_storage_duration_dict[stor_duration] = [battery]
+        end
+    end
+
+    # Aggregate existing peak reduction per duration (project-only, season-independent).
+    peak_reductions_existing = Dict(
+        sd => sum(get_maxcap.(existing_storage_duration_dict[sd])) for
+        sd in keys(existing_storage_duration_dict)
+    )
+
+    for season in seasons
+        season_month_set = Set(season_months[season])
+        # Filter full-year data to the subset of rows that belong to this season.
+        season_mask = map(m -> m in season_month_set, month_vector)
+        season_hours = count(season_mask)
+        if season_hours == 0
+            @warn "No rows found for season '$season' while calculating derating factors."
+            continue
+        end
+
+        season_num_top_hours =
+            seasonal_mode ? max(1, Int(round(base_num_top_hours * simulation_years * length(season_months[season]) / 12))) :
+            Int(base_num_top_hours * simulation_years)
+
+        season_load_n_vg_data = load_n_vg_data[season_mask, :]
+        season_availability_data = availability_data[season_mask, :]
+
+        existing_vg_power = zeros(season_hours)
+        load = vec(sum(Matrix(season_load_n_vg_data[:, r"load"]); dims = 2))
+        for g in renewable_existing
+            existing_vg_power += season_load_n_vg_data[!, get_name(g)]
+        end
+
+        net_load_df = season_load_n_vg_data[:, 1:4]
+        net_load_df[:, "net_load"] = load - existing_vg_power
+        net_load_sorted_df = deepcopy(DataFrames.sort(net_load_df, "net_load"; rev = true))
+
+        type_zone_max_cap = Dict{String, Float64}()
+        for zone in zones
+            for type in types
+                type_zone_id = "$(type)_$(zone)"
+                type_zone_max_cap[type_zone_id] = 0.0
+                net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] =
+                    deepcopy(net_load_df[:, "net_load"])
+                for g in renewable_existing
+                    gen_name = get_name(g)
+                    tech = get_tech(g)
+                    if "$(get_type(tech))_$(get_zone(tech))" == type_zone_id
+                        net_load_df[:, "net_load_w/o_existing_$(type_zone_id)"] +=
+                            season_load_n_vg_data[:, gen_name]
+                        type_zone_max_cap[type_zone_id] += get_maxcap(g)
+                    end
+                end
+            end
+        end
+
+        for zone in zones
+            for type in types
+                type_zone_id = "$(type)_$(zone)"
+                if type_zone_max_cap[type_zone_id] <= 0
+                    continue
+                end
+
+                gen_sorted_df = deepcopy(
+                    DataFrames.sort(
+                        net_load_df,
+                        "net_load_w/o_existing_$(type_zone_id)";
+                        rev = true,
+                    ),
+                )
+
+                top_hours = min(season_num_top_hours, DataFrames.nrow(gen_sorted_df))
+                if top_hours == 0
+                    continue
+                end
+
+                load_reduction =
+                    gen_sorted_df[1:top_hours, "net_load_w/o_existing_$(type_zone_id)"] -
+                    gen_sorted_df[1:top_hours, "net_load"]
+                derating_factors[season_row_index[season], "existing_$(type_zone_id)"] = min(
+                    sum(load_reduction) / type_zone_max_cap[type_zone_id] /
+                    top_hours,
+                    1.0,
+                )
+            end
+        end
+
+        for g in renewable_options
+            gen_name = get_name(g)
+            tech = get_tech(g)
+            type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
+            gen_cap = get_maxcap(g)
+            if !(type_zone_id in names(season_availability_data))
+                @warn "Availability data missing column $(type_zone_id) for new renewable option derating."
+                continue
+            end
+
+            net_load_df[:, "net_load_with_$(gen_name)"] = deepcopy(
+                net_load_df[:, "net_load"] -
+                season_availability_data[:, "$(type_zone_id)"] * gen_cap,
+            )
+            gen_sorted_df =
+                deepcopy(DataFrames.sort(net_load_df, "net_load_with_$(gen_name)"; rev = true))
+            top_hours = min(season_num_top_hours, DataFrames.nrow(gen_sorted_df))
+            if top_hours == 0
+                continue
+            end
+
+            load_reduction =
+                net_load_sorted_df[1:top_hours, "net_load"] -
+                gen_sorted_df[1:top_hours, "net_load_with_$(gen_name)"]
+
+            derating_factors[season_row_index[season], "new_$(type_zone_id)"] =
+                min(sum(load_reduction) / gen_cap / top_hours, 1.0)
+        end
+
+        # Storage CC script (grouping hoisted above; only season-dependent values here)
+        init_CC = Dict(
+            sd => ("STOR_$sd" in names(derating_factors) ? derating_factors[season_row_index[season], "STOR_$sd"] : 0.0) for
+            sd in keys(existing_storage_duration_dict)
+        )
+        season_num_hours = DataFrames.nrow(net_load_df)
+
+        for (stor_duration, battery_existing) in existing_storage_duration_dict
+            efficiencies = get_efficiency.(get_tech.(battery_existing))
             average_efficiency =
                 (
                     mean([eff.in for eff in efficiencies]) +
                     mean([eff.out for eff in efficiencies])
                 ) / 2
-            peak_reduction_new = sum(get_maxcap.(battery_option))
-            stor_CC = calculate_marginal_storage_cc(
+
+            stor_CC = calculate_average_storage_cc(
                 stor_duration,
                 peak_reductions_existing,
-                peak_reduction_new,
                 init_CC,
                 average_efficiency,
                 net_load_df,
-                num_hours,
+                season_num_hours,
                 stor_buffer_minutes,
             )
-            derating_factors[:, "new_STOR_$(stor_duration)"] .= stor_CC
+
+            derating_factors[season_row_index[season], "existing_STOR_$(stor_duration)"] =
+                stor_CC
         end
-    else
-        for (stor_duration, battery_option) in option_storage_duration_dict
-            if "existing_STOR_$(stor_duration)" in names(derating_factors)
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=
-                    derating_factors[:, "existing_STOR_$(stor_duration)"]
-            else
-                derating_factors[:, "new_STOR_$(stor_duration)"] .=
-                    derating_factors[:, "STOR_$(stor_duration)"]
+
+        if marginal_cc
+            for (stor_duration, battery_option) in option_storage_duration_dict
+                efficiencies = get_efficiency.(get_tech.(battery_option))
+                average_efficiency =
+                    (
+                        mean([eff.in for eff in efficiencies]) +
+                        mean([eff.out for eff in efficiencies])
+                    ) / 2
+                peak_reduction_new = sum(get_maxcap.(battery_option))
+                stor_CC = calculate_marginal_storage_cc(
+                    stor_duration,
+                    peak_reductions_existing,
+                    peak_reduction_new,
+                    init_CC,
+                    average_efficiency,
+                    net_load_df,
+                    season_num_hours,
+                    stor_buffer_minutes,
+                )
+                derating_factors[season_row_index[season], "new_STOR_$(stor_duration)"] =
+                    stor_CC
+            end
+
+        else
+            for (stor_duration, battery_option) in option_storage_duration_dict
+                if "existing_STOR_$(stor_duration)" in names(derating_factors)
+                    derating_factors[season_row_index[season], "new_STOR_$(stor_duration)"] =
+                        derating_factors[season_row_index[season], "existing_STOR_$(stor_duration)"]
+                else
+                    derating_factors[season_row_index[season], "new_STOR_$(stor_duration)"] =
+                        derating_factors[season_row_index[season], "STOR_$(stor_duration)"]
+                end
             end
         end
     end
@@ -425,6 +532,37 @@ function build_augmented_pras_system(
 end
 
 """
+Runs a single PRAS.assess call for one season with the fixed Monte Carlo seed/sample
+count (`PRAS_N_SAMPLES`, `PRAS_MONTE_CARLO_SEED`), and reduces the result to the
+scalar capacity-credit fraction used by `calculate_derating_factors`. This is the
+only piece of the per-season derating calculation dispatched via
+`Distributed.pmap`; the (expensive) full-horizon system builds and
+`subset_pras_system` calls stay on the main process. Since the seed/sample count
+are fixed and identical for every season regardless of execution order, dispatching
+this call across workers (or running it all on the single main process, when no
+extra workers exist) is deterministic and produces byte-identical results to the
+serial version.
+"""
+function pras_assess_cc(
+    season_base_system::PRAS.SystemModel,
+    season_augmented_system::PRAS.SystemModel,
+    accreditation,
+    cap::Float64,
+)
+    cc_result = PRAS.assess(
+        season_base_system,
+        season_augmented_system,
+        accreditation,
+        PRAS.SequentialMonteCarlo(;
+            samples = PRAS_N_SAMPLES,
+            seed = PRAS_MONTE_CARLO_SEED,
+        ),
+    )
+    cc_lower, cc_upper = extrema(cc_result)
+    return (cc_lower + cc_upper) / (2 * cap)
+end
+
+"""
 Calculates raw (unscaled) capacity credit values for existing and new renewable generation
 and storage using PRAS (ELCC or EFC methodology), then writes them to `derating_dict.csv`.
 Per-type scalars are applied later in `update_derating_factor!`.
@@ -456,6 +594,32 @@ function calculate_derating_factors(
 
     simulation_dir = get_data_dir(get_case(simulation))
     simulation_years = get_total_horizon(get_case(simulation))
+
+    # Seasonal setup, mirroring the exact pattern used by calculate_derating_data.
+    seasons_file = get_capacity_seasons_file(simulation_dir)
+    seasonal_capacity_market = get_seasonal_capacity_market(get_case(simulation))
+    season_months = load_season_months(seasons_file)
+    seasonal_mode = !is_annual_only_seasons(season_months, seasonal_capacity_market)
+    if !seasonal_mode
+        # Keep downstream loops uniform by using a single synthetic annual season.
+        season_months = Dict{String, Vector{Int64}}("annual" => collect(1:12))
+    end
+    seasons = collect(keys(season_months))
+
+    # Precompute the hour-columns selected by each season (divide approach). In
+    # annual mode this is always 1:(DEFAULT_HOURS_PER_YEAR*simulation_years), i.e.
+    # every column, so subset_pras_system(sys, season_cols["annual"]) reproduces the
+    # full-horizon system exactly (annual-mode byte-equivalence).
+    season_cols = Dict{String, Vector{Int}}()
+    for season in seasons
+        cols = season_hour_columns(season_months[season], simulation_years)
+        if isempty(cols)
+            @warn "No hours found for season '$season' while calculating PRAS derating factors."
+            continue
+        end
+        season_cols[season] = cols
+    end
+
     outage_dir = get_outage_dir(get_case(simulation))
     rt_resolution = get_rt_resolution(get_case(simulation))
     zones = get_zones(simulation)
@@ -463,7 +627,7 @@ function calculate_derating_factors(
     availability_df_rt =
         get_availability_df(timeseries_data_dir, scenario, simulation_years, "REAL_TIME")
 
-    derating_factors = read_data(
+    derating_template = read_data(
         joinpath(
             simulation_dir,
             "markets_data",
@@ -472,6 +636,8 @@ function calculate_derating_factors(
             "derating_dict.csv",
         ),
     )
+    derating_factors = initialize_derating_output(derating_template, seasons, seasonal_mode)
+    season_row_index = Dict(season => idx for (idx, season) in enumerate(seasons))
 
     active_projects = get_activeprojects(simulation)
     existing = filter(p -> typeof(p) == RenewableGenEMIS{Existing}, active_projects)
@@ -511,8 +677,17 @@ function calculate_derating_factors(
         copy_system = false,
     )
 
-    # Compute regional load shares once; reused in all PRAS assess calls below.
-    regional_load_shares = collect(get_regional_load_shares(base_pras_system))
+    # Subset the full-horizon base system once per season (divide approach). Full
+    # PSY/PRAS system builds are expensive and season-independent, so they are built
+    # once above; only the cheap column-subset + regional-load-share recompute is
+    # repeated per season. See subset_pras_system's docstring for the SoC/outage-seam
+    # caveat inherent to this divide approach.
+    base_pras_season_systems =
+        Dict(season => subset_pras_system(base_pras_system, cols) for (season, cols) in season_cols)
+    regional_load_shares_by_season = Dict(
+        season => collect(get_regional_load_shares(sys)) for
+        (season, sys) in base_pras_season_systems
+    )
 
     if marginal_cc
         for zone in zones
@@ -533,7 +708,8 @@ function calculate_derating_factors(
                         set_name!(p, "$(get_name(p))_$i")
                         push!(new_projects, p)
                     end
-                    augmented_pras_system = build_augmented_pras_system(
+                    # Full-horizon build (expensive) once per zone/type; subset per season below.
+                    augmented_pras_system_full = build_augmented_pras_system(
                         adjusted_base_system,
                         new_projects,
                         simulation_dir,
@@ -545,19 +721,35 @@ function calculate_derating_factors(
                         availability_df_rt,
                     )
 
-                    # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                    cc_result = PRAS.assess(
-                        base_pras_system,
-                        augmented_pras_system,
-                        methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
-                        PRAS.SequentialMonteCarlo(;
-                            samples = PRAS_N_SAMPLES,
-                            seed = PRAS_MONTE_CARLO_SEED,
-                        ),
+                    # Per-season subset systems + accreditation objects (built once, on
+                    # the main process, as today). Only the pure PRAS.assess reduction
+                    # for each season is dispatched via pmap below; this is deterministic
+                    # because every season uses the SAME fixed seed/samples and its
+                    # inputs are independent of execution order (see pras_assess_cc docs).
+                    valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+                    season_base_systems =
+                        [base_pras_season_systems[s] for s in valid_seasons]
+                    season_augmented_systems = [
+                        subset_pras_system(augmented_pras_system_full, season_cols[s]) for
+                        s in valid_seasons
+                    ]
+                    accreditations = [
+                        methodology{ra_metric}(
+                            Int(ceil(max_cap)),
+                            regional_load_shares_by_season[s],
+                        ) for s in valid_seasons
+                    ]
+                    cc_results = Distributed.pmap(
+                        pras_assess_cc,
+                        season_base_systems,
+                        season_augmented_systems,
+                        accreditations,
+                        fill(max_cap, length(valid_seasons)),
                     )
-                    cc_lower, cc_upper = extrema(cc_result)
-                    cc_final = (cc_lower + cc_upper) / (2 * max_cap)
-                    derating_factors[!, "new_$(type)_$(zone)"] .= cc_final
+                    for (s, cc_final) in zip(valid_seasons, cc_results)
+                        derating_factors[season_row_index[s], "new_$(type)_$(zone)"] =
+                            cc_final
+                    end
                 end
             end
         end
@@ -566,12 +758,18 @@ function calculate_derating_factors(
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
     # No deepcopy needed here: SPI.generate_pras_system only reads the PSY system to build a
     # PRAS struct and does not mutate it. The resulting augmented_pras_system is a fresh object.
-    augmented_pras_system = make_pras_system_spi(
+    # Full-horizon build (expensive, season-independent) once; subset per season below and
+    # reuse across both the existing-renewables loop and the existing-storage loop.
+    augmented_pras_system_full = make_pras_system_spi(
         adjusted_base_system,
         PSY.Area,
         nothing;
         copper_plate = false,
         copy_system = false,
+    )
+    augmented_pras_season_systems = Dict(
+        season => subset_pras_system(augmented_pras_system_full, cols) for
+        (season, cols) in season_cols
     )
 
     for zone in zones
@@ -583,22 +781,34 @@ function calculate_derating_factors(
             if !isempty(zone_tech_units)
                 total_capacity = sum(get_maxcap.(zone_tech_units))
                 @assert total_capacity > 0
-                pruned_base_pras_system =
+                # Full-horizon build (expensive) once per zone/type; subset per season below.
+                pruned_base_pras_system_full =
                     build_pruned_pras_system(adjusted_base_system, zone_tech_units)
-                #  Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-                cc_result = PRAS.assess(
-                    pruned_base_pras_system,
-                    augmented_pras_system,
-                    PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
-                    PRAS.SequentialMonteCarlo(;
-                        samples = PRAS_N_SAMPLES,
-                        seed = PRAS_MONTE_CARLO_SEED,
-                    ),
-                )
-                cc_lower, cc_upper = extrema(cc_result)
-                cc_final = (cc_lower + cc_upper) / (2 * total_capacity)
 
-                derating_factors[!, "existing_$(type)_$(zone)"] .= cc_final
+                valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+                season_pruned_systems = [
+                    subset_pras_system(pruned_base_pras_system_full, season_cols[s]) for
+                    s in valid_seasons
+                ]
+                season_augmented_systems =
+                    [augmented_pras_season_systems[s] for s in valid_seasons]
+                accreditations = [
+                    PRAS.ELCC{ra_metric}(
+                        Int(ceil(total_capacity)),
+                        regional_load_shares_by_season[s],
+                    ) for s in valid_seasons
+                ]
+                cc_results = Distributed.pmap(
+                    pras_assess_cc,
+                    season_pruned_systems,
+                    season_augmented_systems,
+                    accreditations,
+                    fill(total_capacity, length(valid_seasons)),
+                )
+                for (s, cc_final) in zip(valid_seasons, cc_results)
+                    derating_factors[season_row_index[s], "existing_$(type)_$(zone)"] =
+                        cc_final
+                end
             end
         end
     end
@@ -636,27 +846,40 @@ function calculate_derating_factors(
 
     for (stor_duration, battery_existing) in existing_storage_duration_dict
         total_capacity = sum(get_maxcap.(battery_existing))
-        pruned_base_pras_system =
+        # Full-horizon build (expensive) once per duration; subset per season below.
+        pruned_base_pras_system_full =
             build_pruned_pras_system(adjusted_base_system, battery_existing)
 
-        # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-        cc_result = PRAS.assess(
-            pruned_base_pras_system,
-            augmented_pras_system,
-            PRAS.ELCC{ra_metric}(Int(ceil(total_capacity)), regional_load_shares),
-            PRAS.SequentialMonteCarlo(;
-                samples = PRAS_N_SAMPLES,
-                seed = PRAS_MONTE_CARLO_SEED,
-            ),
+        valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+        season_pruned_systems = [
+            subset_pras_system(pruned_base_pras_system_full, season_cols[s]) for
+            s in valid_seasons
+        ]
+        season_augmented_systems =
+            [augmented_pras_season_systems[s] for s in valid_seasons]
+        accreditations = [
+            PRAS.ELCC{ra_metric}(
+                Int(ceil(total_capacity)),
+                regional_load_shares_by_season[s],
+            ) for s in valid_seasons
+        ]
+        cc_results = Distributed.pmap(
+            pras_assess_cc,
+            season_pruned_systems,
+            season_augmented_systems,
+            accreditations,
+            fill(total_capacity, length(valid_seasons)),
         )
-        cc_lower, cc_upper = extrema(cc_result)
-        cc_final = (cc_lower + cc_upper) / (2 * total_capacity)
-        derating_factors[!, "existing_STOR_$(stor_duration)"] .= cc_final
+        for (s, cc_final) in zip(valid_seasons, cc_results)
+            derating_factors[season_row_index[s], "existing_STOR_$(stor_duration)"] =
+                cc_final
+        end
     end
 
-    # augmented_pras_system is no longer needed after the existing storage loop above.
-    # Release it before the battery marginal CC block to reduce peak memory.
-    augmented_pras_system = nothing
+    # augmented_pras_system(s) are no longer needed after the existing storage loop above.
+    # Release them before the battery marginal CC block to reduce peak memory.
+    augmented_pras_system_full = nothing
+    augmented_pras_season_systems = nothing
 
     if marginal_cc
         new_project_names = []
@@ -672,7 +895,8 @@ function calculate_derating_factors(
                     push!(new_projects, new_project)
                 end
             end
-            augmented_pras_system = build_augmented_pras_system(
+            # Full-horizon build (expensive) once per duration; subset per season below.
+            augmented_pras_system_full = build_augmented_pras_system(
                 adjusted_base_system,
                 new_projects,
                 simulation_dir,
@@ -684,19 +908,30 @@ function calculate_derating_factors(
                 availability_df_rt,
             )
 
-            # Call PRAS accreditation methodology. Adjust sample size, seed, etc. here.
-            cc_result = PRAS.assess(
-                base_pras_system,
-                augmented_pras_system,
-                methodology{ra_metric}(Int(ceil(max_cap)), regional_load_shares),
-                PRAS.SequentialMonteCarlo(;
-                    samples = PRAS_N_SAMPLES,
-                    seed = PRAS_MONTE_CARLO_SEED,
-                ),
+            valid_seasons = [s for s in seasons if haskey(season_cols, s)]
+            season_base_systems =
+                [base_pras_season_systems[s] for s in valid_seasons]
+            season_augmented_systems = [
+                subset_pras_system(augmented_pras_system_full, season_cols[s]) for
+                s in valid_seasons
+            ]
+            accreditations = [
+                methodology{ra_metric}(
+                    Int(ceil(max_cap)),
+                    regional_load_shares_by_season[s],
+                ) for s in valid_seasons
+            ]
+            cc_results = Distributed.pmap(
+                pras_assess_cc,
+                season_base_systems,
+                season_augmented_systems,
+                accreditations,
+                fill(max_cap, length(valid_seasons)),
             )
-            cc_lower, cc_upper = extrema(cc_result)
-            cc_final = (cc_lower + cc_upper) / (2 * max_cap)
-            derating_factors[!, "new_STOR_$(stor_duration)"] .= cc_final
+            for (s, cc_final) in zip(valid_seasons, cc_results)
+                derating_factors[season_row_index[s], "new_STOR_$(stor_duration)"] =
+                    cc_final
+            end
         end
 
     else
@@ -774,10 +1009,15 @@ function update_derating_factor!(
             "derating_dict.csv",
         ),
     )
-    derating_factor = derating_data[1, get_type(get_tech(project))]
+    seasonal = "season" in names(derating_data)
+    type_key = get_type(get_tech(project))
     scalar = read_cc_scalar(simulation_dir, scenario, get_type(get_tech(project)))
-    for product in get_products(project)
-        set_derating!(product, scenario, derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[type_key]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
     return
 end
@@ -805,15 +1045,26 @@ function update_derating_factor!(project::RenewableGenEMIS{Existing},
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
 
-    if in("existing_$(type_zone_id)", names(derating_data))
-        derating_factor = derating_data[1, "existing_$(type_zone_id)"]
-    else
-        error("Derating data not found")
+    derating_file = joinpath(
+        simulation_dir,
+        "markets_data",
+        "derating_data",
+        scenario,
+        "derating_dict.csv",
+    )
+    expected_col = "existing_$(type_zone_id)"
+    if !in(expected_col, names(derating_data))
+        error("Derating column '$expected_col' not found for project '$name' (type_zone_id=$type_zone_id) in $derating_file. Available columns: $(names(derating_data)).")
     end
 
+    seasonal = "season" in names(derating_data)
     scalar = read_cc_scalar(simulation_dir, scenario, get_type(tech))
-    for product in get_products(project)
-        set_derating!(product, scenario, derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row["existing_$(type_zone_id)"]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
 
     return
@@ -842,23 +1093,26 @@ function update_derating_factor!(project::RenewableGenEMIS{<:BuildPhase},
     tech = get_tech(project)
     type_zone_id = "$(get_type(tech))_$(get_zone(tech))"
 
-    if marginal_cc
-        if in("new_$(type_zone_id)", names(derating_data))
-            derating_factor = derating_data[1, "new_$(type_zone_id)"]
-        else
-            error("Derating data not found")
-        end
-    else
-        if in("existing_$(type_zone_id)", names(derating_data))
-            derating_factor = derating_data[1, "existing_$(type_zone_id)"]
-        else
-            error("Derating data not found")
-        end
+    derating_file = joinpath(
+        simulation_dir,
+        "markets_data",
+        "derating_data",
+        scenario,
+        "derating_dict.csv",
+    )
+    col_name = marginal_cc ? "new_$(type_zone_id)" : "existing_$(type_zone_id)"
+    if !in(col_name, names(derating_data))
+        error("Derating column '$col_name' not found for project '$name' (type_zone_id=$type_zone_id, marginal_cc=$marginal_cc) in $derating_file. Available columns: $(names(derating_data)).")
     end
 
+    seasonal = "season" in names(derating_data)
     scalar = read_cc_scalar(simulation_dir, scenario, get_type(tech))
-    for product in get_products(project)
-        set_derating!(product, scenario, derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[col_name]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
 
     return
@@ -891,10 +1145,14 @@ function update_derating_factor!(project::BatteryEMIS{Existing},
         ),
     )
 
-    derating_factor = derating_data[1, project_type]
+    seasonal = "season" in names(derating_data)
     scalar = read_cc_scalar(simulation_dir, scenario, "STOR_$(duration)")
-    for product in get_products(project)
-        set_derating!(product, scenario, derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[project_type]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
     return
 end
@@ -930,10 +1188,14 @@ function update_derating_factor!(project::BatteryEMIS{<:BuildPhase},
             "derating_dict.csv",
         ),
     )
-    derating_factor = derating_data[1, project_type]
+    seasonal = "season" in names(derating_data)
     scalar = read_cc_scalar(simulation_dir, scenario, "STOR_$(duration)")
-    for product in get_products(project)
-        set_derating!(product, scenario, derating_factor * scalar)
+    for row in eachrow(derating_data)
+        season = seasonal ? String(row["season"]) : "annual"
+        derating_factor = row[project_type]
+        for product in get_products(project)
+            set_derating!(product, scenario, season, derating_factor * scalar)
+        end
     end
     return
 end

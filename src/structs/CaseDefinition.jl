@@ -266,6 +266,7 @@ mutable struct CaseDefinition
     ordc_unavailability_method::String
     reserve_penalty::String
     static_capacity_market::Bool
+    seasonal_capacity_market::Bool
     irm_scalar::Float64
     accreditation_methodology::String
     accreditation_metric::String
@@ -318,6 +319,7 @@ mutable struct CaseDefinition
         ordc_unavailability_method,
         reserve_penalty,
         static_capacity_market,
+        seasonal_capacity_market,
         irm_scalar,
         accreditation_methodology,
         accreditation_metric,
@@ -394,6 +396,7 @@ mutable struct CaseDefinition
             ordc_unavailability_method,
             reserve_penalty,
             static_capacity_market,
+            seasonal_capacity_market,
             irm_scalar,
             accreditation_methodology,
             accreditation_metric,
@@ -463,6 +466,9 @@ function CaseDefinition(name::String,
         ordc_unavailability_method = simulation_settings["ordc_unavailability_method"],
         reserve_penalty = simulation_settings["reserve_penalty"],
         static_capacity_market = parsebool(simulation_settings["static_capacity_market"]),
+        seasonal_capacity_market = parsebool(
+            get(simulation_settings, "seasonal_capacity_market", "false"),
+        ),
         irm_scalar = parsefloat(simulation_settings["irm_scalar"]),
         accreditation_methodology = simulation_settings["accreditation_methodology"],
         accreditation_metric = simulation_settings["accreditation_metric"],
@@ -507,7 +513,7 @@ function CaseDefinition(name::String,
     rep_period_interval::Int64 = 24,
     num_rep_periods::Int64 = 10,
     avg_block_size::Int64 = 4,
-    fixed_block_size::Bool = FALSE,
+    fixed_block_size::Bool = false,
     rep_chronology_checkpoint::Int64 = 0,
     da_resolution::Int64 = 60,
     rt_resolution::Int64 = 5,
@@ -528,6 +534,7 @@ function CaseDefinition(name::String,
     ordc_unavailability_method::String = "Convolution",
     reserve_penalty::String = "Mid",
     static_capacity_market::Bool = true,
+    seasonal_capacity_market::Bool = false,
     irm_scalar::Float64 = 1.0,
     accreditation_methodology::String = "TopNetLoad",
     accreditation_metric::String = "None",
@@ -579,6 +586,7 @@ function CaseDefinition(name::String,
         ordc_unavailability_method,
         reserve_penalty,
         static_capacity_market,
+        seasonal_capacity_market,
         irm_scalar,
         accreditation_methodology,
         accreditation_metric,
@@ -630,6 +638,7 @@ get_markets(case::CaseDefinition) = case.markets
 get_ordc_curved(case::CaseDefinition) = case.ordc_curved
 get_reserve_penalty(case::CaseDefinition) = case.reserve_penalty
 get_static_capacity_market(case::CaseDefinition) = case.static_capacity_market
+get_seasonal_capacity_market(case::CaseDefinition) = case.seasonal_capacity_market
 get_irm_scalar(case::CaseDefinition) = case.irm_scalar
 get_ordc_unavailability_method(case::CaseDefinition) = case.ordc_unavailability_method
 get_accreditation_methodology(case::CaseDefinition) = case.accreditation_methodology

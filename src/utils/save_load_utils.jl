@@ -83,6 +83,7 @@ function save_case_definition!(g::HDF5.Group, c::CaseDefinition)
     write(g, "ordc_unavailability_method", get_ordc_unavailability_method(c))
     write(g, "reserve_penalty", get_reserve_penalty(c))
     write(g, "static_capacity_market", get_static_capacity_market(c))
+    write(g, "seasonal_capacity_market", get_seasonal_capacity_market(c))
     write(g, "irm_scalar", get_irm_scalar(c))
     write(g, "accreditation_methodology", get_accreditation_methodology(c))
     write(g, "accreditation_metric", get_accreditation_metric(c))
@@ -138,6 +139,7 @@ function load_case_definition(g::HDF5.Group)
         read(g, "ordc_unavailability_method"),
         read(g, "reserve_penalty"),
         read(g, "static_capacity_market"),
+        read(g, "seasonal_capacity_market"),
         read(g, "irm_scalar"),
         read(g, "accreditation_methodology"),
         read(g, "accreditation_metric"),
@@ -832,9 +834,47 @@ end
 function save_market_prices!(g::HDF5.Group, mp::MarketPrices)
     _save_optional_axis_dict!(create_group(g, "energy_price"), mp.energy_price)
     _save_optional_reserve_price!(create_group(g, "reserve_price"), mp.reserve_price)
-    _save_optional_axis_dict!(create_group(g, "capacity_price"), mp.capacity_price)
+    _save_optional_capacity_price!(create_group(g, "capacity_price"), mp.capacity_price)
     _save_optional_axis_dict!(create_group(g, "rec_price"), mp.rec_price)
     _save_optional_axis_dict!(create_group(g, "inertia_price"), mp.inertia_price)
+end
+
+# capacity_price: Dict{scenario => Dict{season => AxisArray{Float64,1}}} (two-level).
+# Written as scenario sub-group -> season sub-group -> AxisArray.
+function _save_optional_capacity_price!(g::HDF5.Group, d)
+    if isnothing(d)
+        attributes(g)["is_nothing"] = true
+        return
+    end
+    attributes(g)["is_nothing"] = false
+    for (scen, season_dict) in d
+        sg = create_group(g, scen)
+        for (season, ax) in season_dict
+            save_axisarray!(create_group(sg, String(season)), ax)
+        end
+    end
+end
+
+# Backward compatibility: legacy (pre-seasonal) files stored capacity_price as
+# scenario -> AxisArray (one level). Detect that a scenario group is itself a flat
+# AxisArray (leaf "data") and wrap it under the "annual" season.
+function _load_optional_capacity_price(g::HDF5.Group)
+    read_attribute(g, "is_nothing") && return nothing
+    out = Dict{String, Dict{String, AxisArrays.AxisArray{Float64, 1}}}()
+    for scen in keys(g)
+        scen == "is_nothing" && continue
+        scen_g = g[scen]
+        if haskey(scen_g, "data")
+            # Legacy flat layout: scenario -> AxisArray.
+            out[scen] = Dict("annual" => load_axisarray(scen_g))
+        else
+            # Seasonal layout: scenario -> season -> AxisArray.
+            out[scen] = Dict(
+                String(season) => load_axisarray(scen_g[season]) for season in keys(scen_g)
+            )
+        end
+    end
+    return out
 end
 
 # Dict{String, AxisArray} — used by energy_price, capacity_price, rec_price, inertia_price
@@ -883,7 +923,7 @@ function load_market_prices(g::HDF5.Group)
     return MarketPrices(
         _load_optional_axis_dict(g["energy_price"]),
         _load_optional_reserve_price(g["reserve_price"]),
-        _load_optional_axis_dict(g["capacity_price"]),
+        _load_optional_capacity_price(g["capacity_price"]),
         _load_optional_axis_dict(g["rec_price"]),
         _load_optional_axis_dict(g["inertia_price"]),
     )
@@ -1440,13 +1480,18 @@ function save_product!(g::HDF5.Group, p::Capacity)
     write(g, "name", string(p.name))
     write(g, "capacity_bid", p.capacity_bid)
     der_g = create_group(g, "derating")
-    ks = collect(String, keys(p.derating))
-    vs = [p.derating[k] for k in ks]
-    write(der_g, "keys", ks)
-    write(der_g, "values", vs)
+    for (scen, season_dict) in p.derating
+        scen_g = create_group(der_g, scen)
+        for (season, val) in season_dict
+            write(scen_g, season, val)
+        end
+    end
     ap_g = create_group(g, "accepted_perc")
-    for (scen, v) in p.accepted_perc
-        write(ap_g, scen, v)
+    for (scen, season_dict) in p.accepted_perc
+        scen_g = create_group(ap_g, scen)
+        for (season, vec) in season_dict
+            write(scen_g, season, vec)
+        end
     end
 end
 
@@ -1496,12 +1541,24 @@ function load_product(g::HDF5.Group)
     elseif pt == "Capacity"
         name = Symbol(read(g, "name"))
         bid = read(g, "capacity_bid")
+        # Backward compatibility: legacy (pre-seasonal) files stored derating/accepted_perc
+        # as scenario -> value (der_g[scen] is a leaf Dataset). New files store
+        # scenario -> season -> value (der_g[scen] is a Group). Map legacy leaves to the
+        # "annual" season so old files load in default annual mode.
         der_g = g["derating"]
-        ks = read(der_g, "keys")
-        vs = read(der_g, "values")
-        der = Dict(ks[i] => vs[i] for i in eachindex(ks))
+        der = Dict(
+            scen => (der_g[scen] isa HDF5.Group ?
+                     Dict(season => read(der_g[scen], season) for season in keys(der_g[scen])) :
+                     Dict("annual" => read(der_g, scen)))
+            for scen in keys(der_g)
+        )
         ap_g = g["accepted_perc"]
-        ap = Dict(k => read(ap_g, k) for k in keys(ap_g))
+        ap = Dict(
+            scen => (ap_g[scen] isa HDF5.Group ?
+                     Dict(season => read(ap_g[scen], season) for season in keys(ap_g[scen])) :
+                     Dict("annual" => read(ap_g, scen)))
+            for scen in keys(ap_g)
+        )
         return Capacity(name, der, ap, bid)
 
     elseif startswith(pt, "OperatingReserve{")
@@ -1872,6 +1929,49 @@ function _load_dict_str_float(g::HDF5.Group)
     ks = read(g, "keys")
     vs = read(g, "values")
     return Dict(ks[i] => vs[i] for i in eachindex(ks))
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Seasonal capacity realized-market persistence (Phase 4e)
+#   capacity_price          Dict{season => AxisArray{Float64,1}}     -> one sub-group per season
+#   capacity_accepted_bids  Dict{season => Dict{name => fraction}}   -> one sub-group per season
+# Each season sub-group reuses the existing generic single-value writers/readers.
+# ─────────────────────────────────────────────────────────────────────────────
+
+function save_capacity_price_seasonal!(g::HDF5.Group, capacity_price::AbstractDict)
+    for (season, prices) in capacity_price
+        save_axisarray!(create_group(g, String(season)), prices)
+    end
+end
+
+function load_capacity_price_seasonal(g::HDF5.Group)
+    # Backward compatibility: legacy (pre-seasonal) files stored capacity_price as a single
+    # flat AxisArray group (leaf datasets "data"/"axis_count"). New files store one sub-group
+    # per season. Detect the flat layout and map it to the annual season.
+    if haskey(g, "data")
+        return Dict{String, AxisArrays.AxisArray{Float64, 1}}("annual" => load_axisarray(g))
+    end
+    return Dict{String, AxisArrays.AxisArray{Float64, 1}}(
+        String(season) => load_axisarray(g[season]) for season in keys(g)
+    )
+end
+
+function save_capacity_bids_seasonal!(g::HDF5.Group, capacity_accepted_bids::AbstractDict)
+    for (season, bids) in capacity_accepted_bids
+        _save_dict_str_float!(create_group(g, String(season)), bids)
+    end
+end
+
+function load_capacity_bids_seasonal(g::HDF5.Group)
+    # Backward compatibility: legacy files stored capacity_accepted_bids as a single flat
+    # Dict{String,Float64} group (leaf datasets "keys"/"values"). New files store one
+    # sub-group per season. Detect the flat layout and map it to the annual season.
+    if haskey(g, "keys")
+        return Dict{String, Dict{String, Float64}}("annual" => _load_dict_str_float(g))
+    end
+    return Dict{String, Dict{String, Float64}}(
+        String(season) => _load_dict_str_float(g[season]) for season in keys(g)
+    )
 end
 
 function _save_dict_str_int!(g::HDF5.Group, d::AbstractDict)
@@ -2407,7 +2507,7 @@ function save_realized_market_data(path::String,
     h5open(path, "w") do f
         attributes(f)["schema_version"] = SCHEMA_VERSION
 
-        save_axisarray!(create_group(f, "capacity_price"), capacity_price)
+        save_capacity_price_seasonal!(create_group(f, "capacity_price"), capacity_price)
         save_axisarray!(create_group(f, "energy_price_ed"), energy_price_ed)
         save_axisarray!(create_group(f, "energy_price_uc"), energy_price_uc)
         save_axisarray!(create_group(f, "energy_price_md"), energy_price_md)
@@ -2427,7 +2527,7 @@ function save_realized_market_data(path::String,
         _save_nested_dict_str_matrix!(create_group(f, "reserve_perc_uc"), reserve_perc_uc)
         _save_nested_dict_str_matrix!(create_group(f, "reserve_perc_ed"), reserve_perc_ed)
 
-        _save_dict_str_float!(
+        save_capacity_bids_seasonal!(
             create_group(f, "capacity_accepted_bids"),
             capacity_accepted_bids,
         )
@@ -2462,7 +2562,7 @@ Returns a `Dict{String, Any}` with the same keys as the old JLD2 format.
 function load_realized_market_data(path::String)
     h5open(path, "r") do f
         return Dict{String, Any}(
-            "capacity_price" => load_axisarray(f["capacity_price"]),
+            "capacity_price" => load_capacity_price_seasonal(f["capacity_price"]),
             "energy_price_ed" => load_axisarray(f["energy_price_ed"]),
             "energy_price_uc" => load_axisarray(f["energy_price_uc"]),
             "energy_price_md" => load_axisarray(f["energy_price_md"]),
@@ -2477,7 +2577,7 @@ function load_realized_market_data(path::String)
             "reserve_perc_md" => _load_nested_dict_str_matrix(f["reserve_perc_md"]),
             "reserve_perc_uc" => _load_nested_dict_str_matrix(f["reserve_perc_uc"]),
             "reserve_perc_ed" => _load_nested_dict_str_matrix(f["reserve_perc_ed"]),
-            "capacity_accepted_bids" => _load_dict_str_float(f["capacity_accepted_bids"]),
+            "capacity_accepted_bids" => load_capacity_bids_seasonal(f["capacity_accepted_bids"]),
             "rec_accepted_bids" => _load_dict_str_float(f["rec_accepted_bids"]),
             "inertia_perc" => _load_dict_str_matrix(f["inertia_perc"]),
             "start_up_costs" => _load_dict_str_matrix(f["start_up_costs"]),

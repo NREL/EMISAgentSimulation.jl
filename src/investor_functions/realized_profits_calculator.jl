@@ -158,7 +158,7 @@ function calculate_realized_profit(project::Project,
                                    reserve_perc_uc::Dict{String, Dict{String, Array{Float64, 2}}},
                                    reserve_perc_ed::Dict{String, Dict{String, Array{Float64, 2}}},
                                    inertia_perc::Dict{String, Array{Float64, 2}},
-                                   capacity_accepted_bids::Dict{String, Float64},
+                                   capacity_accepted_bids::Dict{String, Dict{String, Float64}},
                                    rec_accepted_bids::Dict{String, Float64},
                                    realized_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                    iteration_year::Int64,
@@ -185,7 +185,7 @@ function calculate_realized_profit(project::Project,
                                    reserve_perc_uc::Dict{String, Dict{String, Array{Float64, 2}}},
                                    reserve_perc_ed::Dict{String, Dict{String, Array{Float64, 2}}},
                                    inertia_perc::Dict{String, Array{Float64, 2}},
-                                   capacity_accepted_bids::Dict{String, Float64},
+                                   capacity_accepted_bids::Dict{String, Dict{String, Float64}},
                                    rec_accepted_bids::Dict{String, Float64},
                                    realized_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                    iteration_year::Int64,
@@ -246,7 +246,7 @@ function calculate_realized_profit(project::Project,
                                   reserve_perc_uc::Dict{String, Dict{String, Array{Float64, 2}}},
                                   reserve_perc_ed::Dict{String, Dict{String, Array{Float64, 2}}},
                                   inertia_perc::Dict{String, Array{Float64, 2}},
-                                  capacity_accepted_bids::Dict{String, Float64},
+                                  capacity_accepted_bids::Dict{String, Dict{String, Float64}},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   iteration_year::Int64,
@@ -302,7 +302,7 @@ function calculate_realized_profit(project::Project,
                                   reserve_perc_uc::Dict{String, Dict{String, Array{Float64, 2}}},
                                   reserve_perc_ed::Dict{String, Dict{String, Array{Float64, 2}}},
                                   inertia_perc::Dict{String, Array{Float64, 2}},
-                                  capacity_accepted_bids::Dict{String, Float64},
+                                  capacity_accepted_bids::Dict{String, Dict{String, Float64}},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   iteration_year::Int64,
@@ -317,13 +317,31 @@ function calculate_realized_profit(project::Project,
     size = get_maxcap(project)
 
     update_year = iteration_year + capacity_forward_years - 1
-    if in(project_name, keys(capacity_accepted_bids))
-        profit = size *
-                get_derating(product)[pcm_scenario] *
-                get_prices(market_prices, product)["realized"][1] *
-                capacity_accepted_bids[project_name]
 
-    return profit, update_year
+    # Sum realized capacity revenue across seasons. `capacity_prices` is season-keyed
+    # (Dict{season => AxisArray}); `capacity_accepted_bids` is Dict{season => Dict{name => fraction}}.
+    # In annual mode there is a single "annual" season, reproducing the prior scalar result.
+    capacity_prices = get_prices(market_prices, product)["realized"]
+    profit = 0.0
+    cleared_any = false
+    for (season, season_price) in capacity_prices
+        if !haskey(capacity_accepted_bids, season)
+            @warn "Season '$season' present in capacity_prices but missing from " *
+                  "capacity_accepted_bids; treating as no accepted bids. This usually " *
+                  "indicates a partially-migrated or hand-edited realized-market file."
+        end
+        season_bids = get(capacity_accepted_bids, season, Dict{String, Float64}())
+        if in(project_name, keys(season_bids))
+            cleared_any = true
+            profit += size *
+                      get_derating(product, pcm_scenario, season) *
+                      season_price[1] *
+                      season_bids[project_name]
+        end
+    end
+
+    if cleared_any
+        return profit, update_year
     else
         return nothing, update_year
     end
@@ -342,7 +360,7 @@ function calculate_realized_profit(project::Project,
                                   reserve_perc_uc::Dict{String, Dict{String, Array{Float64, 2}}},
                                   reserve_perc_ed::Dict{String, Dict{String, Array{Float64, 2}}},
                                   inertia_perc::Dict{String, Array{Float64, 2}},
-                                  capacity_accepted_bids::Dict{String, Float64},
+                                  capacity_accepted_bids::Dict{String, Dict{String, Float64}},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   iteration_year::Int64,
@@ -378,7 +396,7 @@ function calculate_realized_profit(project::Project,
                                   reserve_perc_uc::Dict{String, Dict{String, Array{Float64, 2}}},
                                   reserve_perc_ed::Dict{String, Dict{String, Array{Float64, 2}}},
                                   inertia_perc::Dict{String, Array{Float64, 2}},
-                                  capacity_accepted_bids::Dict{String, Float64},
+                                  capacity_accepted_bids::Dict{String, Dict{String, Float64}},
                                   rec_accepted_bids::Dict{String, Float64},
                                   realized_hour_weight::Dict{String, Dict{Int64, Vector{Float64}}},
                                   iteration_year::Int64,
