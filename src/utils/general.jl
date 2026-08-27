@@ -352,6 +352,43 @@ function load_season_months(seasons_file::String)
 end
 
 """
+    season_hour_columns(season_months::Vector{Int64}, simulation_years::Int) -> Vector{Int}
+
+Returns the ascending vector of hour-columns (1-indexed, 1:(DEFAULT_HOURS_PER_YEAR *
+simulation_years)) whose calendar month falls in `season_months`. Ascending hour order
+is the true chronological (month-year) stitch order required by the divide approach:
+within each simulation year, hours are selected in calendar order, and simulation years
+are concatenated in order (e.g. for a summer season across 2 years, all of year 1's
+summer hours precede all of year 2's summer hours).
+
+Month bucketing uses a fixed non-leap hour-of-year mapping: each hour is reduced to its
+hour-of-year via `mod(h - 1, DEFAULT_HOURS_PER_YEAR)` and its month is taken within the
+non-leap reference year `SIM_START_DATE`. This deliberately aligns with the underlying
+load/availability/outage timeseries, which are assembled as fixed 8760-hour (no leap
+day) blocks per simulation year. It intentionally does NOT use leap-aware wall-clock
+arithmetic across the full horizon: doing so would drift by up to ~one day per month
+boundary in every simulation year that crosses a calendar leap year (e.g. horizons ≥ 3
+years from SIM_START_DATE=2018), mis-bucketing ~24 hours per boundary into the wrong
+season relative to the data. The PRAS assessment ignores calendar semantics of the
+timestamp axis, so diverging from the leap-aware timestamp labels here is harmless.
+"""
+function season_hour_columns(season_months::Vector{Int64}, simulation_years::Int)
+    total_hours = DEFAULT_HOURS_PER_YEAR * simulation_years
+    season_month_set = Set(season_months)
+    # Precompute the constant hour-of-year → month table once (non-leap reference year),
+    # matching the no-leap 8760-hour data blocks rather than the leap-aware timestamp axis.
+    hoy_month = [Dates.month(SIM_START_DATE + Dates.Hour(hoy)) for hoy in 0:(DEFAULT_HOURS_PER_YEAR - 1)]
+    cols = Int[]
+    for h in 1:total_hours
+        hoy = mod(h - 1, DEFAULT_HOURS_PER_YEAR)
+        if hoy_month[hoy + 1] in season_month_set
+            push!(cols, h)
+        end
+    end
+    return cols
+end
+
+"""
 Parses a month value from numeric, date/datetime, or string inputs.
 Accepts month numbers, date-like strings, and month names/abbreviations.
 """
