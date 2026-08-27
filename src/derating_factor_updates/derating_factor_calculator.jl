@@ -47,7 +47,11 @@ function initialize_derating_output(
     seasonal_mode::Bool,
 )
     if !seasonal_mode
-        return deepcopy(derating_template)
+        annual_output = deepcopy(derating_template[1:1, :])
+        if "season" in names(annual_output)
+            select!(annual_output, Not("season"))
+        end
+        return annual_output
     end
 
     # Use the template's first row as the baseline for every season, preserving any
@@ -723,29 +727,26 @@ function calculate_derating_factors(
                     # because every season uses the SAME fixed seed/samples and its
                     # inputs are independent of execution order (see pras_assess_cc docs).
                     valid_seasons = [s for s in seasons if haskey(season_cols, s)]
-                    season_assess_args = Dict(
-                        s => (
-                            base_pras_season_systems[s],
-                            subset_pras_system(augmented_pras_system_full, season_cols[s]),
-                            methodology{ra_metric}(
-                                Int(ceil(max_cap)),
-                                regional_load_shares_by_season[s],
-                            ),
-                            max_cap,
+                    season_base_systems =
+                        [base_pras_season_systems[s] for s in valid_seasons]
+                    season_augmented_systems = [
+                        subset_pras_system(augmented_pras_system_full, season_cols[s]) for
+                        s in valid_seasons
+                    ]
+                    accreditations = [
+                        methodology{ra_metric}(
+                            Int(ceil(max_cap)),
+                            regional_load_shares_by_season[s],
                         ) for s in valid_seasons
+                    ]
+                    cc_results = Distributed.pmap(
+                        pras_assess_cc,
+                        season_base_systems,
+                        season_augmented_systems,
+                        accreditations,
+                        fill(max_cap, length(valid_seasons)),
                     )
-                    cc_results = Distributed.pmap(valid_seasons) do s
-                        season_base_system, season_augmented_system, accreditation, cap =
-                            season_assess_args[s]
-                        cc_final = pras_assess_cc(
-                            season_base_system,
-                            season_augmented_system,
-                            accreditation,
-                            cap,
-                        )
-                        s => cc_final
-                    end
-                    for (s, cc_final) in cc_results
+                    for (s, cc_final) in zip(valid_seasons, cc_results)
                         derating_factors[season_row_index[s], "new_$(type)_$(zone)"] =
                             cc_final
                     end
@@ -785,29 +786,26 @@ function calculate_derating_factors(
                     build_pruned_pras_system(adjusted_base_system, zone_tech_units)
 
                 valid_seasons = [s for s in seasons if haskey(season_cols, s)]
-                season_assess_args = Dict(
-                    s => (
-                        subset_pras_system(pruned_base_pras_system_full, season_cols[s]),
-                        augmented_pras_season_systems[s],
-                        PRAS.ELCC{ra_metric}(
-                            Int(ceil(total_capacity)),
-                            regional_load_shares_by_season[s],
-                        ),
-                        total_capacity,
+                season_pruned_systems = [
+                    subset_pras_system(pruned_base_pras_system_full, season_cols[s]) for
+                    s in valid_seasons
+                ]
+                season_augmented_systems =
+                    [augmented_pras_season_systems[s] for s in valid_seasons]
+                accreditations = [
+                    PRAS.ELCC{ra_metric}(
+                        Int(ceil(total_capacity)),
+                        regional_load_shares_by_season[s],
                     ) for s in valid_seasons
+                ]
+                cc_results = Distributed.pmap(
+                    pras_assess_cc,
+                    season_pruned_systems,
+                    season_augmented_systems,
+                    accreditations,
+                    fill(total_capacity, length(valid_seasons)),
                 )
-                cc_results = Distributed.pmap(valid_seasons) do s
-                    season_pruned_system, season_augmented_system, accreditation, cap =
-                        season_assess_args[s]
-                    cc_final = pras_assess_cc(
-                        season_pruned_system,
-                        season_augmented_system,
-                        accreditation,
-                        cap,
-                    )
-                    s => cc_final
-                end
-                for (s, cc_final) in cc_results
+                for (s, cc_final) in zip(valid_seasons, cc_results)
                     derating_factors[season_row_index[s], "existing_$(type)_$(zone)"] =
                         cc_final
                 end
@@ -853,29 +851,26 @@ function calculate_derating_factors(
             build_pruned_pras_system(adjusted_base_system, battery_existing)
 
         valid_seasons = [s for s in seasons if haskey(season_cols, s)]
-        season_assess_args = Dict(
-            s => (
-                subset_pras_system(pruned_base_pras_system_full, season_cols[s]),
-                augmented_pras_season_systems[s],
-                PRAS.ELCC{ra_metric}(
-                    Int(ceil(total_capacity)),
-                    regional_load_shares_by_season[s],
-                ),
-                total_capacity,
+        season_pruned_systems = [
+            subset_pras_system(pruned_base_pras_system_full, season_cols[s]) for
+            s in valid_seasons
+        ]
+        season_augmented_systems =
+            [augmented_pras_season_systems[s] for s in valid_seasons]
+        accreditations = [
+            PRAS.ELCC{ra_metric}(
+                Int(ceil(total_capacity)),
+                regional_load_shares_by_season[s],
             ) for s in valid_seasons
+        ]
+        cc_results = Distributed.pmap(
+            pras_assess_cc,
+            season_pruned_systems,
+            season_augmented_systems,
+            accreditations,
+            fill(total_capacity, length(valid_seasons)),
         )
-        cc_results = Distributed.pmap(valid_seasons) do s
-            season_pruned_system, season_augmented_system, accreditation, cap =
-                season_assess_args[s]
-            cc_final = pras_assess_cc(
-                season_pruned_system,
-                season_augmented_system,
-                accreditation,
-                cap,
-            )
-            s => cc_final
-        end
-        for (s, cc_final) in cc_results
+        for (s, cc_final) in zip(valid_seasons, cc_results)
             derating_factors[season_row_index[s], "existing_STOR_$(stor_duration)"] =
                 cc_final
         end
@@ -914,29 +909,26 @@ function calculate_derating_factors(
             )
 
             valid_seasons = [s for s in seasons if haskey(season_cols, s)]
-            season_assess_args = Dict(
-                s => (
-                    base_pras_season_systems[s],
-                    subset_pras_system(augmented_pras_system_full, season_cols[s]),
-                    methodology{ra_metric}(
-                        Int(ceil(max_cap)),
-                        regional_load_shares_by_season[s],
-                    ),
-                    max_cap,
+            season_base_systems =
+                [base_pras_season_systems[s] for s in valid_seasons]
+            season_augmented_systems = [
+                subset_pras_system(augmented_pras_system_full, season_cols[s]) for
+                s in valid_seasons
+            ]
+            accreditations = [
+                methodology{ra_metric}(
+                    Int(ceil(max_cap)),
+                    regional_load_shares_by_season[s],
                 ) for s in valid_seasons
+            ]
+            cc_results = Distributed.pmap(
+                pras_assess_cc,
+                season_base_systems,
+                season_augmented_systems,
+                accreditations,
+                fill(max_cap, length(valid_seasons)),
             )
-            cc_results = Distributed.pmap(valid_seasons) do s
-                season_base_system, season_augmented_system, accreditation, cap =
-                    season_assess_args[s]
-                cc_final = pras_assess_cc(
-                    season_base_system,
-                    season_augmented_system,
-                    accreditation,
-                    cap,
-                )
-                s => cc_final
-            end
-            for (s, cc_final) in cc_results
+            for (s, cc_final) in zip(valid_seasons, cc_results)
                 derating_factors[season_row_index[s], "new_STOR_$(stor_duration)"] =
                     cc_final
             end

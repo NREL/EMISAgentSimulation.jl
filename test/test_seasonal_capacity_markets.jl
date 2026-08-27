@@ -1189,6 +1189,25 @@ import TimeZones
 import Dates
 
 @testset "Phase 2a PRAS — seasonal divide" begin
+    @testset "annual output normalizes a prior seasonal template" begin
+        template = DataFrame(
+            season = ["summer", "winter"],
+            CT = [0.81, 0.91],
+            existing_Wind_Z1 = [0.41, 0.27],
+        )
+
+        output = EMISAgentSimulation.initialize_derating_output(
+            template,
+            ["annual"],
+            false,
+        )
+
+        @test nrow(output) == 1
+        @test !("season" in names(output))
+        @test output[1, "CT"] == 0.81
+        @test output[1, "existing_Wind_Z1"] == 0.41
+    end
+
     @testset "season_hour_columns selects only the requested months, ascending, across years" begin
         simulation_years = 2
         months = [6, 7, 8]
