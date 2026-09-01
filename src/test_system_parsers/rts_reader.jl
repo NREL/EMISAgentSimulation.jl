@@ -30,7 +30,8 @@ function read_rts(data_dir::String,
     end
 
     zone_numbers = names(test_system_load_da)[5:end]
-    zones = ["zone_$(i)" for i in zone_numbers]
+    system_cfg = load_system_config(data_dir)
+    zones = [get_zone_name(system_cfg, i) for i in zone_numbers]
     # zone_numbers = names(test_system_load_da)[5:end]
     # zones = names(test_system_load_da)[5:end]
 

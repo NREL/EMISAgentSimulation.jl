@@ -58,6 +58,8 @@ function create_rts_sys(rts_dir::String,
     ED_interval::Int64,
     outage_dir::Union{Nothing, String} = nothing,
 )
+    system_config = load_system_config(simulation_dir)
+    default_rts_load = system_config.default_rts_load
     ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
     # ntp_ts_data_dir = POINTER_FILE[:NTPS_TS_DATA_DIR]
     runchecks = false
@@ -71,15 +73,7 @@ function create_rts_sys(rts_dir::String,
     sys_EDs = Vector{PSY.System}()
     sys_EDs_dict = Dict(scenario => Vector{PSY.System}() for scenario in scenarios)
 
-    if pcm_scenario == "scenario_1"
-        supercc_scenario = "baseline"
-    elseif pcm_scenario == "scenario_2"
-        supercc_scenario = "central"
-    elseif pcm_scenario == "scenario_3"
-        supercc_scenario = "ira"
-    else
-        "Not a pre-defined scenario."
-    end
+    supercc_scenario = get_scenario_pcm_label(system_config, pcm_scenario)
 
     for sim_year in 1:simulation_years
         MD_sys_filename = joinpath(
@@ -115,7 +109,7 @@ function create_rts_sys(rts_dir::String,
                 loadyear,
                 "dayahead",
                 supercc_scenario,
-                DEFAULT_RTS_LOAD, # GW
+                default_rts_load, # GW
                 MD_horizon, # hours
                 MD_interval, # hours
                 MD_sys_filename,
@@ -155,7 +149,7 @@ function create_rts_sys(rts_dir::String,
                 loadyear,
                 "dayahead",
                 supercc_scenario,
-                DEFAULT_RTS_LOAD, # GW
+                default_rts_load, # GW
                 UC_horizon, # hours
                 UC_interval, # hours
                 UC_filename,
@@ -176,15 +170,7 @@ function create_rts_sys(rts_dir::String,
         push!(sys_UCs, sys_UC);
 
         for scenario in scenarios
-            if scenario == "scenario_1"
-                supercc_scenario_ed = "baseline"
-            elseif scenario == "scenario_2"
-                supercc_scenario_ed = "central"
-            elseif scenario == "scenario_3"
-                supercc_scenario_ed = "ira"
-            else
-                "Not a pre-defined scenario."
-            end
+            supercc_scenario_ed = get_scenario_pcm_label(system_config, scenario)
 
             ED_filename = joinpath(
                 rts_dir,
@@ -207,7 +193,7 @@ function create_rts_sys(rts_dir::String,
                     loadyear,
                     "realtime",
                     supercc_scenario_ed,
-                    DEFAULT_RTS_LOAD, # GW
+                    default_rts_load, # GW
                     ED_horizon, # hours
                     ED_interval, # hours
                     ED_filename,

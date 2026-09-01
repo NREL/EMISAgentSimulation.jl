@@ -22,6 +22,12 @@ export RiskPreference
 export RiskNeutral
 export RiskAverse
 
+export SystemConfig
+export load_system_config
+export get_zone_name
+export get_default_scenario
+export get_scenario_probability
+
 export MarketPrices
 
 export Finance
@@ -364,6 +370,7 @@ include("structs/devices/RenewableGenEMIS.jl")
 include("structs/devices/ThermalGenEMIS.jl")
 include("structs/devices/ThermalFastStartSIIP.jl")
 
+include("structs/SystemConfig.jl")
 include("structs/CaseDefinition.jl")
 include("structs/MarketPrices.jl")
 include("structs/Scenario.jl")

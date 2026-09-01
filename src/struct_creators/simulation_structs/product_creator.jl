@@ -18,13 +18,15 @@ function create_products(simulation_data::AgentSimulationData,
     variable_cost = projectdata["Fuel Price \$/MMBTU"] * projectdata["HR_avg_0"] / 1000
     push!(products, Energy(:Energy, Dict{String, Array{Float64, 2}}(), variable_cost, 0.0))
 
-    reserve_definition = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "reserve_products.csv"))
+    data_dir = get_data_dir(get_case(simulation_data))
+    reserve_definition = read_data(joinpath(data_dir, "markets_data", "reserve_products.csv"))
 
+    system_cfg = load_system_config(data_dir)
     reserve_products = split(reserve_definition[1, "all_products"], "; ")
 
     for product in reserve_products
-        product_data = read_data(joinpath(get_data_dir(get_case(simulation_data)), "markets_data", "$(reserve_penalty)_reserve_penalty", "$(product).csv"))
-        eligible_zones = ["zone_$(n)" for n in split(product_data[1, "eligible_zones"], ";")]
+        product_data = read_data(joinpath(data_dir, "markets_data", "$(reserve_penalty)_reserve_penalty", "$(product).csv"))
+        eligible_zones = [get_zone_name(system_cfg, n) for n in split(product_data[1, "eligible_zones"], ";")]
 
         if markets[Symbol(product)] && (projectdata["Zone"] in eligible_zones) && occursin(projectdata["Category"], product_data[1, "eligible categories"])
             time_scale = product_data[1, "timescale (min)"]

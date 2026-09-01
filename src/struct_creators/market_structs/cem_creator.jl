@@ -99,6 +99,7 @@ function create_cem_mkt_clr_problem(investor_dir::String,
         Vector{Dict{String, ReserveORDCMarket{num_hours}}}(undef, num_invperiods)
 
     reserve_eligible_projects = Dict(product => String[] for product in reserve_products)
+    system_cfg = load_system_config(sys_data_dir)
 
     reserve_parameter_data = Dict(
         r => read_data(
@@ -146,13 +147,14 @@ function create_cem_mkt_clr_problem(investor_dir::String,
                         timeseries_data,
                         parameter_data,
                         reserve_eligible_projects[product],
+                        sys_data_dir,
                     )
                     reserve_ordc_market[product] = market
                 else
                     direction = lowercase(parameter_data[1, "direction"])
                     price_cap = Float64(parameter_data[1, "price_cap"])
                     zones = [
-                        "zone_$(n)" for
+                        get_zone_name(system_cfg, n) for
                         n in split(parameter_data[1, "eligible_zones"], ";")
                     ]
                     if direction == "up"

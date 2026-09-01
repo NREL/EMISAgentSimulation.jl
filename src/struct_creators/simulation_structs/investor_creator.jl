@@ -128,7 +128,12 @@ function create_investors(simulation_data::AgentSimulationData, timeseries_data_
                     )
                 end
             else
-                name = "scenario_1"
+                # No uncertainty: use the default scenario from system config
+                case = get_case(simulation_data)
+                data_dir = get_data_dir(case)
+                system_cfg = load_system_config(data_dir)
+                default_scenario = get_default_scenario(system_cfg)
+                name = default_scenario
                 probability = 1.0
                 parameter_multipliers = Dict(param => 1.0 for param in param_names)
                 parameter_values = [

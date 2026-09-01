@@ -1764,16 +1764,8 @@ function load_sienna_systems!(
 
     initial_Sienna_system_name = "DA_sys_zonal_with_storage_capacities.json"
     pcm_scenario = simulation_settings["pcm_scenario"]
-
-    if pcm_scenario == "scenario_1"
-        supercc_scenario = "baseline"
-    elseif pcm_scenario == "scenario_2"
-        supercc_scenario = "central"
-    elseif pcm_scenario == "scenario_3"
-        supercc_scenario = "ira"
-    else
-        "Not a pre-defined scenario."
-    end
+    system_config = load_system_config(data_dir)
+    supercc_scenario = get_scenario_pcm_label(system_config, pcm_scenario)
 
     for sim_year in (restore_year + 1):simulation_years
         md_json = joinpath(result_path, "sys_MD_year$(sim_year).json")
