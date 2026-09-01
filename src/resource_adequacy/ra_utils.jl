@@ -221,6 +221,28 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     return
 end
 
+"""
+Reassigns an EMIS thermal project's bus and zone (ThermalTech is immutable, so its tech is rebuilt).
+"""
+function set_project_bus!(project::ThermalGenEMIS{<: BuildPhase}, bus::String, zone::String)
+    tech = get_tech(project)
+    project.tech = ThermalTech(
+        tech.type,
+        tech.fuel,
+        tech.active_power_limits,
+        tech.ramp_limits,
+        tech.time_limits,
+        tech.operation_cost,
+        tech.fuel_cost,
+        tech.heat_rate_curve,
+        bus,
+        zone,
+        tech.FOR,
+        tech.MTTR,
+    )
+    return
+end
+
 function create_capacity_mkt_system(initial_system::PSY.System,
     active_projects::Vector{Project},
     capacity_forward_years::Int64,
@@ -364,6 +386,21 @@ function update_delta_irm!(initial_system::PSY.System,
                     first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
                 if !(adequacy_conditions_met)
+                    ct_bus_id = get_bus(get_tech(ct_project_template))
+                    ct_bus_match = filter(
+                        b ->
+                            string(PSY.get_number(b)) == ct_bus_id ||
+                            PSY.get_name(b) == ct_bus_id,
+                        collect(PSY.get_components(PSY.Bus, capacity_market_system)),
+                    )
+                    if !isempty(ct_bus_match)
+                        @info "CT template bus=$(ct_bus_id) → area=$(PSY.get_name(PSY.get_area(first(ct_bus_match))))"
+                    end
+                    for area in PSY.get_components(PSY.Area, capacity_market_system)
+                        area_lole =
+                            val(PRAS.LOLE(shortfall, PSY.get_name(area))) / simulation_years
+                        @info "  Area $(PSY.get_name(area)) LOLE: $(area_lole) hrs/yr"
+                    end
                     while !(adequacy_conditions_met)
                         @info "RA metrics: $(ra_metrics)"
                         @info "Updating delta IRM for scenario: $(scenario) - Year: $(iteration_year)"
@@ -516,7 +553,32 @@ function create_base_system(initial_system::PSY.System,
                 first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
             if !(adequacy_conditions_met)
+                ct_bus_id = get_bus(get_tech(ct_project_template))
+                ct_bus_match = filter(
+                    b ->
+                        string(PSY.get_number(b)) == ct_bus_id ||
+                        PSY.get_name(b) == ct_bus_id,
+                    collect(PSY.get_components(PSY.Bus, capacity_market_system)),
+                )
+                if !isempty(ct_bus_match)
+                    @info "CT template bus=$(ct_bus_id) → area=$(PSY.get_name(PSY.get_area(first(ct_bus_match))))"
+                end
+
                 while !(adequacy_conditions_met)
+                    area_lole = Dict{String, Float64}()
+                    for area in PSY.get_components(PSY.Area, capacity_market_system)
+                        area_name = PSY.get_name(area)
+                        area_lole[area_name] =
+                            val(PRAS.LOLE(shortfall, area_name)) / simulation_years
+                        @info "  Area $(area_name) LOLE: $(area_lole[area_name]) hrs/yr"
+                    end
+                    # Place incremental CTs in the area with the highest LOLE — it is the binding constraint
+                    target_area_name = argmax(area_lole)
+                    target_bus =
+                        first(get_buses_in_area(capacity_market_system, target_area_name))
+                    target_bus_id = string(PSY.get_number(target_bus))
+                    target_zone = get_zone_for_area(target_area_name)
+                    @info "Targeting area $(target_area_name) (bus $(PSY.get_name(target_bus))) for incremental CTs"
                     scalar = 2
                     ratio = 0
                     for metric in keys(ra_targets)
@@ -528,6 +590,7 @@ function create_base_system(initial_system::PSY.System,
                     for i in 1:ceil(ratio)
                         incremental_project = deepcopy(ct_project_template)
                         set_name!(incremental_project, "addition_CT_project_$(count)")
+                        set_project_bus!(incremental_project, target_bus_id, target_zone)
                         total_added_capacity += get_maxcap(incremental_project)
                         add_capacity_market_project!(
                             capacity_market_system,
