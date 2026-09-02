@@ -1,0 +1,9 @@
+zone_id,zone_name,area_name,load_column
+1,zone_1,FarWest,load_zone_1
+2,zone_2,North,load_zone_2
+3,zone_3,West,load_zone_3
+4,zone_4,Southern,load_zone_4
+5,zone_5,NorthCentral,load_zone_5
+6,zone_6,SouthCentral,load_zone_6
+7,zone_7,Coast,load_zone_7
+8,zone_8,East,load_zone_8

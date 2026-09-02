@@ -578,20 +578,23 @@ function find_zonal_bus(zone::String, sys::PSY.System)
     return zonal_bus
 end
 
-function find_zonal_area(zone::String, sys::PSY.System)
-    zone_number_map = Dict(
-        "FarWest" => 1,
-        "North" => 2,
-        "West" => 3,
-        "Southern" => 4,
-        "NorthCentral" => 5,
-        "SouthCentral" => 6,
-        "Coast" => 7,
-        "East" => 8,
-    )
-    for area in PSY.get_components(PSY.Area, sys)
-        name = PSY.get_name(area)
-        if zone == "zone_$(zone_number_map[name])"
+"""
+    find_zonal_area(zone, sys, system_config = nothing)
+
+Return the PSY `Area` corresponding to `zone`, or `nothing` if no match exists.
+`zone` may be the PSY area name or, when `system_config` is provided, a configured
+zone name mapped from the area's `area_name` alias. The positional `zone_N` form is
+also supported for legacy ERCOT cases without a custom system configuration.
+"""
+function find_zonal_area(
+    zone::String,
+    sys::PSY.System,
+    system_config::Union{Nothing, SystemConfig} = nothing,
+)
+    for (index, area) in enumerate(PSY.get_components(PSY.Area, sys))
+        area_name = PSY.get_name(area)
+        config_zone = isnothing(system_config) ? area_name : get_zone_name(system_config, area_name)
+        if zone == area_name || zone == config_zone || zone == "zone_$(index)"
             return area
         end
     end
@@ -926,9 +929,11 @@ function apply_PSY_past_load_growth!(sys::PSY.System,
 
     # update load timeseries.
     nodal_loads = PSY.get_components(PSY_LOADS, sys)
+    system_config = load_system_config(simulation_dir)
 
     for load in nodal_loads
-        zone = "load_zone_$(PSY.get_name(PSY.get_area(PSY.get_bus(load))))"
+        area_name = PSY.get_name(PSY.get_area(PSY.get_bus(load)))
+        zone = "load_$(get_zone_name(system_config, area_name))"
         scaled_active_power =
             deepcopy(PSY.get_max_active_power(load)) * (1 + load_growth[zone])
         PSY.set_max_active_power!(load, scaled_active_power)

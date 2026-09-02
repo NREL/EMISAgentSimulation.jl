@@ -2297,10 +2297,13 @@ end
 # Note: this is a one-time utility function to convert existing JLD2 files to the new HDF5 format.
 # base_path = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/GS_AAYAD/EMIS_RTS_Analysis_GS/20250310_no_sdes_High_RECT_Static_ORDC_RA_Cap_wo_md_storff_High_RPS/investors"
 
-function transform_jld2_to_h5(base_path::String)
+function transform_jld2_to_h5(
+    base_path::String,
+    scenario_names::Vector{String},
+)
     for investor_id in 1:4
         investor_name = "investor$(investor_id)"
-        for scenario_name in ["scenario_1", "scenario_2", "scenario_3"]
+        for scenario_name in scenario_names
             for iteration_year in 1:15
                 @info "Loading OLD format expected market data for $(investor_name) iteration year $(iteration_year)"
                 data_path = joinpath(

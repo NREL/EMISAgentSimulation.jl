@@ -43,17 +43,15 @@ function create_products(simulation_data::AgentSimulationData,
         end
     end
 
+    unit_type = String(projectdata["Unit Type"])
+    technology_class = get_technology_class(system_cfg, unit_type)
     capacity_eligible = projectdata["Capacity Eligible"]
-    if mopr
-        if projectdata["Category"] == "Wind" || projectdata["Category"] == "Solar PV"
-            capacity_eligible = false
-        end
+    if mopr && is_mopr_exempt(system_cfg, unit_type)
+        capacity_eligible = false
     end
 
-    if !(bat_cap)
-        if projectdata["Category"] == "Battery" || projectdata["Category"] == "Long Duration Energy Storage"
-            capacity_eligible = false
-        end
+    if !bat_cap && technology_class == "storage"
+        capacity_eligible = false
     end
 
     if markets[:Capacity] && capacity_eligible

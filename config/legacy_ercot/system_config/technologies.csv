@@ -1,0 +1,16 @@
+unit_type,category,class,capacity_eligible,mopr_exempt,macrs_years,duration_hr
+ST,Steam,thermal,true,false,,
+CT,Gas CT,thermal,true,false,,
+CC,Gas CC,thermal,true,false,,
+NU_ST,Nuclear,thermal,true,false,,
+GT,Gas CT,thermal,true,false,,
+RE_CT,Gas CT,thermal,true,false,,
+IC,Internal Combustion,thermal,true,false,,
+WT,Wind,renewable,true,true,,
+WIND,Wind,renewable,true,true,,
+PVe,Solar PV,renewable,true,true,,
+PV,Solar PV,renewable,true,true,,
+RTPV,Solar PV,renewable,true,true,,
+HY,Hydro,hydro,true,false,,
+BA,Battery,storage,false,false,,4
+LDES,Long Duration Energy Storage,storage,false,false,,12

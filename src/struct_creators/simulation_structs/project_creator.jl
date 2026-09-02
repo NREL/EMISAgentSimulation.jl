@@ -271,6 +271,7 @@ function create_operation_cost(
     sys_base_power::Float64,
     products::Vector{Product},
     carbon_tax::Vector{Float64},
+    system_config::SystemConfig,
 )
     output_point_fields = String[]
     heat_rate_fields = String[]
@@ -348,21 +349,15 @@ function create_operation_cost(
 
     cost_curve = PSY.CostCurve(value_curve)
 
-    if occursin("CC", projectdata["Unit Type"]) ||
-       occursin("CT", projectdata["Unit Type"]) ||
-       occursin("GT", projectdata["Unit Type"]) ||
-       occursin("ST", projectdata["Unit Type"]) ||
-       occursin("NU_ST", projectdata["Unit Type"]) ||
-       occursin("RE_CT", projectdata["Unit Type"])
+    technology_class = get_technology_class(system_config, String(projectdata["Unit Type"]))
+    if technology_class == "thermal"
         operation_cost =
             PSY.ThermalGenerationCost(cost_curve, fixed, start_up_cost, shut_down_cost)
-    elseif occursin("WT", projectdata["Unit Type"]) ||
-           occursin("PVe", projectdata["Unit Type"])
+    elseif technology_class == "renewable"
         operation_cost = PSY.RenewableGenerationCost(cost_curve)
-    elseif occursin("HY", projectdata["Unit Type"])
+    elseif technology_class == "hydro"
         operation_cost = PSY.HydroGenerationCost(cost_curve, fixed)
-    elseif occursin("BA", projectdata["Unit Type"]) ||
-           occursin("LDES", projectdata["Unit Type"])
+    elseif technology_class == "storage"
         operation_cost = PSY.StorageCost()
     end
 
@@ -565,6 +560,7 @@ function create_tech_type(name::String,
     finance_data::Finance,
     sys_UC::Union{PSY.System, Nothing},
     carbon_tax::Vector{Float64},
+    system_config::SystemConfig,
 )
     type = projectdata["Unit Type"]
     min_cap = projectdata["Min Gen pu"] * size
@@ -589,6 +585,7 @@ function create_tech_type(name::String,
             sys_base_power,
             products,
             carbon_tax,
+            system_config,
         )
         up_down_time =
             (up = projectdata["Min Up Time Hr"], down = projectdata["Min Down Time Hr"])
@@ -597,7 +594,8 @@ function create_tech_type(name::String,
         up_down_time = nothing
     end
 
-    if type in ["ST", "CT", "CC", "NU_ST", "GT", "RE_CT"]
+    technology_class = get_technology_class(system_config, String(type))
+    if technology_class == "thermal"
         heat_rate = _build_heat_rate_curve(projectdata, size)
 
         tech = ThermalTech(type,
@@ -621,7 +619,7 @@ function create_tech_type(name::String,
             end_life_year,
             products,
             finance_data)
-    elseif type in ["WT", "PVe"]
+    elseif technology_class == "renewable"
         tech = RenewableTech(type,
             active_power_limits,
             ramp_limits,
@@ -640,7 +638,7 @@ function create_tech_type(name::String,
             products,
             finance_data)
 
-    elseif type == "HY"
+    elseif technology_class == "hydro"
         tech = HydroTech(type,
             active_power_limits,
             ramp_limits,
@@ -660,7 +658,7 @@ function create_tech_type(name::String,
             products,
             finance_data)
 
-    elseif type in ["BA", "LDES"]
+    elseif technology_class == "storage"
         storage_capacity = parse(Float64, projectdata["Duration Hr"]) * size
         tech = BatteryTech(type,
             (min = 0.0, max = parse(Float64, projectdata["Input Power Rating pu"]) * size),
@@ -954,6 +952,7 @@ function create_project(projectdata::DataFrames.DataFrameRow,
 
     base_power = size
     carbon_tax = get_carbon_tax(simulation_data)
+    system_config = load_system_config(get_data_dir(get_case(simulation_data)))
 
     products = create_products(simulation_data,
         projectdata)
@@ -977,7 +976,7 @@ function create_project(projectdata::DataFrames.DataFrameRow,
 
     project = create_tech_type(name, projectdata, size, base_power,
         decision_year, construction_year, retirement_year,
-        end_life_year, products, finance_data, sys_UC, carbon_tax)
+        end_life_year, products, finance_data, sys_UC, carbon_tax, system_config)
 
     return project
 end

@@ -29,8 +29,8 @@ function read_rts(data_dir::String,
         test_sys_hour_weight = ones(test_sys_num_hours) * 8760 / test_sys_num_hours
     end
 
-    zone_numbers = names(test_system_load_da)[5:end]
     system_cfg = load_system_config(data_dir)
+    zone_numbers = names(test_system_load_da)[system_cfg.zone_column_start:end]
     zones = [get_zone_name(system_cfg, i) for i in zone_numbers]
     # zone_numbers = names(test_system_load_da)[5:end]
     # zones = names(test_system_load_da)[5:end]
@@ -102,8 +102,9 @@ function read_rts(data_dir::String,
     net_load_df_rt = scaled_test_sys_load_rt[:, 1:4]
 
     for zone in zone_numbers
-        net_load_df[:, "load_zone_$(zone)"] = scaled_test_sys_load[:, zone]
-        net_load_df_rt[:, "load_zone_$(zone)"] = scaled_test_sys_load_rt[:, zone]
+        zone_name = get_zone_name(system_cfg, String(zone))
+        net_load_df[:, "load_$(zone_name)"] = scaled_test_sys_load[:, zone]
+        net_load_df_rt[:, "load_$(zone_name)"] = scaled_test_sys_load_rt[:, zone]
     end
 
     existing_generator_data = DataFrames.DataFrame(
@@ -218,7 +219,8 @@ function read_rts(data_dir::String,
     gen_availability_df_rt = scaled_test_sys_load_rt[:, 1:4]
 
     for i in 1:DataFrames.nrow(existing_generator_data)
-        if existing_generator_data[i, "Unit Type"] == "WIND"
+        technology_category = lowercase(get_technology_category(system_cfg, String(existing_generator_data[i, "Unit Type"])))
+        if occursin("wind", technology_category)
             gen_availability_df[:, existing_generator_data[i, "GEN UID"]] =
                 wind_timeseries_data[:, existing_generator_data[i, "GEN UID"]] /
                 existing_generator_data[i, "PMax MW"]
@@ -230,7 +232,7 @@ function read_rts(data_dir::String,
                 wind_timeseries_data[:, existing_generator_data[i, "GEN UID"]]
             net_load_df_rt[:, existing_generator_data[i, "GEN UID"]] =
                 wind_timeseries_data_rt[:, existing_generator_data[i, "GEN UID"]]
-        elseif existing_generator_data[i, "Unit Type"] == "PV"
+        elseif occursin("solar", technology_category) || occursin("pv", technology_category)
             gen_availability_df[:, existing_generator_data[i, "GEN UID"]] =
                 pv_timeseries_data[:, existing_generator_data[i, "GEN UID"]] /
                 existing_generator_data[i, "PMax MW"]
@@ -426,10 +428,10 @@ function read_rts(data_dir::String,
 
     for b in 1:DataFrames.nrow(branches)
         from_bus = "$(branches[b, "From Bus"])"
-        from_zone = "zone_$(first(from_bus, 1))"
+        from_zone = get_zone_name(system_cfg, first(from_bus, 1))
 
         to_bus = "$(branches[b, "To Bus"])"
-        to_zone = "zone_$(first(to_bus, 1))"
+        to_zone = get_zone_name(system_cfg, first(to_bus, 1))
 
         similar_line = filter(
             l -> (
@@ -459,10 +461,10 @@ function read_rts(data_dir::String,
 
     for b in 1:DataFrames.nrow(dc_branches)
         from_bus = "$(dc_branches[b, "From Bus"])"
-        from_zone = "zone_$(first(from_bus, 1))"
+        from_zone = get_zone_name(system_cfg, first(from_bus, 1))
 
         to_bus = "$(dc_branches[b, "To Bus"])"
-        to_zone = "zone_$(first(to_bus, 1))"
+        to_zone = get_zone_name(system_cfg, first(to_bus, 1))
 
         similar_line = filter(
             l -> (

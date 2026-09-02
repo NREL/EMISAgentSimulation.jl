@@ -12,32 +12,25 @@ function prune_system_devices!(
 end
 
 """
-Use this function to specify which devices to remove from the RTS at the start of the simulation.
-"""
-function specify_pruned_units()
-    pruned_unit = Dict{Type{<:PSY.Component}, Array{AbstractString}}()
-    pruned_unit[PSY.ThermalStandard] =
-        ["115_STEAM_1", "115_STEAM_2", "315_STEAM_1", "315_STEAM_2", "315_STEAM_3",
-            "315_STEAM_4", "315_STEAM_5",
-            "101_CT_1", "101_CT_2", "102_CT_1", "102_CT_2",
-            "201_CT_1", "201_CT_2", "202_CT_1", "202_CT_2",
-            "301_CT_1", "301_CT_2", "302_CT_1", "302_CT_2",
-            "207_CT_1", "307_CT_1", "101_STEAM_4",
-            "123_STEAM_3", "223_STEAM_1", "223_STEAM_3"]
-    pruned_unit[PSY.RenewableNonDispatch] =
-        ["308_RTPV_1", "313_RTPV_1", "313_RTPV_2", "313_RTPV_3", "313_RTPV_4", "313_RTPV_5",
-            "313_RTPV_6", "313_RTPV_7",
-            "313_RTPV_8", "313_RTPV_9", "313_RTPV_10", "313_RTPV_11", "313_RTPV_12",
-            "320_RTPV_1", "320_RTPV_2", "320_RTPV_3",
-            "313_RTPV_13", "320_RTPV_4", "320_RTPV_5", "118_RTPV_1", "118_RTPV_2",
-            "118_RTPV_3", "118_RTPV_4", "118_RTPV_5",
-            "118_RTPV_6", "320_RTPV_6", "118_RTPV_7", "118_RTPV_8", "118_RTPV_9",
-            "118_RTPV_10", "213_RTPV_1"]
-    pruned_unit[PSY.RenewableDispatch] = ["309_WIND_1", "212_CSP_1"]
-    pruned_unit[PSY.Generator] = ["114_SYNC_COND_1", "314_SYNC_COND_1", "214_SYNC_COND_1"]
-    pruned_unit[PSY.EnergyReservoirStorage] = ["313_STORAGE_1"]
+    specify_pruned_units(system_config)
 
-    return pruned_unit
+Build the PSY component-to-device removal map from `devices_to_remove.csv`.
+"""
+function specify_pruned_units(system_config::SystemConfig)
+    component_types = Dict(
+        "ThermalStandard" => PSY.ThermalStandard,
+        "RenewableNonDispatch" => PSY.RenewableNonDispatch,
+        "RenewableDispatch" => PSY.RenewableDispatch,
+        "Generator" => PSY.Generator,
+        "EnergyReservoirStorage" => PSY.EnergyReservoirStorage,
+    )
+    pruned_units = Dict{Type{<:PSY.Component}, Array{AbstractString}}()
+    for (component_name, device_names) in system_config.devices_to_remove
+        component_type = get(component_types, component_name, nothing)
+        isnothing(component_type) && error("Unsupported device_type in devices_to_remove.csv: $(component_name)")
+        pruned_units[component_type] = AbstractString.(device_names)
+    end
+    return pruned_units
 end
 
 function create_rts_sys(rts_dir::String,
@@ -91,7 +84,7 @@ function create_rts_sys(rts_dir::String,
             "MD_num_forecast_$(MD_horizon)hor_$(MD_interval)int.txt",
         )
 
-        loadyear = DEFAULT_LOAD_YEAR + sim_year
+        loadyear = system_config.base_load_year + sim_year
         weatheryear = loadyear
 
         if !(isfile(MD_sys_filename) && isfile(MD_num_forecast_filename))

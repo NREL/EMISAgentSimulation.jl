@@ -166,9 +166,10 @@ function adjust_reserve_voll!(sys::PSY.System,
 
     optimization_container = PSI.get_optimization_container(problem)
     variables = PSI.get_variables(optimization_container)
+    system_config = load_system_config(simulation_dir)
 
     for zone in zones
-        area = find_zonal_area(sys, zone)
+        area = find_zonal_area(zone, sys, system_config)
         slack_coefficients = [PSI.SystemBalanceSlackUp, PSI.SystemBalanceSlackDown]
         for c in slack_coefficients
             slack_key = PSI.VariableKey{c, PSY.ACBus}("")
@@ -1931,9 +1932,10 @@ function create_simulation(sys_MD::PSY.System,
         end
     end
 
+    system_config = load_system_config(simulation_dir)
     for zone in zones
         # bus = find_zonal_bus(String(zone), sys_UC)
-        area = find_zonal_area(String(zone), sys_UC)
+        area = find_zonal_area(String(zone), sys_UC, system_config)
         # zone_num = parse(Int64, last(zone, 1))
         if isnothing(zone)
             energy_price_ed[zone, 1, :] = zeros(data_length_ed)
