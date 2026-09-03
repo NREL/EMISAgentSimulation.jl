@@ -57,7 +57,11 @@ using EMISAgentSimulation
     @test EMISAgentSimulation.is_mopr_exempt(cfg, "WT")
     @test cfg.devices_to_remove["ThermalStandard"] == ["AUSTIN_1"]
 
-    legacy_root = normpath(joinpath(@__DIR__, "..", "config", "legacy_ercot"))
+    rm(joinpath(config_dir, "devices_to_remove.csv"))
+    no_pruning_cfg = load_system_config(tmpdir)
+    @test isempty(no_pruning_cfg.devices_to_remove)
+
+    legacy_root = normpath(joinpath(@__DIR__, "..", "config", "ercot_est"))
     legacy = load_system_config(legacy_root)
     @test legacy.zone_names == ["zone_$(index)" for index in 1:8]
     @test get_zone_name(legacy, "FarWest") == "zone_1"

@@ -170,14 +170,14 @@ end
     load_system_config(data_dir::AbstractString)
 
 Load the system configuration from the project's required `system_config/` directory.
-The repository's `config/legacy_ercot/system_config/` bundle can be copied into legacy
+The repository's `config/ercot_est/system_config/` bundle can be copied into legacy
 case data directories to preserve ERCOT behavior.
 """
 function load_system_config(data_dir::AbstractString)
     config_dir = _resolve_system_config_dir(data_dir)
-    required_files = ["system_config.csv", "zones.csv", "scenarios.csv", "technologies.csv", "devices_to_remove.csv"]
+    required_files = ["system_config.csv", "zones.csv", "scenarios.csv", "technologies.csv"]
     missing_files = filter(file -> !isfile(joinpath(config_dir, file)), required_files)
-    isempty(missing_files) || error("Missing system configuration in $(config_dir): $(join(missing_files, ", ")). Copy config/legacy_ercot/system_config for legacy ERCOT cases.")
+    isempty(missing_files) || error("Missing system configuration in $(config_dir): $(join(missing_files, ", ")). Copy config/ercot_est/system_config for legacy ERCOT cases.")
     settings_df = _safe_read_config_csv(joinpath(config_dir, "system_config.csv"))
     zones_df = _safe_read_config_csv(joinpath(config_dir, "zones.csv"))
     scenarios_df = _safe_read_config_csv(joinpath(config_dir, "scenarios.csv"))

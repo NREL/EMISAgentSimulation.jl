@@ -52,6 +52,7 @@ function create_rts_sys(rts_dir::String,
     outage_dir::Union{Nothing, String} = nothing,
 )
     system_config = load_system_config(simulation_dir)
+    configured_pruning = specify_pruned_units(system_config)
     default_rts_load = system_config.default_rts_load
     ntp_ts_data_dir = joinpath(timeseries_data_dir, "input_processing")
     # ntp_ts_data_dir = POINTER_FILE[:NTPS_TS_DATA_DIR]
@@ -94,6 +95,7 @@ function create_rts_sys(rts_dir::String,
                 joinpath(rts_dir, initial_Sienna_system_name);
                 time_series_directory = scratch_dir,
             );
+            prune_system_devices!(sys_MD_initial, configured_pruning)
             # create MD system
             create_sys_w_updated_ts(
                 ntp_ts_data_dir,
@@ -135,6 +137,7 @@ function create_rts_sys(rts_dir::String,
                 joinpath(rts_dir, initial_Sienna_system_name);
                 time_series_directory = scratch_dir,
             );
+            prune_system_devices!(sys_UC_initial, configured_pruning)
             create_sys_w_updated_ts(
                 ntp_ts_data_dir,
                 sys_UC_initial,
@@ -179,6 +182,7 @@ function create_rts_sys(rts_dir::String,
                     joinpath(rts_dir, initial_Sienna_system_name);
                     time_series_directory = scratch_dir,
                 );
+                prune_system_devices!(sys_ED_initial, configured_pruning)
                 create_sys_w_updated_ts(
                     ntp_ts_data_dir,
                     sys_ED_initial,
