@@ -10,10 +10,10 @@ const MAPPING_FILE = joinpath(
 )
 const DEFAULTS_FILE = joinpath(PROJECT_ROOT, "config", "project_defaults.csv")
 const OPTIONS_TEMPLATE = joinpath(
-    PROJECT_ROOT, "config", "project_templates", "projectoptions_template.csv"
+    PROJECT_ROOT, "config", "project_templates", "project_spec", "projectoptions.csv"
 )
 const EXISTING_TEMPLATE = joinpath(
-    PROJECT_ROOT, "config", "project_templates", "projectexisting_template.csv"
+    PROJECT_ROOT, "config", "project_templates", "project_spec", "projectexisting.csv"
 )
 
 @testset "Project input validation" begin

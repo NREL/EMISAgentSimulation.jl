@@ -1,0 +1,9 @@
+kind,market_stage,directory,filename
+load,dayahead,Load,DAY_AHEAD_regional_Load.csv
+load,realtime,Load,REAL_TIME_regional_Load.csv
+wind,dayahead,WIND,DAY_AHEAD_wind.csv
+wind,realtime,WIND,REAL_TIME_wind.csv
+pv,dayahead,PV,DAY_AHEAD_pv.csv
+pv,realtime,PV,REAL_TIME_pv.csv
+reserve,dayahead,Reserves,DAY_AHEAD_regional_{product}.csv
+reserve,realtime,Reserves,REAL_TIME_regional_{product}.csv

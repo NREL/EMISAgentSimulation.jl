@@ -1,0 +1,4 @@
+unit_type,category,class,capacity_eligible,mopr_exempt,macrs_years,duration_hr
+WT,Wind,renewable,true,false,20,
+PVe,Solar PV,renewable,true,false,20,
+BA,Battery,storage,true,false,15,4

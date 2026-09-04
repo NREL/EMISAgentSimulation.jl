@@ -1,0 +1,12 @@
+key,value
+system_name,my_system
+system_filepath,/path/to/system.json
+reference_case_dir,
+scratch_dir,/path/to/scratch
+outage_filepath,/path/to/outages.csv
+heterogeneity,Heterogeneous
+investors,investor_1;investor_2
+base_dir_name,EMIS_RTS_Analysis
+test_system_dir_name,RTS-GMLC
+runs_dir_name,HPC_Analysis_Runs
+time_series_data_dir,/path/to/timeseries

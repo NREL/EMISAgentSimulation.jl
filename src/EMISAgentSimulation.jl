@@ -38,6 +38,8 @@ export extract_branches
 export extract_reserves
 export extract_fleet
 export write_system_inputs
+export create_sys_with_timeseries
+export canonical_constructed_system_path
 
 export MarketPrices
 
@@ -128,9 +130,14 @@ export start_construction!
 # Export Utility functions
 export calculate_operating_profit
 export calculate_required_processes
+export canonical_constructed_system_path
+export canonical_constructed_system_paths
+export canonical_timeseries_path
 export chronological_clustering
 export create_parallel_workers
 export create_pras_worker
+export create_sys_with_timeseries
+export generate_canonical_system_bundle
 export dir_exists
 export leaftypes
 export make_case_data_dir
@@ -499,5 +506,6 @@ include("definitions.jl")
 # while the simulation core remains independent of project_init.
 include("project_init/project_input_validation.jl")
 include("project_init/system_extractor.jl")
+include("project_init/build_constructed_systems.jl")
 
 end
