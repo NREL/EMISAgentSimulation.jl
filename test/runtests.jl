@@ -12,6 +12,7 @@ include("test_read_cc_scalar.jl")
 include("test_update_derating_factor.jl")
 include("test_seasonal_capacity_markets.jl")
 include("test_system_config.jl")
+include("test_project_input_validation.jl")
 
 # Context-dependent tests — require the caller to have defined:
 #   case, simulation_years, test_system_dir  (for test_base_checks.jl)

@@ -27,6 +27,17 @@ export load_system_config
 export get_zone_name
 export get_default_scenario
 export get_scenario_probability
+export load_psy_classification_mapping
+export validate_psy_classification_mapping
+export load_project_defaults
+export validate_project_input_template
+export classify_psy_component
+export extract_zones
+export extract_gen_table
+export extract_branches
+export extract_reserves
+export extract_fleet
+export write_system_inputs
 
 export MarketPrices
 
@@ -483,5 +494,10 @@ include("investment_simulation.jl")
 
 #Include definitions
 include("definitions.jl")
+
+# Include project initialization helpers last so they may use package utilities,
+# while the simulation core remains independent of project_init.
+include("project_init/project_input_validation.jl")
+include("project_init/system_extractor.jl")
 
 end

@@ -1,0 +1,86 @@
+unit_type,field,value
+ST,Min Gen pu,0.0
+ST,Min Up Time Hr,0.0
+ST,Min Down Time Hr,0.0
+ST,Ramp Rate pu/Hr,1.0
+ST,FOR,0.06
+ST,MTTR Hr,24.0
+ST,Lagtime,2.0
+ST,Capex Years,20.0
+ST,Lifetime,30.0
+ST,Fixed OM Cost per MW,15000.0
+ST,Preference Multiplier,1.0
+CT,Min Gen pu,0.0
+CT,Min Up Time Hr,0.0
+CT,Min Down Time Hr,0.0
+CT,Ramp Rate pu/Hr,1.0
+CT,FOR,0.06
+CT,MTTR Hr,24.0
+CT,Lagtime,2.0
+CT,Capex Years,20.0
+CT,Lifetime,30.0
+CT,Fixed OM Cost per MW,11000.0
+CT,Preference Multiplier,1.0
+CC,Min Gen pu,0.0
+CC,Min Up Time Hr,0.0
+CC,Min Down Time Hr,0.0
+CC,Ramp Rate pu/Hr,0.6
+CC,FOR,0.05
+CC,MTTR Hr,24.0
+CC,Lagtime,3.0
+CC,Capex Years,25.0
+CC,Lifetime,30.0
+CC,Fixed OM Cost per MW,15000.0
+CC,Preference Multiplier,1.0
+WT,Min Gen pu,0.0
+WT,Ramp Rate pu/Hr,1.0
+WT,FOR,0.0
+WT,MTTR Hr,0.0
+WT,Lagtime,2.0
+WT,Capex Years,20.0
+WT,Lifetime,30.0
+WT,Fixed OM Cost per MW,43000.0
+WT,Preference Multiplier,1.0
+WT,Capacity Eligible,true
+WT,REC Eligible,true
+PVe,Min Gen pu,0.0
+PVe,Ramp Rate pu/Hr,1.0
+PVe,FOR,0.0
+PVe,MTTR Hr,0.0
+PVe,Lagtime,1.0
+PVe,Capex Years,20.0
+PVe,Lifetime,30.0
+PVe,Fixed OM Cost per MW,19000.0
+PVe,Preference Multiplier,1.0
+PVe,Capacity Eligible,true
+PVe,REC Eligible,true
+BA,Min Gen pu,0.0
+BA,Input Power Rating pu,1.0
+BA,Output Power Rating pu,1.0
+BA,Min Storgae pu,0.0
+BA,Duration Hr,4.0
+BA,Round Trip Efficiency pu,0.85
+BA,FOR,0.0
+BA,MTTR Hr,0.0
+BA,Lagtime,1.0
+BA,Capex Years,15.0
+BA,Lifetime,15.0
+BA,Fixed OM Cost per MW,2525.0
+BA,Preference Multiplier,1.0
+BA,Capacity Eligible,false
+BA,REC Eligible,false
+LDES,Min Gen pu,0.0
+LDES,Input Power Rating pu,1.0
+LDES,Output Power Rating pu,1.0
+LDES,Min Storgae pu,0.0
+LDES,Duration Hr,12.0
+LDES,Round Trip Efficiency pu,0.85
+LDES,FOR,0.0
+LDES,MTTR Hr,0.0
+LDES,Lagtime,1.0
+LDES,Capex Years,15.0
+LDES,Lifetime,15.0
+LDES,Fixed OM Cost per MW,2525.0
+LDES,Preference Multiplier,1.0
+LDES,Capacity Eligible,false
+LDES,REC Eligible,false

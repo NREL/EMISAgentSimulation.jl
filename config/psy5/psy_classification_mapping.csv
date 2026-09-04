@@ -1,0 +1,15 @@
+component_type,prime_mover,fuel,unit_type
+ThermalGen,ST,NATURAL_GAS,ST
+ThermalGen,ST,COAL,ST
+ThermalGen,ST,NUCLEAR,NU_ST
+ThermalGen,CT,NATURAL_GAS,CT
+ThermalGen,CC,NATURAL_GAS,CC
+ThermalGen,GT,NATURAL_GAS,GT
+ThermalGen,IC,NATURAL_GAS,IC
+ThermalGen,RE_CT,NATURAL_GAS,RE_CT
+RenewableGen,WT,WIND,WT
+RenewableGen,PVe,SOLAR,PVe
+RenewableGen,PV,SOLAR,PV
+RenewableGen,RTPV,SOLAR,RTPV
+HydroGen,HY,HYDRO,HY
+Storage,,,BA
