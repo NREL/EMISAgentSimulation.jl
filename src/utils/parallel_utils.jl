@@ -1,7 +1,10 @@
 """
 This function creates parallel workers for making price predictions.
+
+Keyword `n_threads` configures each spawned worker process with Julia threads.
+The default keeps the historical behavior of a single-threaded worker pool.
 """
-function create_parallel_workers(case::CaseDefinition, hpc::Bool)
+function create_parallel_workers(case::CaseDefinition, hpc::Bool; n_threads::Int = 1)
     data_dir = get_data_dir(case)
     dir_name = joinpath(data_dir, "investors")
     investor_names = readdir(dir_name)
@@ -50,10 +53,14 @@ function create_parallel_workers(case::CaseDefinition, hpc::Bool)
             nodes = split(ENV["SLURM_NODELIST"], ",")
             num_procs = min(Int(ceil(num_workers_required / length(nodes))), 4)
             node_pairs = [(n, num_procs) for n in nodes]
-            Distributed.addprocs(node_pairs)
+            Distributed.addprocs(node_pairs; exeflags = "--threads=$(n_threads)")
         else
             num_workers = min(Int(num_workers_required), 4)
-            Distributed.addprocs(num_workers; lazy = false)
+            Distributed.addprocs(
+                num_workers;
+                lazy = false,
+                exeflags = "--threads=$(n_threads)",
+            )
         end
     end
 

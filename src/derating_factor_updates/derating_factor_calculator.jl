@@ -502,6 +502,8 @@ function calculate_derating_factors(
         availability_df_rt,
     )
 
+    @info "Created base system for derating factor calculation"
+
     # create "Base" PRAS system to be used for calculation of ELCC or EFC.
     base_pras_system = make_pras_system_spi(
         adjusted_base_system,
@@ -513,6 +515,8 @@ function calculate_derating_factors(
 
     # Compute regional load shares once; reused in all PRAS assess calls below.
     regional_load_shares = collect(get_regional_load_shares(base_pras_system))
+
+    @info "Calculating derating factors for new projects"
 
     if marginal_cc
         for zone in zones
@@ -563,6 +567,9 @@ function calculate_derating_factors(
         end
     end
 
+    @info "Finished calculating derating factors for new projects"
+    @info "Calculating derating factors for existing projects"
+
     # For average ELCC/EFC, existing units are removed. The new system with reduced units now becomes the base PRAS system.
     # No deepcopy needed here: SPI.generate_pras_system only reads the PSY system to build a
     # PRAS struct and does not mutate it. The resulting augmented_pras_system is a fresh object.
@@ -603,6 +610,8 @@ function calculate_derating_factors(
         end
     end
 
+    @info "Finished calculating derating factors for existing projects"
+
     all_battery_existing = filter(p -> typeof(p) == BatteryEMIS{Existing}, active_projects)
     all_battery_options = filter(p -> typeof(p) == BatteryEMIS{Option}, active_projects)
 
@@ -634,6 +643,8 @@ function calculate_derating_factors(
         end
     end
 
+    @info "Starting calculation of derating factors for existing storage durations"
+
     for (stor_duration, battery_existing) in existing_storage_duration_dict
         total_capacity = sum(get_maxcap.(battery_existing))
         pruned_base_pras_system =
@@ -653,10 +664,13 @@ function calculate_derating_factors(
         cc_final = (cc_lower + cc_upper) / (2 * total_capacity)
         derating_factors[!, "existing_STOR_$(stor_duration)"] .= cc_final
     end
+    @info "Finished calculation of derating factors for existing storage durations"
 
     # augmented_pras_system is no longer needed after the existing storage loop above.
     # Release it before the battery marginal CC block to reduce peak memory.
     augmented_pras_system = nothing
+
+    @info "Starting calculation of derating factors for new storage durations"
 
     if marginal_cc
         new_project_names = []
@@ -710,6 +724,8 @@ function calculate_derating_factors(
             end
         end
     end
+
+    @info "Finished calculation of derating factors for new storage durations"
 
     # Overwrite file with new derating factors.
     write_data(
