@@ -86,7 +86,7 @@ end
 
 """
 Transitional annual wrapper — keeps the existing 4-arg caller compiling until the
-Phase 4b seasonal clearing loop passes an explicit `season`. Remove once 4b lands.
+seasonal clearing loop passes an explicit `season`.
 """
 function update_capacity_supply_curve!(capacity_supply_curve::Vector{Vector{Union{String, Float64}}},
                                        product::T,

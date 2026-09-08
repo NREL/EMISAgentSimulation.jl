@@ -31,6 +31,10 @@ export load_psy_classification_mapping
 export validate_psy_classification_mapping
 export load_project_defaults
 export validate_project_input_template
+export build_project_init_manifest
+export validate_project_init_manifest
+export initialize_emis_project
+export new_emis_case
 export classify_psy_component
 export extract_zones
 export extract_gen_table
@@ -505,7 +509,10 @@ include("definitions.jl")
 # Include project initialization helpers last so they may use package utilities,
 # while the simulation core remains independent of project_init.
 include("project_init/project_input_validation.jl")
+include("project_init/input_manifest.jl")
 include("project_init/system_extractor.jl")
+include("project_init/project_initializer.jl")
+include("project_init/new_case.jl")
 include("project_init/build_constructed_systems.jl")
 
 end

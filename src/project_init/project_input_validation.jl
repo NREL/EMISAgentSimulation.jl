@@ -67,7 +67,7 @@ end
 """
     validate_psy_classification_mapping(mapping, technologies)
 
-Validate mapping targets against the phase 1 technology configuration.
+Validate mapping targets against the technology configuration.
 """
 function validate_psy_classification_mapping(
     mapping::DataFrames.DataFrame,

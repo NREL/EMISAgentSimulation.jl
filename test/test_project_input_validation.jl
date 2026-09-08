@@ -1,5 +1,8 @@
 using Test
+using EMISAgentSimulation
 using PowerSystems
+using DataFrames
+using CSV
 
 const PROJECT_ROOT = normpath(joinpath(@__DIR__, ".."))
 const TECHNOLOGIES_FILE = joinpath(
@@ -87,5 +90,23 @@ const EXISTING_TEMPLATE = joinpath(
         output_dir;
         mapping=mapping,
         technologies=technologies,
+    )
+
+    spec_dir = joinpath(PROJECT_ROOT, "config", "project_templates", "project_spec")
+    init_dir = joinpath(mktempdir(), "project_init_test")
+    result = initialize_emis_project(spec_dir; output_dir=init_dir, reference_case_dir=nothing)
+    @test isdir(joinpath(init_dir, "EMIS_RTS_Analysis", "Heterogeneous", "system_config"))
+    @test isdir(joinpath(init_dir, "EMIS_RTS_Analysis", "Heterogeneous", "markets_data"))
+    @test isdir(joinpath(init_dir, "EMIS_RTS_Analysis", "Heterogeneous", "investors", "investor_1", "markets_data"))
+    @test haskey(result, :base_dir)
+    @test isdir(joinpath(init_dir, "case_templates"))
+
+    stale_root = mktempdir()
+    stale_base = joinpath(stale_root, "EMIS_RTS_Analysis")
+    mkpath(joinpath(stale_base, "case_1"))
+    @test_throws ErrorException initialize_emis_project(
+        spec_dir;
+        output_dir=stale_root,
+        reference_case_dir=nothing,
     )
 end
