@@ -35,6 +35,7 @@ export build_project_init_manifest
 export validate_project_init_manifest
 export initialize_emis_project
 export new_emis_case
+export validate_emis_project
 export classify_psy_component
 export extract_zones
 export extract_gen_table
@@ -514,5 +515,6 @@ include("project_init/system_extractor.jl")
 include("project_init/project_initializer.jl")
 include("project_init/new_case.jl")
 include("project_init/build_constructed_systems.jl")
+include("project_init/validate_project.jl")
 
 end
