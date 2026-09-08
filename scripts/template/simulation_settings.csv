@@ -1,0 +1,44 @@
+SETTING,VALUE,,Comments
+name,{{CASE_NAME}},,Name of the test case
+start_year,{{START_YEAR}},,Starting year for the simulation
+total_horizon,15,,Total horizon in years
+rolling_horizon,7,,Rolling horizon in years
+simulation_years,15,,Total simulation horizon in years
+rep_period_interval,24,,Hours in each representative period
+num_rep_periods,9,,Number of representative periods
+avg_block_size,4,,Average CEM time-block size
+fixed_block_size,FALSE,,Whether CEM blocks have fixed size
+rep_chronology_checkpoint,0,,Chronological storage checkpoint interval
+siip_market_clearing,TRUE,,Use SIIP unit commitment and economic dispatch
+pcm_scenario,{{PCM_SCENARIO}},,Scenario used for PCM timeseries
+da_resolution,60,,Day-ahead resolution in minutes
+rt_resolution,60,,Real-time resolution in minutes
+rps_target,High,,Clean-energy target scenario
+ordc_curved,FALSE,,Whether to use a curved ORDC
+ordc_unavailability_method,Convolution,,Generator unavailability methodology
+reserve_penalty,Mid,,Reserve penalty setting
+static_capacity_market,FALSE,,Whether the capacity demand curve is static
+irm_scalar,1,,IRM scalar
+accreditation_methodology,ELCC,,Capacity accreditation methodology
+accreditation_metric,EUE,,Resource adequacy metric
+marginal_cc_switch,TRUE,,Use marginal CC for new VRE and batteries
+mopr,FALSE,,Whether VRE is excluded from capacity markets
+battery_cap_mkt,TRUE,,Whether batteries participate in capacity markets
+vre_reserves,TRUE,,Whether VRE provides reserves
+heterogeneity,{{HETEROGENEITY_BOOL}},,Whether investors are heterogeneous
+forecast_type,Imperfect,,Investor forecast type
+max_carbon_tax_increase,0,,Maximum annual carbon-tax increase
+info_symmetry,FALSE,,Whether investors share information
+belief_update,TRUE,,Whether investors update beliefs
+uncertainty,TRUE,,Whether investors model uncertainty
+risk_aversion,TRUE,,Whether investors are risk averse
+parallel_investors,TRUE,,Parallelize investor prediction
+parallel_scenarios,TRUE,,Parallelize scenario prediction
+md_horizon,73,,Multi-day simulation horizon
+md_interval,72,,Multi-day simulation interval
+uc_horizon,25,,Day-ahead simulation horizon
+uc_interval,24,,Day-ahead simulation interval
+ed_horizon,2,,Real-time simulation horizon
+ed_interval,1,,Real-time simulation interval
+multi_day_market,FALSE,,Whether to enable multi-day markets
+time_series_data_dir,{{TIME_SERIES_DATA_DIR}},,Canonical timeseries directory

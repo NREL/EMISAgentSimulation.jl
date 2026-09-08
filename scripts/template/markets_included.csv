@@ -1,0 +1,12 @@
+MARKET,INCLUDED
+Energy,TRUE
+Synchronous,TRUE
+Primary,TRUE
+Reg_Up,TRUE
+Reg_Down,TRUE
+Flex_Up,FALSE
+Flex_Down,FALSE
+Capacity,FALSE
+REC,TRUE
+CarbonTax,TRUE
+Inertia,FALSE

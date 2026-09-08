@@ -10,3 +10,5 @@ base_dir_name,EMIS_RTS_Analysis
 test_system_dir_name,RTS-GMLC
 runs_dir_name,HPC_Analysis_Runs
 time_series_data_dir,/path/to/timeseries
+start_year,2020
+pcm_scenario,scenario_1

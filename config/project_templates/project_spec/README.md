@@ -18,7 +18,7 @@ Required tables:
 
 `projectexisting.csv`, `devices_to_remove.csv`, and `outages.csv` are optional. The PSY system JSON and actual profile CSVs are external files referenced by these inputs and are not represented by placeholder data here. `reference_case_dir` is optional and may remain blank for a first-time project.
 
-The `project_spec.csv` outage path may point to `outages.csv` or to a supported long-form or wide outage dataset. Timeseries are discovered from the canonical folder and filename layout below; users are responsible for placing their preprocessed files there.
+The `project_spec.csv` outage path may point to `outages.csv` or to a supported long-form or wide outage dataset. `start_year` and `pcm_scenario` set the defaults rendered into each case template; they may be changed for an individual case with `--override`. Timeseries are discovered from the canonical folder and filename layout below; users are responsible for placing their preprocessed files there.
 
 ## External input layout
 

@@ -80,9 +80,43 @@ function _write_system_config_bundle(base_dir::AbstractString, spec_dir::Abstrac
     return target_dir
 end
 
-function _write_case_template(project_root::AbstractString)
+function _template_source_dir()
+    return normpath(joinpath(@__DIR__, "..", "..", "scripts", "template"))
+end
+
+function _render_template_text(text::AbstractString, replacements::Dict{String, String})
+    rendered = String(text)
+    for (key, value) in replacements
+        rendered = replace(rendered, "{{$(key)}}" => value)
+    end
+    return rendered
+end
+
+function _copy_rendered_template(src::AbstractString, dst::AbstractString, replacements::Dict{String, String})
+    mkpath(dirname(dst))
+    if isfile(src)
+        write(dst, _render_template_text(read(src, String), replacements))
+    elseif isdir(src)
+        _copy_directory_contents(src, dst)
+    else
+        error("Template path does not exist: $(src)")
+    end
+    return dst
+end
+
+function _write_case_template(project_root::AbstractString, replacements::Dict{String, String})
     template_dir = joinpath(project_root, "case_templates")
     mkpath(template_dir)
+    source_dir = _template_source_dir()
+    if isdir(source_dir)
+        for entry in readdir(source_dir)
+            _copy_rendered_template(
+                joinpath(source_dir, entry),
+                joinpath(template_dir, entry),
+                replacements,
+            )
+        end
+    end
     return template_dir
 end
 
@@ -99,6 +133,17 @@ function _copy_directory_contents(src_dir::AbstractString, dst_dir::AbstractStri
         end
     end
     return dst_dir
+end
+
+function _write_project_metadata(project_root::AbstractString, values::Dict{String, String})
+    metadata_path = joinpath(project_root, "project_metadata.csv")
+    open(metadata_path, "w") do io
+        write(io, "key,value\n")
+        for key in sort!(collect(keys(values)))
+            write(io, "$(key),$(replace(values[key], "," => "\\,"))\n")
+        end
+    end
+    return metadata_path
 end
 
 function _find_ref_het_dir(ref_case::AbstractString, base_dir_name::AbstractString, heterogeneity::AbstractString)
@@ -152,10 +197,29 @@ function initialize_emis_project(spec_dir::AbstractString; output_dir::AbstractS
     runs_dir_name = get(spec, "runs_dir_name", "HPC_Analysis_Runs")
     system_filepath = get(spec, "system_filepath", "")
     time_series_data_dir = get(spec, "time_series_data_dir", "")
+    start_year = get(spec, "start_year", "2020")
+    pcm_scenario = get(spec, "pcm_scenario", "scenario_1")
 
     base_dir = joinpath(output_dir, base_dir_name)
     test_system_dir = joinpath(output_dir, test_system_dir_name)
     runs_dir = joinpath(output_dir, runs_dir_name)
+
+    template_replacements = Dict(
+        "PROJECT_ROOT" => normpath(output_dir),
+        "BASE_DIR" => normpath(base_dir),
+        "TEST_SYSTEM_DIR" => normpath(test_system_dir),
+        "RUNS_DIR" => normpath(runs_dir),
+        "HETEROGENEITY" => heterogeneity,
+        "HETEROGENEITY_BOOL" => string(lowercase(heterogeneity) == "heterogeneous"),
+        "SYSTEM_NAME" => system_name,
+        "SCRATCH_DIR" => _resolve_path(spec_dir, scratch_dir),
+        "OUTAGE_FILEPATH" => _resolve_path(spec_dir, outage_filepath),
+        "SYSTEM_FILEPATH" => _resolve_path(spec_dir, system_filepath),
+        "TIME_SERIES_DATA_DIR" => normpath(joinpath(output_dir, "timeseries")),
+        "CASE_NAME" => "{{CASE_NAME}}",
+        "START_YEAR" => start_year,
+        "PCM_SCENARIO" => pcm_scenario,
+    )
 
     if isdir(base_dir)
         existing_entries = readdir(base_dir)
@@ -170,7 +234,13 @@ function initialize_emis_project(spec_dir::AbstractString; output_dir::AbstractS
     mkpath(output_dir)
     mkpath(joinpath(base_dir, heterogeneity))
     mkpath(joinpath(base_dir, heterogeneity, "markets_data"))
-    mkpath(joinpath(output_dir, "case_templates"))
+    template_dir = _write_case_template(output_dir, template_replacements)
+    metadata_path = _write_project_metadata(output_dir, Dict(
+        "base_dir" => normpath(base_dir),
+        "runs_dir" => normpath(runs_dir),
+        "test_system_dir" => normpath(test_system_dir),
+        "heterogeneity" => heterogeneity,
+    ))
     mkpath(runs_dir)
     mkpath(test_system_dir)
 
@@ -260,6 +330,9 @@ function initialize_emis_project(spec_dir::AbstractString; output_dir::AbstractS
         :outage_filepath => outage_filepath,
         :investors => investors,
         :system_config_dir => target_config_dir,
+        :case_templates_dir => template_dir,
+        :project_metadata => metadata_path,
+        :template_replacements => template_replacements,
         :manifest => manifest,
     )
 end
