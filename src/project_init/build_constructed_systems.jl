@@ -106,8 +106,8 @@ function canonical_timeseries_path(
     )
     kind_key = lowercase(strip(kind)) == "solar" ? "pv" : lowercase(strip(kind))
     matches = findall(
-        (lowercase(strip(string(row.kind))) == kind_key) &&
-        (_canonical_market_stage(row.market_stage) == stage),
+        row -> (lowercase(strip(string(row.kind))) == kind_key) &&
+            (_canonical_market_stage(row.market_stage) == stage),
         eachrow(defaults),
     )
     length(matches) == 1 || error(
