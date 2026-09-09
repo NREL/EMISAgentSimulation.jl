@@ -60,6 +60,8 @@ Add these only when needed:
 - `queue_cost_data.csv`, investor finance defaults, and `markets_data/`: study-specific
   market and finance overrides. See
   `config/project_templates/project_spec/markets_data/README.md`.
+- `investors/<investor>/markets_data/`: investor-specific market assumptions such as
+  `scenario_data.csv`, `scenario_multiplier_data.csv`, and `investor_belief.csv`.
 
 `reference_case_dir` is optional. It can supply compatible downstream market, investor,
 and finance files, but it does not replace the need for the user's own system, zones,

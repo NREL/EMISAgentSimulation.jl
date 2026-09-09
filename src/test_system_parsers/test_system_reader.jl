@@ -24,7 +24,7 @@ function read_test_system(data_dir::String,
     test_sys_hour_weight = nothing
     zonal_lines = nothing
 
-    if occursin("RTS", test_system_dir)
+    if isdir(joinpath(test_system_dir, "RTS_Data"))
         zones,
         representative_periods,
         rep_hour_weight,
@@ -45,6 +45,8 @@ function read_test_system(data_dir::String,
             n_rep_periods,
             rep_checkpoint,
             timeseries_data_dir)
+    else
+        error("Test system directory does not contain RTS_Data: $(test_system_dir)")
     end
 
     return zones,
