@@ -26,7 +26,7 @@ end
 function _apply_case_overrides(settings_path::AbstractString, overrides)
     isempty(overrides) && return
     rows = collect(CSV.File(settings_path; stringtype=String))
-    values = Dict(string(row["SETTING"]) => string(row["VALUE"]) for row in rows)
+    values = Dict(string(row[:SETTING]) => string(row[:VALUE]) for row in rows)
     for (key, value) in overrides
         key = String(key)
         haskey(values, key) || error("Unknown case setting override: $(key)")
@@ -35,15 +35,15 @@ function _apply_case_overrides(settings_path::AbstractString, overrides)
     open(settings_path, "w") do io
         write(io, "SETTING,VALUE,,Comments\n")
         for row in rows
-            key = string(row["SETTING"])
-            comments = string(row["Comments"])
+            key = string(row[:SETTING])
+            comments = string(row[:Comments])
             write(io, "$(key),$(values[key]),,$(comments)\n")
         end
     end
 end
 
 function new_emis_case(project_dir::AbstractString, case_name::AbstractString; overrides=Dict())
-    case_name = strip(String(case_name))
+    case_name = String(strip(String(case_name)))
     isempty(case_name) && error("case_name must be non-empty")
     isdir(project_dir) || error("Project directory does not exist: $(project_dir)")
 

@@ -40,5 +40,5 @@ uc_horizon,25,,Day-ahead simulation horizon
 uc_interval,24,,Day-ahead simulation interval
 ed_horizon,2,,Real-time simulation horizon
 ed_interval,1,,Real-time simulation interval
-multi_day_market,FALSE,,Whether to enable multi-day markets
+md_market,FALSE,,Whether to enable multi-day markets
 time_series_data_dir,{{TIME_SERIES_DATA_DIR}},,Canonical timeseries directory

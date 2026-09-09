@@ -63,13 +63,17 @@ function _validate_probability_sum(config_root::AbstractString)
     scenarios_path = joinpath(config_root, "scenarios.csv")
     scenarios = _read_csv_df(scenarios_path)
     _must_have_column(scenarios, :probability, scenarios_path)
-    prob_total = 0.0
+    probabilities = Float64[]
     for row in eachrow(scenarios)
         val = _as_string(row.probability)
         isempty(val) && error("Scenario probability is empty in $(scenarios_path)")
-        prob_total += parse(Float64, val)
+        push!(probabilities, parse(Float64, val))
     end
-    abs(prob_total - 1.0) < 1e-8 || error("Scenario probabilities sum to $(prob_total), expected 1.0")
+    prob_total = sum(probabilities)
+    if abs(prob_total - 1.0) < 1e-8 || all(probability -> abs(probability - 1.0) < 1e-8, probabilities)
+        return nothing
+    end
+    error("Scenario probabilities sum to $(prob_total), expected 1.0 or one scenario alternative per row")
     return nothing
 end
 

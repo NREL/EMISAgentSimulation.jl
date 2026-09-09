@@ -1,4 +1,5 @@
 using Xpress
+using JuMP
 using EMISAgentSimulation
 using Dates
 using Distributed
@@ -20,7 +21,7 @@ run_checkpoint = "--run_checkpoint" in ARGS
 checkpoint_index = findfirst(==( "--run_checkpoint"), ARGS)
 run_name_index = findfirst(==( "--run_name"), ARGS)
 run_name = run_name_index === nothing ?
-    "$(CASE_NAME)_$(Dates.format(Dates.now(), \"yyyymmdd_HHMM\"))" :
+    "$(CASE_NAME)_$(Dates.format(Dates.now(), "yyyymmdd_HHMM"))" :
     ARGS[run_name_index + 1]
 @info "Run name: $(run_name)"
 run_checkpoint && checkpoint_index == length(ARGS) &&
@@ -30,9 +31,19 @@ pras_threads_index = findfirst(==( "--pras-threads"), ARGS)
 pras_threads = pras_threads_index === nothing ? 16 :
     parse(Int, ARGS[pras_threads_index + 1])
 
+simulation_settings = Dict(
+    String(row["SETTING"]) => String(row["VALUE"])
+    for row in eachrow(EAS.read_data(joinpath(@__DIR__, "simulation_settings.csv")))
+)
+markets_included = Dict(
+    Symbol(row["MARKET"]) => row["INCLUDED"]
+    for row in eachrow(EAS.read_data(joinpath(@__DIR__, "markets_included.csv")))
+)
+vre_reserves_bool = EAS.parsebool(simulation_settings["vre_reserves"])
+
 run_dir = joinpath(RUNS_DIR, CASE_NAME)
 result_path = joinpath(run_dir, "Results", run_name)
-project_timeseries_data_dir = joinpath(PROJECT_ROOT, "timeseries")
+system_timeseries_data_dir = joinpath(TEST_SYSTEM_DIR, "RTS_Data", "timeseries_data_files")
 timeseries_data_dir = joinpath(result_path, "timeseries_data_files")
 mkpath(result_path)
 cd(run_dir)
@@ -42,13 +53,14 @@ isnothing(active_project) && error("Run this script with the EMIS package projec
 emis_project_dir = dirname(active_project)
 
 if !run_checkpoint
-    @info "Copying time series data from $(project_timeseries_data_dir) to $(timeseries_data_dir)"
+    vre_reserves_bool || error("Project-init run template currently supports vre_reserves=true cases")
+    @info "Copying time series data from $(system_timeseries_data_dir) to $(timeseries_data_dir)"
     @info "This should be called only on first run, Checkpoints will use existing timeseries data"
     mkdir(timeseries_data_dir)
-    cp(project_timeseries_data_dir, timeseries_data_dir; force=true)
+    cp(system_timeseries_data_dir, timeseries_data_dir; force=true)
 end
 
-const Xpress_optimizer = optimizer_with_attributes(
+const Xpress_optimizer = JuMP.optimizer_with_attributes(
     Xpress.Optimizer,
     "MIPRELSTOP" => 1e-2,
     "BARGAPSTOP" => 1e-4,
@@ -65,15 +77,6 @@ const Xpress_optimizer = optimizer_with_attributes(
     "PRESOLVE" => 1,
     "MAXTIME" => 7200,
     "NUMERICALEMPHASIS" => 1,
-)
-
-simulation_settings = Dict(
-    row["SETTING"] => String(row["VALUE"])
-    for row in EAS.read_data(joinpath(@__DIR__, "simulation_settings.csv"))
-)
-markets_included = Dict(
-    Symbol(row["MARKET"]) => row["INCLUDED"]
-    for row in EAS.read_data(joinpath(@__DIR__, "markets_included.csv"))
 )
 
 current_siip_sim = Any[1]

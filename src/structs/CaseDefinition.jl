@@ -436,7 +436,7 @@ function CaseDefinition(name::String,
     timeseries_data_dir::String,
     markets_included::Dict{Symbol, Bool},
     solver::JuMP.MOI.OptimizerWithAttributes;
-    simulation_settings::Dict{String, Any},
+    simulation_settings::AbstractDict{String},
 )
     CaseDefinition(name,
         base_dir,

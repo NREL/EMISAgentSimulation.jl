@@ -81,12 +81,44 @@ function extract_zones(sys::PSY.System)
 end
 
 function _component_capacity_mw(component, sys::PSY.System)
-    limits = if component isa PSY.Storage
-        PSY.get_output_active_power_limits(component)
-    else
-        PSY.get_active_power_limits(component)
+    try
+        limits = if component isa PSY.Storage
+            PSY.get_output_active_power_limits(component)
+        else
+            PSY.get_active_power_limits(component)
+        end
+        return limits.max * PSY.get_base_power(sys)
+    catch exception
+        if exception isa MethodError || exception isa ArgumentError
+            return PSY.get_rating(component)
+        end
+        rethrow()
     end
-    return limits.max * PSY.get_base_power(sys)
+end
+
+function _component_min_capacity_mw(component, sys::PSY.System)
+    try
+        limits = component isa PSY.Storage ?
+                 PSY.get_output_active_power_limits(component) :
+                 PSY.get_active_power_limits(component)
+        return limits.min * PSY.get_base_power(sys)
+    catch exception
+        if exception isa MethodError || exception isa ArgumentError
+            return 0.0
+        end
+        rethrow()
+    end
+end
+
+function _component_status(component)
+    try
+        return PSY.get_status(component)
+    catch exception
+        if exception isa MethodError
+            return PSY.get_available(component)
+        end
+        rethrow()
+    end
 end
 
 """Extract the generator/storage rows consumed by the RTS reader."""
@@ -118,15 +150,10 @@ function extract_gen_table(
                 PSY.get_name(component),
                 classify_psy_component(component, mapping),
                 _component_capacity_mw(component, sys),
-                begin
-                    limits = component isa PSY.Storage ?
-                              PSY.get_output_active_power_limits(component) :
-                              PSY.get_active_power_limits(component)
-                    limits.min * PSY.get_base_power(sys)
-                end,
+                _component_min_capacity_mw(component, sys),
                 PSY.get_number(bus),
                 PSY.get_name(area),
-                PSY.get_status(component),
+                _component_status(component),
             ))
         catch exception
             push!(failures, "$(PSY.get_name(component)): $(sprint(showerror, exception))")
@@ -144,20 +171,38 @@ function _branch_endpoints(branch)
     return PSY.get_from(arc), PSY.get_to(arc)
 end
 
+function _numeric_or_default(value, default::Float64=0.0)
+    if value === nothing || value === missing
+        return default
+    end
+    return Float64(value)
+end
+
+function _branch_value(getter, branch, default::Float64=0.0)
+    try
+        return _numeric_or_default(getter(branch), default)
+    catch exception
+        if exception isa MethodError || exception isa ArgumentError
+            return default
+        end
+        rethrow()
+    end
+end
+
 function _branch_row(branch, sys::PSY.System; dc::Bool)
     from_bus, to_bus = _branch_endpoints(branch)
     rating = if dc
         (
-            PSY.get_active_power_limits_from(branch).max,
-            PSY.get_active_power_limits_to(branch).max,
+            _numeric_or_default(PSY.get_active_power_limits_from(branch).max),
+            _numeric_or_default(PSY.get_active_power_limits_to(branch).max),
         )
     else
-        rate = PSY.get_rating(branch)
+        rate = _branch_value(PSY.get_rating, branch)
         (rate, rate)
     end
-    resistance = dc ? 0.0 : PSY.get_r(branch)
-    reactance = dc ? 0.0 : PSY.get_x(branch)
-    susceptance = dc ? 0.0 : PSY.get_b(branch)
+    resistance = dc ? 0.0 : _branch_value(PSY.get_r, branch)
+    reactance = dc ? 0.0 : _branch_value(PSY.get_x, branch)
+    susceptance = dc ? 0.0 : _branch_value(PSY.get_b, branch)
     return (
         PSY.get_name(branch),
         string(PSY.get_number(from_bus)),

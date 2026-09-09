@@ -503,8 +503,7 @@ This function creates the data directory for the simulated case.
 """
 function make_case_data_dir(case::CaseDefinition)
     case_dir = get_data_dir(case)
-    dir_exists(case_dir)
-    if !isdir(case_dir)
+    if !isdir(case_dir) || isempty(readdir(case_dir))
         projects_type = get_heterogeneity(case) ? "Heterogeneous" : "Homogeneous"
         @info "Copying system data for case $(get_name(case)) from $(get_base_dir(case)) to $case_dir: $projects_type"
         sys_data_dir = joinpath(get_base_dir(case), projects_type)
