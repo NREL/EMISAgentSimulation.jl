@@ -121,6 +121,16 @@ function _write_case_template(project_root::AbstractString, replacements::Dict{S
     return template_dir
 end
 
+function _copy_case_template_overrides(spec_dir::AbstractString, template_dir::AbstractString, replacements::Dict{String, String})
+    for filename in ("simulation_settings.csv", "markets_included.csv", "options.csv")
+        src = joinpath(spec_dir, filename)
+        if isfile(src)
+            _copy_rendered_template(src, joinpath(template_dir, filename), replacements)
+        end
+    end
+    return template_dir
+end
+
 function _copy_directory_contents(src_dir::AbstractString, dst_dir::AbstractString)
     isdir(src_dir) || return dst_dir
     mkpath(dst_dir)
@@ -411,6 +421,7 @@ function initialize_emis_project(spec_dir::AbstractString; output_dir::AbstractS
     mkpath(joinpath(base_dir, heterogeneity))
     mkpath(joinpath(base_dir, heterogeneity, "markets_data"))
     template_dir = _write_case_template(output_dir, template_replacements)
+    _copy_case_template_overrides(spec_dir, template_dir, template_replacements)
     metadata_path = _write_project_metadata(output_dir, Dict(
         "base_dir" => normpath(base_dir),
         "runs_dir" => normpath(runs_dir),
