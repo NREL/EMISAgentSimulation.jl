@@ -331,6 +331,28 @@ function _write_project_metadata(project_root::AbstractString, values::Dict{Stri
     return metadata_path
 end
 
+function _filter_reserve_products_by_timeseries(reserves_path::AbstractString, ts_root::AbstractString)
+    isfile(reserves_path) || return nothing
+    reserve_df = DataFrames.DataFrame(CSV.File(reserves_path; stringtype=String))
+    if !("Reserve Product" in names(reserve_df))
+        return reserve_df
+    end
+    available = _reserve_products_with_timeseries(ts_root)
+    keep = falses(nrow(reserve_df))
+    for (i, row) in enumerate(eachrow(reserve_df))
+        canonical = _resolve_reserve_product_name(String(row[Symbol("Reserve Product")]), available)
+        canonical === nothing && continue
+        row[Symbol("Reserve Product")] = canonical
+        keep[i] = true
+    end
+    filtered = reserve_df[keep, :]
+    if nrow(filtered) != nrow(reserve_df)
+        @warn "Project initialization removed $(nrow(reserve_df) - nrow(filtered)) reserve products without matching time-series files."
+        CSV.write(reserves_path, filtered)
+    end
+    return filtered
+end
+
 function _find_ref_het_dir(ref_case::AbstractString, base_dir_name::AbstractString, heterogeneity::AbstractString)
     d1 = joinpath(ref_case, base_dir_name, heterogeneity)
     isdir(d1) && return d1
@@ -511,7 +533,12 @@ function initialize_emis_project(spec_dir::AbstractString; output_dir::AbstractS
     if !isempty(copied_system_path)
         source_data_dir = joinpath(test_system_dir, "RTS_Data", "SourceData")
         sys = PSY.System(copied_system_path; runchecks=false)
-        write_system_inputs(sys, source_data_dir; technologies=technologies)
+        write_system_inputs(
+            sys,
+            source_data_dir;
+            technologies=technologies,
+            reserve_timeseries_dir=project_timeseries_dir,
+        )
     end
 
     if !isnothing(reference_case_dir)

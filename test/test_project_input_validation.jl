@@ -59,6 +59,18 @@ const EXISTING_TEMPLATE = joinpath(
     @test isempty(extract_branches(empty_system).ac)
     @test isempty(extract_branches(empty_system).dc)
     @test isempty(extract_reserves(empty_system))
+
+    # "REG_DN"/"REG_UP" are the raw PSY reserve service names, while RTS_Data time-series
+    # files use "Reg_Down"/"Reg_Up" (matching the constructed-system renaming in
+    # src/struct_creators/simulation_structs/rts_psy_creator.jl). Neither the PSY system
+    # nor the time-series files should be renamed to bridge this; extract_reserves should
+    # resolve it via the known alias table.
+    available_products = Dict("reg_down" => "Reg_Down", "spin" => "Spin")
+    @test EMISAgentSimulation._resolve_reserve_product_name("REG_DN", available_products) == "Reg_Down"
+    @test EMISAgentSimulation._resolve_reserve_product_name("SPIN", available_products) == "Spin"
+    @test EMISAgentSimulation._resolve_reserve_product_name("NONSPIN", available_products) === nothing
+    @test EMISAgentSimulation._resolve_reserve_product_name("REG_UP", available_products) === nothing
+
     reserve_defaults = DataFrame(
         Symbol.(EMISAgentSimulation.RESERVE_COLUMNS) .=> [
             ["Curve"], [60], [12.0], ["(1)"], ["(Generator)"], [""], ["Up"]

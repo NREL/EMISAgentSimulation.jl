@@ -267,6 +267,15 @@ const RESERVE_COLUMNS = [
     "Direction",
 ]
 
+# Known raw PSY reserve service names that don't match their time-series file names by
+# case alone (e.g. "REG_DN" vs "Reg_Down"). Mirrors the renaming applied to constructed
+# systems in src/struct_creators/simulation_structs/rts_psy_creator.jl, so reserves.csv
+# stays consistent with that downstream convention without renaming the PSY system.
+const RESERVE_PRODUCT_ALIASES = Dict(
+    "REG_DN" => "Reg_Down",
+    "REG_UP" => "Reg_Up",
+)
+
 function _reserve_services(sys::PSY.System)
     services = PSY.Service[]
     for device_type in (PSY.Generator, PSY.Storage, PSY.HydroGen)
@@ -325,10 +334,57 @@ function _reserve_timeframe(service::PSY.ReserveDemandCurve, defaults, product)
     return Int(PSY.get_time_frame(service))
 end
 
-"""Extract reserve products using the existing EMIS reserve-table schema."""
+"""Map lowercase reserve product name to its on-disk casing from Reserves time-series files."""
+function _reserve_products_with_timeseries(ts_root::AbstractString)
+    available = Dict{String, String}()
+    isdir(ts_root) || return available
+    for scenario in readdir(ts_root)
+        scenario_path = joinpath(ts_root, scenario)
+        isdir(scenario_path) || continue
+        for sim_year in readdir(scenario_path)
+            year_path = joinpath(scenario_path, sim_year)
+            isdir(year_path) || continue
+            reserves_dir = joinpath(year_path, "Reserves")
+            isdir(reserves_dir) || continue
+            for file in readdir(reserves_dir)
+                if endswith(lowercase(file), ".csv")
+                    reserve_match = match(r"^(?:DAY_AHEAD|REAL_TIME)_regional_(.+)\.csv$"i, file)
+                    if reserve_match !== nothing
+                        product = String(reserve_match.captures[1])
+                        available[lowercase(product)] = product
+                    end
+                end
+            end
+        end
+    end
+    return available
+end
+
+"""Resolve a raw PSY reserve product name to its canonical on-disk casing.
+
+Checks `available_products` (case-insensitive) directly, then falls back to
+`RESERVE_PRODUCT_ALIASES` for known naming mismatches. Returns `nothing` if there is no
+matching time-series file."""
+function _resolve_reserve_product_name(
+    product::AbstractString,
+    available_products::AbstractDict{<:AbstractString, <:AbstractString},
+)
+    canonical = get(available_products, lowercase(product), nothing)
+    canonical !== nothing && return canonical
+    alias = get(RESERVE_PRODUCT_ALIASES, product, nothing)
+    alias === nothing && return nothing
+    return get(available_products, lowercase(alias), nothing)
+end
+
+"""Extract reserve products using the existing EMIS reserve-table schema.
+
+When `available_products` is provided (a case-insensitive map of reserve product name
+to its on-disk casing), only products with a matching time-series file are included,
+and the written product name is canonicalized to match that file's casing."""
 function extract_reserves(
     sys::PSY.System;
     defaults::Union{Nothing, DataFrames.DataFrame}=nothing,
+    available_products::Union{Nothing, AbstractDict{<:AbstractString, <:AbstractString}}=nothing,
 )
     defaults !== nothing && _require_columns(defaults, Symbol.(RESERVE_COLUMNS), "reserve defaults")
     rows = DataFrames.DataFrame(
@@ -342,11 +398,17 @@ function extract_reserves(
     )
     for service in _reserve_services(sys)
         product = PSY.get_name(service)
+        output_product = product
+        if available_products !== nothing
+            canonical = _resolve_reserve_product_name(product, available_products)
+            canonical === nothing && continue
+            output_product = canonical
+        end
         requirement = _reserve_requirement(service, defaults, product)
         service_type = string(typeof(service))
         direction = occursin("Down", service_type) ? "Down" : "Up"
         push!(rows, (
-            product,
+            output_product,
             _reserve_timeframe(service, defaults, product),
             requirement,
             string(_reserve_default(defaults, product, "Eligible Regions", "")),
@@ -504,6 +566,7 @@ function write_system_inputs(
     mapping::DataFrames.DataFrame=load_psy_classification_mapping(),
     technologies::DataFrames.DataFrame,
     reserve_defaults::Union{Nothing, DataFrames.DataFrame}=nothing,
+    reserve_timeseries_dir::Union{Nothing, AbstractString}=nothing,
     ownership::Union{Nothing, DataFrames.DataFrame}=nothing,
     investor_dir::Union{Nothing, AbstractString}=nothing,
     defaults::DataFrames.DataFrame=load_project_defaults(),
@@ -514,7 +577,9 @@ function write_system_inputs(
     gen = extract_gen_table(sys, mapping; technologies=technologies)
     gen = gen[:, ["GEN UID", "Unit Type", "PMax MW"]]
     branches = extract_branches(sys)
-    reserves = extract_reserves(sys; defaults=reserve_defaults)
+    available_products = reserve_timeseries_dir === nothing ? nothing :
+        _reserve_products_with_timeseries(reserve_timeseries_dir)
+    reserves = extract_reserves(sys; defaults=reserve_defaults, available_products=available_products)
     CSV.write(joinpath(source_data_dir, "zones.csv"), zones)
     CSV.write(joinpath(source_data_dir, "gen.csv"), gen)
     CSV.write(joinpath(source_data_dir, "branch.csv"), branches.ac)
