@@ -178,6 +178,23 @@ function add_capacity_market_device_forecast!(sys_PRAS::PSY.System,
     return
 end
 
+function resolve_unique_component_name(existing_names, requested_name::String)
+    name_set = Set(string.(existing_names))
+    candidate = requested_name
+    if !(candidate in name_set)
+        return candidate
+    end
+
+    suffix = 1
+    while true
+        candidate = "$(requested_name)_$(suffix)"
+        if !(candidate in name_set)
+            return candidate
+        end
+        suffix += 1
+    end
+end
+
 function add_capacity_market_project!(capacity_market_system::PSY.System,
     project::Project,
     simulation_dir::String,
@@ -189,6 +206,15 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     availability_df_rt::DataFrame)
 
     # @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
+
+    # Must check against ALL stored components (including unavailable ones), since PSY
+    # enforces name uniqueness on the full component store, not just available techs.
+    current_names = get_all_tech_names(capacity_market_system)
+    unique_name = resolve_unique_component_name(current_names, get_name(project))
+    if unique_name != get_name(project)
+        @warn "Duplicate component name detected for project $(get_name(project)); renaming to $(unique_name) before adding to capacity market system."
+        set_name!(project, unique_name)
+    end
 
     PSY_project = create_PSY_generator(project, capacity_market_system)
     PSY.add_component!(capacity_market_system, PSY_project)
@@ -270,7 +296,7 @@ function create_capacity_mkt_system(initial_system::PSY.System,
         if end_life_year >= capacity_market_year &&
            construction_year <= capacity_market_year
             push!(capacity_market_projects, project)
-            if !(get_name(project) in PSY.get_name.(get_all_techs(capacity_market_system)))
+            if !(get_name(project) in get_all_tech_names(capacity_market_system))
                 add_capacity_market_project!(capacity_market_system, project,
                     simulation_dir, scenario,
                     capacity_market_year, rt_resolution, simulation_years,
@@ -573,7 +599,7 @@ function create_base_system(initial_system::PSY.System,
                         @info "  Area $(area_name) LOLE: $(area_lole[area_name]) hrs/yr"
                     end
                     # Place incremental CTs in the area with the highest LOLE — it is the binding constraint
-                    target_area_name = argmax(area_lole)
+                    target_area_name = argmax(last, area_lole).first
                     target_bus =
                         first(get_buses_in_area(capacity_market_system, target_area_name))
                     target_bus_id = string(PSY.get_number(target_bus))

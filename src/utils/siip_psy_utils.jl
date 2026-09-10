@@ -14,6 +14,18 @@ function get_all_techs(sys::PSY.System)
 end
 
 """
+Returns names of all generation and storage components stored in the PSY System,
+including unavailable ones. Component name uniqueness in PSY is enforced against the
+full component store regardless of `available`, so this (not `get_all_techs`) is the
+correct source of truth for duplicate-name checks before `PSY.add_component!`.
+"""
+function get_all_tech_names(sys::PSY.System)
+    sys_gens = PSY.get_components(PSY.Generator, sys)
+    sys_storage = PSY.get_components(PSY.Storage, sys)
+    return PSY.get_name.(union(sys_gens, sys_storage))
+end
+
+"""
 This function does nothing if the PSY System is not defined.
 """
 function get_system_services(sys::Nothing)

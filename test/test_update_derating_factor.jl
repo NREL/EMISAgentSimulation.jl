@@ -12,6 +12,14 @@ using EMISAgentSimulation
 include(joinpath(@__DIR__, "helpers.jl"))
 
 @testset "update_derating_factor!" begin
+    @testset "duplicate component names" begin
+        @test EMISAgentSimulation.resolve_unique_component_name(
+            ["gen-543", "gen-543_1"],
+            "gen-543",
+        ) == "gen-543_2"
+        @test EMISAgentSimulation.resolve_unique_component_name(["gen-543"], "new_name") ==
+              "new_name"
+    end
 
     # ── ThermalGenEMIS / HydroGenEMIS ────────────────────────────────────────
 
