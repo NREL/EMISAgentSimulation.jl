@@ -296,12 +296,14 @@ function create_capacity_mkt_system(initial_system::PSY.System,
         if end_life_year >= capacity_market_year &&
            construction_year <= capacity_market_year
             push!(capacity_market_projects, project)
-            if !(get_name(project) in get_all_tech_names(capacity_market_system))
-                add_capacity_market_project!(capacity_market_system, project,
-                    simulation_dir, scenario,
-                    capacity_market_year, rt_resolution, simulation_years,
-                    timeseries_data_dir, availability_df_rt)
+            if get_name(project) in get_all_tech_names(capacity_market_system)
+                @warn "Skipping project $(get_name(project)) because it is already present in the capacity market system."
+                continue
             end
+            add_capacity_market_project!(capacity_market_system, project,
+                simulation_dir, scenario,
+                capacity_market_year, rt_resolution, simulation_years,
+                timeseries_data_dir, availability_df_rt)
         end
     end
 
