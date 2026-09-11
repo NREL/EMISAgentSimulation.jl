@@ -14,6 +14,18 @@ function get_all_techs(sys::PSY.System)
 end
 
 """
+Returns names of all generation and storage components stored in the PSY System,
+including unavailable ones. Component name uniqueness in PSY is enforced against the
+full component store regardless of `available`, so this (not `get_all_techs`) is the
+correct source of truth for duplicate-name checks before `PSY.add_component!`.
+"""
+function get_all_tech_names(sys::PSY.System)
+    sys_gens = PSY.get_components(PSY.Generator, sys)
+    sys_storage = PSY.get_components(PSY.Storage, sys)
+    return PSY.get_name.(union(sys_gens, sys_storage))
+end
+
+"""
 This function does nothing if the PSY System is not defined.
 """
 function get_system_services(sys::Nothing)
@@ -579,23 +591,20 @@ function find_zonal_bus(zone::String, sys::PSY.System)
 end
 
 function find_zonal_area(zone::String, sys::PSY.System)
-    zone_number_map = Dict(
-        "FarWest" => 1,
-        "North" => 2,
-        "West" => 3,
-        "Southern" => 4,
-        "NorthCentral" => 5,
-        "SouthCentral" => 6,
-        "Coast" => 7,
-        "East" => 8,
-    )
     for area in PSY.get_components(PSY.Area, sys)
         name = PSY.get_name(area)
-        if zone == "zone_$(zone_number_map[name])"
+        if zone == "zone_$(ZONE_NUMBER_MAP[name])"
             return area
         end
     end
     return nothing
+end
+
+"""
+Returns the "zone_<n>" identifier for a given PSY.Area name, using `ZONE_NUMBER_MAP`.
+"""
+function get_zone_for_area(area_name::String)
+    return "zone_$(ZONE_NUMBER_MAP[area_name])"
 end
 
 """
@@ -678,6 +687,19 @@ function add_nominal_outage_to_component!(sys::PSY.System, component::PSY.Compon
     )
     PSY.add_supplemental_attribute!(sys, component, attr)
     return
+end
+
+"""
+Return all `PSY.Bus` components in `sys` that belong to the area named `area_name`.
+"""
+function get_buses_in_area(sys::PSY.System, area_name::String)
+    return collect(
+        PSY.get_components(
+            b -> PSY.get_name(PSY.get_area(b)) == area_name,
+            PSY.Bus,
+            sys,
+        ),
+    )
 end
 
 function add_psy_inertia!(simulation_dir::String,

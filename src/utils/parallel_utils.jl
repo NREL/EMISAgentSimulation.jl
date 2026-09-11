@@ -1,7 +1,10 @@
 """
 This function creates parallel workers for making price predictions.
+
+Keyword `n_threads` configures each spawned worker process with Julia threads.
+The default keeps the historical behavior of a single-threaded worker pool.
 """
-function create_parallel_workers(case::CaseDefinition, hpc::Bool)
+function create_parallel_workers(case::CaseDefinition, hpc::Bool; n_threads::Int = 1)
     data_dir = get_data_dir(case)
     dir_name = joinpath(data_dir, "investors")
     investor_names = readdir(dir_name)
@@ -50,10 +53,14 @@ function create_parallel_workers(case::CaseDefinition, hpc::Bool)
             nodes = split(ENV["SLURM_NODELIST"], ",")
             num_procs = min(Int(ceil(num_workers_required / length(nodes))), 4)
             node_pairs = [(n, num_procs) for n in nodes]
-            Distributed.addprocs(node_pairs)
+            Distributed.addprocs(node_pairs; exeflags = "--threads=$(n_threads)")
         else
             num_workers = min(Int(num_workers_required), 4)
-            Distributed.addprocs(num_workers; lazy = false)
+            Distributed.addprocs(
+                num_workers;
+                lazy = false,
+                exeflags = "--threads=$(n_threads)",
+            )
         end
     end
 
@@ -213,6 +220,16 @@ function repeat_arguments(num_scenarios::Int, args...)
 end
 
 """
+Returns the path to the PRAS PSY.System JSON file for a given scenario.
+"""
+function _pras_sys_path(case::CaseDefinition, scenario::String)
+    return joinpath(
+        get_sys_dir(case), "constructed_systems", scenario, "sim_year_1",
+        "PRAS_sys_EMIS_$(get_ed_horizon(case))hor_$(get_ed_interval(case))int_$(get_md_horizon(case))mdhor_$(get_md_interval(case))mdint.json",
+    )
+end
+
+"""
 This function runs the update_simulation_derating_data! function in parallel for different scenarios.
 """
 function parallelize_update_derating_data(args)
@@ -222,7 +239,15 @@ function parallelize_update_derating_data(args)
     methodology,
     ra_metric,
     marginal_cc,
-    timeseries_data_dir = args
+    timeseries_data_dir,
+    pras_sys_path = args
+    # PSY.System holds a process-local SQLite handle that becomes a stale pointer
+    # after cross-process serialization. Reload from file to get a valid handle.
+    simulation.system_PRAS[scenario] = PSY.System(
+        pras_sys_path;
+        time_series_directory = get_scratch_dir(get_case(simulation)),
+        runchecks = false,
+    )
     update_simulation_derating_data!(
         simulation,
         scenario,

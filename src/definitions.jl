@@ -29,6 +29,18 @@ const DEFAULT_THERMAL_MTTR_HOURS = 24
 const SIM_START_DATE = Dates.DateTime("2018-01-01T00:00:00")
 const SIM_END_DATE = Dates.DateTime("2019-01-01T00:00:00")
 
+# Maps PSY.Area name to the zone number used in "zone_<n>" identifiers
+const ZONE_NUMBER_MAP = Dict(
+    "FarWest" => 1,
+    "North" => 2,
+    "West" => 3,
+    "Southern" => 4,
+    "NorthCentral" => 5,
+    "SouthCentral" => 6,
+    "Coast" => 7,
+    "East" => 8,
+)
+
 # File pointers
 const TIMESERIES_DATA_DIR = "/projects/gmlcmarkets/Phase2_EMIS_Analysis/NTP_TimeSeries_Data"
 const POINTER_FILE = Dict(

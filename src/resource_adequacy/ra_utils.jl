@@ -56,7 +56,8 @@ function calculate_RA_metrics(sys::PSY.System,
     iteration_year::Int64;
     samples::Int64 = PRAS_N_SAMPLES,
     seed::Int64 = 42,
-    simulation_years::Int64 = 15)
+    simulation_years::Int64 = 15,
+    overwrite_outage_with_ext::Bool = false)
     system_period_of_interest = range(1; length = DEFAULT_HOURS_PER_YEAR * simulation_years);
     # correlated_outage_csv_location = joinpath(outage_dir, "ThermalFOR_scenario_1_new.csv")
 
@@ -65,7 +66,9 @@ function calculate_RA_metrics(sys::PSY.System,
     # Build PRAS.SystemModel on the main process (needs PSY.System's live SQLite connection).
     # PRAS.SystemModel is plain arrays — safe to serialize and send to a remote worker.
     # generate_pras_system is in SiennaPRASInterface (SPI), not in PRASCore (PRAS).
-    @timeit EMIS_TIMER "attach_outage_data" attach_outage_data_from_ext!(sys)
+    if overwrite_outage_with_ext
+        @timeit EMIS_TIMER "attach_outage_data" attach_outage_data_from_ext!(sys)
+    end
     pras_system =
         @timeit EMIS_TIMER "generate_pras_system" SPI.generate_pras_system(sys, PSY.Area)
 
@@ -175,6 +178,23 @@ function add_capacity_market_device_forecast!(sys_PRAS::PSY.System,
     return
 end
 
+function resolve_unique_component_name(existing_names, requested_name::String)
+    name_set = Set(string.(existing_names))
+    candidate = requested_name
+    if !(candidate in name_set)
+        return candidate
+    end
+
+    suffix = 1
+    while true
+        candidate = "$(requested_name)_$(suffix)"
+        if !(candidate in name_set)
+            return candidate
+        end
+        suffix += 1
+    end
+end
+
 function add_capacity_market_project!(capacity_market_system::PSY.System,
     project::Project,
     simulation_dir::String,
@@ -186,6 +206,15 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     availability_df_rt::DataFrame)
 
     # @info "Adding project $(get_name(project)) to capacity market system - scenario $(scenario) for year $(target_year)"
+
+    # Must check against ALL stored components (including unavailable ones), since PSY
+    # enforces name uniqueness on the full component store, not just available techs.
+    current_names = get_all_tech_names(capacity_market_system)
+    unique_name = resolve_unique_component_name(current_names, get_name(project))
+    if unique_name != get_name(project)
+        @warn "Duplicate component name detected for project $(get_name(project)); renaming to $(unique_name) before adding to capacity market system."
+        set_name!(project, unique_name)
+    end
 
     PSY_project = create_PSY_generator(project, capacity_market_system)
     PSY.add_component!(capacity_market_system, PSY_project)
@@ -218,6 +247,28 @@ function add_capacity_market_project!(capacity_market_system::PSY.System,
     return
 end
 
+"""
+Reassigns an EMIS thermal project's bus and zone (ThermalTech is immutable, so its tech is rebuilt).
+"""
+function set_project_bus!(project::ThermalGenEMIS{<: BuildPhase}, bus::String, zone::String)
+    tech = get_tech(project)
+    project.tech = ThermalTech(
+        tech.type,
+        tech.fuel,
+        tech.active_power_limits,
+        tech.ramp_limits,
+        tech.time_limits,
+        tech.operation_cost,
+        tech.fuel_cost,
+        tech.heat_rate_curve,
+        bus,
+        zone,
+        tech.FOR,
+        tech.MTTR,
+    )
+    return
+end
+
 function create_capacity_mkt_system(initial_system::PSY.System,
     active_projects::Vector{Project},
     capacity_forward_years::Int64,
@@ -245,12 +296,14 @@ function create_capacity_mkt_system(initial_system::PSY.System,
         if end_life_year >= capacity_market_year &&
            construction_year <= capacity_market_year
             push!(capacity_market_projects, project)
-            if !(get_name(project) in PSY.get_name.(get_all_techs(capacity_market_system)))
-                add_capacity_market_project!(capacity_market_system, project,
-                    simulation_dir, scenario,
-                    capacity_market_year, rt_resolution, simulation_years,
-                    timeseries_data_dir, availability_df_rt)
+            if get_name(project) in get_all_tech_names(capacity_market_system)
+                @warn "Skipping project $(get_name(project)) because it is already present in the capacity market system."
+                continue
             end
+            add_capacity_market_project!(capacity_market_system, project,
+                simulation_dir, scenario,
+                capacity_market_year, rt_resolution, simulation_years,
+                timeseries_data_dir, availability_df_rt)
         end
     end
 
@@ -361,6 +414,21 @@ function update_delta_irm!(initial_system::PSY.System,
                     first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
                 if !(adequacy_conditions_met)
+                    ct_bus_id = get_bus(get_tech(ct_project_template))
+                    ct_bus_match = filter(
+                        b ->
+                            string(PSY.get_number(b)) == ct_bus_id ||
+                            PSY.get_name(b) == ct_bus_id,
+                        collect(PSY.get_components(PSY.Bus, capacity_market_system)),
+                    )
+                    if !isempty(ct_bus_match)
+                        @info "CT template bus=$(ct_bus_id) → area=$(PSY.get_name(PSY.get_area(first(ct_bus_match))))"
+                    end
+                    for area in PSY.get_components(PSY.Area, capacity_market_system)
+                        area_lole =
+                            val(PRAS.LOLE(shortfall, PSY.get_name(area))) / simulation_years
+                        @info "  Area $(PSY.get_name(area)) LOLE: $(area_lole) hrs/yr"
+                    end
                     while !(adequacy_conditions_met)
                         @info "RA metrics: $(ra_metrics)"
                         @info "Updating delta IRM for scenario: $(scenario) - Year: $(iteration_year)"
@@ -513,7 +581,32 @@ function create_base_system(initial_system::PSY.System,
                 first(filter(p -> occursin("new_CT", get_name(p)), active_projects))
 
             if !(adequacy_conditions_met)
+                ct_bus_id = get_bus(get_tech(ct_project_template))
+                ct_bus_match = filter(
+                    b ->
+                        string(PSY.get_number(b)) == ct_bus_id ||
+                        PSY.get_name(b) == ct_bus_id,
+                    collect(PSY.get_components(PSY.Bus, capacity_market_system)),
+                )
+                if !isempty(ct_bus_match)
+                    @info "CT template bus=$(ct_bus_id) → area=$(PSY.get_name(PSY.get_area(first(ct_bus_match))))"
+                end
+
                 while !(adequacy_conditions_met)
+                    area_lole = Dict{String, Float64}()
+                    for area in PSY.get_components(PSY.Area, capacity_market_system)
+                        area_name = PSY.get_name(area)
+                        area_lole[area_name] =
+                            val(PRAS.LOLE(shortfall, area_name)) / simulation_years
+                        @info "  Area $(area_name) LOLE: $(area_lole[area_name]) hrs/yr"
+                    end
+                    # Place incremental CTs in the area with the highest LOLE — it is the binding constraint
+                    target_area_name = argmax(last, area_lole).first
+                    target_bus =
+                        first(get_buses_in_area(capacity_market_system, target_area_name))
+                    target_bus_id = string(PSY.get_number(target_bus))
+                    target_zone = get_zone_for_area(target_area_name)
+                    @info "Targeting area $(target_area_name) (bus $(PSY.get_name(target_bus))) for incremental CTs"
                     scalar = 2
                     ratio = 0
                     for metric in keys(ra_targets)
@@ -525,6 +618,7 @@ function create_base_system(initial_system::PSY.System,
                     for i in 1:ceil(ratio)
                         incremental_project = deepcopy(ct_project_template)
                         set_name!(incremental_project, "addition_CT_project_$(count)")
+                        set_project_bus!(incremental_project, target_bus_id, target_zone)
                         total_added_capacity += get_maxcap(incremental_project)
                         add_capacity_market_project!(
                             capacity_market_system,
